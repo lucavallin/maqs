@@ -138,7 +138,7 @@ The test region's 5-minute budget is met with a wide margin; the dominant cost p
 
 ## 0002 — Terrain source: Mapterhorn instead of the Protomaps terrarium sample
 
-**Date:** 2026-10-07 · **Status:** proposed
+**Date:** 2026-10-07 · **Status:** superseded by 0004 (same data, obtained through VersaTiles)
 
 **Context.** The brief's offline terrain source, `terrarium-z12.pmtiles (preview)`, is a 2023 scrape of the (2017-frozen) AWS terrain tiles that Protomaps hosts as a sample and no longer links. Protomaps' docs now point to Mapterhorn, a maintained terrarium-encoded PMTiles build (planet z0–12, updated 2026-09) assembled from national open DEMs with per-source attribution; for north-east Italy that means TINITALY 10 m, Trentino 5 m LiDAR, Bolzano 2.5 m, Slovenia 1 m, Austria 1 m, instead of 30 m-class SRTM/EU-DEM. Tiles are 512 px WebP rather than 256 px PNG, which doubles the Veneto z12 extract (105 MB vs 45 MB) but quadruples the pixels per tile.
 
@@ -152,7 +152,7 @@ The test region's 5-minute budget is met with a wide margin; the dominant cost p
 
 ## 0003 — `MaqsUI` and macOS
 
-**Date:** 2026-10-07 · **Status:** proposed (owner decision required)
+**Date:** 2026-10-07 · **Status:** accepted (owner, 2026-10-07: maqs is mobile-first; option 1)
 
 **Context.** The brief targets iOS 18+ and macOS 15+ for the whole package and makes `MaqsUI` the MapLibre wrapper. MapLibre's SwiftPM distribution ships an iOS-only xcframework (no macOS or Catalyst slice). The AppKit port exists in the source tree but is documented as a development aid, minimum macOS 14.3, not actively maintained, and would have to be built from source in CI and shipped as our own binary.
 
@@ -164,3 +164,55 @@ The test region's 5-minute budget is met with a wide margin; the dominant cost p
 **Recommendation.** Option 1, with `Package.swift` declaring `MaqsUI` for iOS only and a note in the README. Revisit if MapLibre ships a macOS slice (7.x does not announce one).
 
 **Consequences.** The brief's "Rendering" decision is amended: MapLibre renders on iOS and iPadOS; macOS rendering is out of this package's scope. The demo app is iOS-only. The design-system follow-ups recorded for Phase 4 (attribution slot, label font, hillshade) are unchanged; 3D terrain is off the table entirely since MapLibre Native does not implement it.
+
+---
+
+## 0004 — One map provider for online and offline: VersaTiles
+
+**Date:** 2026-10-07 · **Status:** accepted (owner decision)
+
+**Context.** The owner's rule after Phase 0: online and offline maps from one provider if at all possible, as few providers as possible, nothing unmaintained. Phase 0 had already shown the brief's mix (VersaTiles + OSMF for the basemap, AWS + a de-listed Protomaps sample for terrain) was partly stale. Checking VersaTiles' own catalogue: besides the Shortbread basemap it hosts an `elevation` tileset — Mapterhorn's terrarium build, 512 px WebP, z0–12 — on `tiles.versatiles.org/tiles/elevation` and as `elevation.versatiles` (407 GB, range-request extracts) on the download server. VersaTiles is actively maintained (v5.0.0 on 2026-10-04).
+
+**Decision.**
+- Basemap online: `https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}` (Shortbread 1.0, OSM + ESA WorldCover landcover). Offline: `versatiles convert --bbox … --compress gzip https://download.versatiles.org/osm-landcover.versatiles`. Landcover variant offline too, so the two match.
+- Terrain online: `https://tiles.versatiles.org/tiles/elevation/{z}/{x}/{y}`. Offline: `versatiles convert --bbox … https://download.versatiles.org/elevation.versatiles`.
+- One CLI (`versatiles`) produces both tile layers; `pmtiles` stays only as an inspection tool.
+- `config/sources.json` lists exactly one provider per layer. OSMF, AWS terrain tiles, the Protomaps sample and Mapterhorn-direct are dropped.
+- Attribution set: OpenStreetMap contributors (ODbL), ESA WorldCover 2021 (CC BY 4.0), Mapterhorn and its per-source credits.
+
+**Risk and mitigation.** tiles.versatiles.org is a demo server: no SLA, per-IP rate limiting, data refreshed roughly quarterly. Mitigations, neither built now: (1) `sources.json` can point at another provider without an app update; (2) our own release assets can be an online source for the covered regions — GitHub release downloads honour range requests (verified: `206`, `Accept-Ranges: bytes`) and MapLibre streams remote `pmtiles://` with an ambient cache since 6.27, so it is one config entry when wanted.
+
+**Consequences.** Brief items 1 and 2 rewritten. The OSMF-specific policy work disappears, but the same etiquette (identifying User-Agent, no `no-cache`, honour `Cache-Control`) applies to VersaTiles and stays in the package rules. The manifest records the basemap's OSM timestamp separately from the Geofabrik-derived layers, since the basemap lags.
+
+---
+
+## 0005 — Road curvature: own implementation, not the `curvature` tool
+
+**Date:** 2026-10-07 · **Status:** accepted (owner decision)
+
+**Context.** `curvature` is feature-complete and still runs (ADR 0001), but it has had no commit since 2022, targets Python 3.5, needs `msgpack<1` pinned, and its GPLv3 licence lives in the README only. The owner's rule is to avoid dormant tools when the replacement is small.
+
+**Decision.** Implement the scoring in `pipeline/` ourselves: per way, segments between consecutive nodes; per segment, radius by the three-point circle method; classify radii into the same bands `curvature` uses and sum the per-way score the same way, so the numbers remain comparable with the published ones. The `corners` table (apex, minimum radius, direction, entry/exit distance) is derived from the same per-segment radii, which the GPL tool would not have given us anyway. Highway-class and surface filters are configuration. Tested against hand-built fixtures (a straight road scores 0; a circular arc of known radius scores the expected band) and sanity-checked against `curvature`'s output for the test region (19 features, Phase 0).
+
+**Rejected.** Pinning `curvature` at a commit with patches: works today, but it is a GPL tool nobody maintains, and we would be its maintainer in all but name.
+
+**Consequences.** `curvature` leaves `bootstrap.sh`; the pipeline's only external CLIs are `versatiles`, `osmium`, `tippecanoe`. The Veneto run will be faster than the 169 s measured for the GPL chain if we use pyosmium directly, but that is not a goal.
+
+---
+
+## 0006 — Trails come from multiple sources through adapters
+
+**Date:** 2026-10-07 · **Status:** accepted (owner decision); adapter sources beyond OSM each get their own ADR
+
+**Context.** Italian trail stewardship is split: CAI sections across most of the country, the Alpenverein Südtirol in South Tyrol, SAT in Trentino, plus regional networks. OSM tagging follows the steward, so a CAI-only tag set misses South Tyrol almost entirely (25 % `cai_scale` coverage in Trentino-Alto Adige vs ~60 % in Veneto and Friuli). The owner wants trail data fetchable from more than one source, starting with AVS.
+
+**Decision.**
+- The trails layer is built from **adapters**. Each adapter turns one source into the same normalised record: id, `ref`, name, difficulty (a normalised scale plus the original value and its scheme — `cai_scale`, `sac_scale`, an AVS grade), operator, network, symbol, geometry, and provenance (`source`, `source_id`, `source_licence`, `source_date`). Downstream steps see only this format.
+- `config/regions.yaml` declares the sources per region in priority order. Duplicate trails across sources are matched by `ref` and geometric overlap; the higher-priority source wins, the other is kept as a secondary reference row.
+- The SQLite `trails` schema carries the provenance columns from version 1, and the manifest's attribution list is assembled from the sources actually used.
+- **Adapter 1: OSM** (Phase 1). Our own pyosmium step reads `route=hiking` relations from the uncut Geofabrik file, assembles ordered geometry from member ways, flags gaps and reversals, and assigns relations to regions by intersection. Both `cai_scale` and `sac_scale` are kept.
+- **Later adapters** are architected for, not built: the first release ships the OSM adapter only (owner, 2026-10-07). First candidate is the Alpenverein Südtirol (AVS itself or the Province of Bolzano open data); then SAT/Trentino, the Veneto and Friuli-Venezia Giulia regional networks, OSM2CAI. Each gets a source ADR (format, licence, attribution) before implementation; the candidate-source survey from Phase 0 is kept for that purpose.
+
+**Rejected.** Hard-wiring OSM with CAI tags only (the brief's original wording): simplest, but demonstrably incomplete for one of the three launch regions.
+
+**Consequences.** Brief item 4 rewritten. The pipeline grows a `trails/sources/` package with one module per adapter and a merge step; the first release ships with the OSM adapter alone, and the merge step is exercised in tests with a synthetic second source so the seam is proven before a real one arrives.

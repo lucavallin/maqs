@@ -1,8 +1,10 @@
 # Bootstrap `maqs`
 
-You are setting up `maqs`, a **public** GitHub repository that provides map data and a Swift package for a small family of native Apple apps (iOS/iPadOS/macOS). The apps live in a separate private repo and depend on this one. This repo must never reference them: it's generic, reusable plumbing.
+You are setting up `maqs`, a **public** GitHub repository that provides map data and a Swift package for a small family of native Apple apps (iOS/iPadOS; the data and terrain modules also build for macOS, the map view does not). The apps live in a separate private repo and depend on this one. This repo must never reference them: it's generic, reusable plumbing.
 
 Read this whole brief before doing anything. Then work through the phases in order, committing at the end of each one.
+
+> **Amended 2026-10-07 after Phase 0** (see `decisions.md`, ADRs 0001–0006). The owner's standing rules, which override anything older below: **one map provider for online and offline** (VersaTiles); **as few providers as possible**; **no unmaintained or stale tools or datasets** — if something is dormant, replace it or write the small equivalent ourselves; **trail data must be fetchable from more than one source** because Italian trail stewardship is fragmented (CAI, Alpenverein Südtirol, SAT, regional networks).
 
 ## Goals and hard constraints
 
@@ -18,31 +20,34 @@ Read this whole brief before doing anything. Then work through the phases in ord
 
 These were chosen after research. Treat them as fixed. In Phase 0, verify that every URL, license, version, size and capability below is still true. If something has changed or is wrong, stop and report before building on it.
 
-1. **Basemap: Shortbread vector tile schema.**
-   - Online primary: VersaTiles public server (tiles.versatiles.org).
-   - Online fallback: OSMF vector tiles (vector.openstreetmap.org), which serve the same schema. OSMF's usage policy forbids bulk downloads, requires a real app-identifying User-Agent, forbids no-cache headers, and requires local caching. Comply with all of it.
-   - Offline: `versatiles convert --bbox ... https://download.versatiles.org/osm.versatiles region.pmtiles`. This is a remote range-request extract, so never download the planet.
-   - Pin the Shortbread schema version and record it in the manifest.
-2. **Terrain: terrarium-encoded DEM.**
-   - Online: AWS Open Data terrain tiles (terrarium). Verify the current URL and terms.
-   - Offline: `pmtiles extract` from the Protomaps terrarium PMTiles build (was "terrarium-z12.pmtiles (preview)"). Verify the URL, max zoom, stability and attribution requirements (Joerd/Mapzen sources).
-   - Online and offline must use the same encoding so the Swift DEM sampler has one code path.
+1. **Basemap: Shortbread vector tile schema, VersaTiles only** (ADR 0004).
+   - Online: the VersaTiles public server, `https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}` (TileJSON at `/tiles/osm/tiles.json`). It is a demo server with no SLA and a per-IP rate limit; honour its six-hour `Cache-Control`, send an app-identifying User-Agent, never send no-cache headers.
+   - Offline: `versatiles convert --bbox … --compress gzip https://download.versatiles.org/osm-landcover.versatiles region.pmtiles`. A remote range-request extract, never a planet download. **gzip is mandatory**: MapLibre Native reads PMTiles with gzip or no compression only, and VersaTiles writes brotli by default. The landcover variant is used so offline tiles match the hosted ones byte for byte.
+   - Schema pinned to **Shortbread 1.0** (what VersaTiles serves), recorded in the manifest. No second basemap provider; `sources.json` can add one later without an app update.
+   - Attribution: `© OpenStreetMap contributors` (ODbL) and `CC BY 4.0 ESA WorldCover 2021` (the landcover layers).
+2. **Terrain: terrarium-encoded DEM, VersaTiles only** (ADR 0004).
+   - Online: `https://tiles.versatiles.org/tiles/elevation/{z}/{x}/{y}` — the Mapterhorn build repackaged by VersaTiles: 512 px WebP, terrarium, zoom 0–12.
+   - Offline: `versatiles convert --bbox … https://download.versatiles.org/elevation.versatiles region.pmtiles` (tiles are already uncompressed WebP; no recompression needed).
+   - Same provider, same encoding, same tiles online and offline, so the Swift DEM sampler has one code path. Decoding goes through ImageIO (WebP is supported since iOS 14).
+   - Attribution: `© Mapterhorn` plus the per-source credits from `https://download.mapterhorn.com/attribution.json` for sources intersecting our regions.
 3. **OSM source data: Geofabrik `europe/italy/nord-est` PBF.** Download it once per run, then `osmium extract` per region.
-4. **Trails:** OSM `route=hiking` relations, keeping these tags: `ref`, `ref:REI`, `name`, `cai_scale`, `network`, `operator`, `osmc:symbol`, `from`, `to`, `roundtrip`, `survey:date`, `website`.
-   - Italian trails are maintained under the CAI–Wikimedia Italia agreement (see the OSM wiki page "CAI" and the OSM2CAI project).
-   - Look at `github.com/osmItalia/cai_scripts` (`caiosm`) and reuse it if it fits. Otherwise use `osmium tags-filter` plus `osmium export`.
+4. **Trails: multi-source by design** (ADR 0006). Trail stewardship is fragmented: CAI in most of Italy, the Alpenverein Südtirol (AVS) in South Tyrol, SAT in Trentino, and regional networks. Phase 0 measured it: only 25 % of hiking relations in Trentino-Alto Adige carry `cai_scale`, against ~60 % in Veneto and Friuli.
+   - Every source is an **adapter** that emits one normalised trail record (id, ref, name, difficulty on a normalised scale plus the original value, operator, network, symbol, geometry, provenance: `source`, `source_id`, `source_licence`, `source_date`). Everything downstream (ascent/descent, SQLite, overlay tiles) sees only that format.
+   - `config/regions.yaml` lists the trail sources per region in priority order. Duplicates across sources are resolved by `ref` plus geometric overlap; the higher-priority source wins and the other is kept as a secondary reference.
+   - **Adapter 1 (Phase 1): OSM** `route=hiking` relations from the Geofabrik extract, keeping `ref`, `ref:REI`, `name`, `cai_scale`, `sac_scale`, `network`, `operator`, `osmc:symbol`, `from`, `to`, `roundtrip`, `survey:date`, `website`. Geometry is assembled by our own small pyosmium step (merge and order member ways, flag gaps and reversals) from the **uncut** nord-est file, because `osmium export` does not assemble route relations and 5–10 % of relations cross region borders.
+   - **Later adapters** are not needed for the first release; the architecture must accommodate them without rework. The first candidate is the Alpenverein Südtirol (AVS itself or the Province of Bolzano open data); then SAT/Trentino, the Veneto and Friuli-Venezia Giulia regional networks, OSM2CAI. Each gets a short source ADR (format, licence, attribution) before implementation. `osmItalia/cai_scripts` is not reused (dormant since 2021, Overpass-driven); only its tag conventions were consulted.
 5. **Places:**
    - `natural=peak`, `natural=volcano`, `natural=saddle`, `mountain_pass=yes`
    - `tourism=alpine_hut`, `tourism=wilderness_hut`, `amenity=shelter`
    - named villages and hamlets (`place=village|hamlet|isolated_dwelling`)
    - Keep `name`, `name:it`, `name:de`, `name:fur`, `name:sl`, `ele`, `wikidata`.
    - Compute a `rank_score` for label priority: a `wikidata` tag counts as a strong notability signal, combined with elevation. Keep the formula simple and documented.
-6. **Road curvature:**
-   - Use Adam Franco's `curvature` project (github.com/adamfranco/curvature) on the region PBF for per-segment curvature scores. Verify its license and that it still runs. Running a GPL tool in the pipeline is fine; we only distribute its output data.
-   - Additionally derive a `corners` table: discrete curves with apex position, minimum radius (three-point circle method over the way geometry), direction (left/right), and entry/exit positions.
-   - If `curvature` is unusable, implement the minimal equivalent in Python and document why.
+6. **Road curvature: our own small implementation** (ADR 0005). Adam Franco's `curvature` was evaluated in Phase 0: it runs on Python 3.12 only with two dependency pins, is GPLv3 with no LICENSE file, and has had no commit since 2022. We do not depend on dormant tools.
+   - Per way: split into segments between consecutive nodes, compute each segment's radius with the three-point circle method, classify by radius bands, and sum a curvature score per way the way `curvature` does (documented in `data-format.md` so the numbers stay comparable).
+   - Derive the `corners` table: discrete curves with apex position, minimum radius, direction (left/right), and entry/exit positions along the segment.
+   - Highway classes and surface filters are configuration, not code.
 7. **Distribution:** per-region files plus a `manifest.json` in a GitHub Release tagged `data-YYYY-MM`, marked as latest. Clients fetch `https://github.com/<owner>/maqs/releases/latest/download/manifest.json`. **Never use the GitHub REST API from clients** (60 req/h unauthenticated limit).
-8. **Rendering:** MapLibre Native iOS via SPM, reading local PMTiles with `pmtiles://file://...` (supported since 6.10; verify current version). PMTiles sources don't support MapLibre offline packs or ambient caching, so offline means our own downloaded PMTiles, not MapLibre offline packs.
+8. **Rendering: MapLibre Native iOS via SPM, iOS and iPadOS only** (ADR 0003). Pin `6.31.0` with an upper bound below `7.0.0`. Local PMTiles via `pmtiles://file://…` (since 6.10). Offline packs do not work with PMTiles sources (an ambient cache for remote PMTiles exists since 6.27), so offline means our own downloaded PMTiles. MapLibre's SwiftPM binary has no macOS slice; `MaqsUI` is declared for iOS only, while `MaqsCore`, `MaqsData` and `MaqsTerrain` also build for macOS so tests run on macOS runners. Hillshade from the terrain layer is available in MapLibre Native; 3D terrain is not.
 
 ## Repo layout (target)
 
@@ -91,7 +96,7 @@ The package exposes one product per module (`MaqsCore`, `MaqsData`, `MaqsTerrain
 ## Phase 1: Pipeline (runs locally and in CI)
 
 - **Orchestration:** a Python package in `pipeline/` managed with `uv`. Entry point: `uv run maqs build --region veneto [--layers basemap,terrain,trails,places,curvature]`.
-- **Tools:** external CLIs (`versatiles`, `pmtiles`, `osmium`, `tippecanoe`, `curvature`) get installed by a `pipeline/bootstrap.sh` that works on macOS and Ubuntu, with pinned versions.
+- **Tools:** external CLIs (`versatiles`, `osmium`, `tippecanoe`; `pmtiles` only for inspection) get installed by a `pipeline/bootstrap.sh` that works on macOS and Ubuntu, with pinned versions. Ubuntu's apt packages for osmium-tool and tippecanoe are old; the script fetches or builds current versions there.
 - **Behavior:**
   - Steps are idempotent, cache downloads in `.cache/` (gitignored), and write outputs to `dist/<region>/` (gitignored).
   - A tiny `test` region (a few km², e.g. around Nevegal) runs end to end in under 5 minutes; CI and the Swift tests use it as fixtures.
@@ -135,12 +140,12 @@ The package exposes one product per module (`MaqsCore`, `MaqsData`, `MaqsTerrain
   - Free disk space on the runner up front.
   - Pin action versions.
   - Make reruns safe: re-uploading the same month replaces assets.
-- **`swift.yml`:** build and test the package on macOS runners for iOS Simulator and macOS, using the `test` region fixtures.
+- **`swift.yml`:** build and test the package on macOS runners: all products on the iOS Simulator, the three non-UI products on macOS, using the `test` region fixtures.
 - Initial regions in `regions.yaml`: `veneto`, `friuli-venezia-giulia`, `trentino-alto-adige`, `test`. Adding a region means adding one entry, nothing else.
 
 ## Phase 4: Swift package `Maqs`
 
-- **Platform and build:** Swift 6 language mode with strict concurrency, iOS 18+ and macOS 15+. Public API documented with DocC comments.
+- **Platform and build:** Swift 6 language mode with strict concurrency. iOS 18+ for every product; `MaqsCore`, `MaqsData` and `MaqsTerrain` additionally macOS 15+ (so they test on macOS runners); `MaqsUI` is iOS-only. Public API documented with DocC comments.
 - **MaqsCore:**
   - Manifest fetch with caching and ETag handling.
   - Region catalog.
@@ -159,6 +164,7 @@ The package exposes one product per module (`MaqsCore`, `MaqsData`, `MaqsTerrain
   - Terrarium decoding: elevation = (R × 256 + G + B / 256) − 32768.
   - Bilinear elevation sampling at a coordinate.
   - Elevation profile along a great-circle line, with earth-curvature and standard refraction corrections exposed as parameters.
+  - Decodes WebP and PNG tiles through ImageIO; accepts PMTiles tile types 2 (PNG), 4 (WebP) and, for vector archives, 1 and 6.
   - Same API whether data comes from a local pack or online tiles, with an in-memory LRU cache for online tiles.
 - **MaqsUI:**
   - SwiftUI map view wrapping MapLibre Native.
@@ -166,7 +172,7 @@ The package exposes one product per module (`MaqsCore`, `MaqsData`, `MaqsTerrain
   - **Requirement:** in an installed region the map works fully with no network; outside installed regions it streams online. Design the switching strategy (e.g. prefer local PMTiles for installed bboxes, online elsewhere, react to `NWPathMonitor`) and record it as an ADR.
   - Overlay helpers to add trails and places layers.
   - An attribution view that always shows the correct required credits for the active sources.
-  - Set an app-identifying User-Agent on MapLibre's network configuration (OSMF requirement); never send no-cache headers.
+  - Set an app-identifying User-Agent on MapLibre's network configuration and on every URLSession the package creates; never send no-cache headers; honour the provider's `Cache-Control`.
   - Glyphs and sprites must work offline: the package bundles a default glyph set (one open font family, regular and bold) and sprite, and styles reference local copies when offline.
 - **Tests:** manifest and schema parsing, PMTiles reader against fixtures, terrarium decoding with known values, SQLite queries against `test` region fixtures, download verification (bad checksum gets rejected).
 - **Demo:** `Examples/MaqsDemo` shows: online map, download the test region, airplane-mode map, trail search, places along a bearing, elevation profile.
