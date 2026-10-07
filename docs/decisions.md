@@ -216,3 +216,37 @@ The test region's 5-minute budget is met with a wide margin; the dominant cost p
 **Rejected.** Hard-wiring OSM with CAI tags only (the brief's original wording): simplest, but demonstrably incomplete for one of the three launch regions.
 
 **Consequences.** Brief item 4 rewritten. The pipeline grows a `trails/sources/` package with one module per adapter and a merge step; the first release ships with the OSM adapter alone, and the merge step is exercised in tests with a synthetic second source so the seam is proven before a real one arrives.
+
+### Candidate trail sources (surveyed 2026-10-07, not implemented)
+
+Verified live on 2026-10-07 for the future adapters. Each still needs its own short ADR before implementation.
+
+| Source | What | Access | Licence | Carries | Notes |
+|---|---|---|---|---|---|
+| **Province of Bolzano, hiking routes** (the AVS-surveyed network; AVS handed its data to the Province and publishes nothing open itself) | `p_bz-TransportNetwork:Routes-HikingTrails`, 4,609 routes, updated daily | WFS 2.0 at `https://geoservices1.civis.bz.it/geoserver/p_bz-TransportNetwork/ows` (GeoJSON, SHAPE-ZIP, GML, CSV; EPSG:25832) | **CC0** per `https://data.civis.bz.it/dataset/percorsi-escursionistici` | ID, CODE (trail number, e.g. `2B`), NAME, MODIFY_DATE, LENGTH_GEOM — **no difficulty** | Maintainer per segment from the sibling CC0 layer `Routes-HikingTrailsSustainers` (14,786 segments: AVS 5,636 km, tourism boards 5,975 km, nature parks 3,367 km, CAI 591 km, SAT 121 km) via a spatial join. The Open Data Hub mirror of the same routes is flagged "closed", so use the WFS. The Euregio DIGIWAY dataset returns 403 and has no published licence: ignore |
+| **SAT, Trentino** | 1,082 trails, monthly | `https://sentieri.sat.tn.it/download/sentierisat.shp.zip` (also GPX, KML) | **ODbL + DbCL**, attribution `© Società degli Alpinisti Tridentini (SAT)`; share-alike applies to the derived database | number (`E101`), difficulty T/E/EE/EEA-F/PD/D/MD, times, elevations | Best-attributed source of the lot; `dati.trentino.it` has no trail dataset |
+| **Regione del Veneto, Sentieri Alpini** | `rv:c1013172_sentalpini`, 889 features | WFS on `idt2-geoserver` (SHAPE-ZIP) | IODL 2.0 (attribution) | number, difficulty E/EE, times, elevations | Update "notPlanned", last 2019: stale, use only to fill gaps |
+| **Regione FVG, Sentieri CAI** | `SENTIERI_CAI_CTRN_ED1`, 440 features, self-declared incomplete | `serviziogc.regione.fvg.it` RETI_TRASP WFS / IRDAT shapefile | IODL 2.0 | `CODICE_SENTIERO` (`CAI 453`), no difficulty | No true regional network dataset found |
+| **OSM2CAI** | CAI's validated routes, OSM-derived | Open JSON API: `https://osm2cai.cai.it/api/v2/hiking-routes/list`, `/api/v2/hiking-route/{id}` (GeoJSON with `ref`, `cai_scale`, `osm_id`, `validation_date`), bulk `/api/v2/export/hiking-routes/list`, GPX/shapefile endpoints | ODbL (OSM-derived); credit OSM contributors and "INFOMONT (© Club Alpino Italiano)" | ref, cai_scale, validation status | Useful as a *validation* overlay on the OSM adapter rather than a geometry source |
+
+OSM tagging in South Tyrol (live Overpass, IT-BZ): 4,239 `route=hiking` relations; `ref` on 3,569; `osmc:symbol` on 3,573; `operator` on 1,104, of which 703 name AVS in four spellings; `cai_scale` on only 296; `sac_scale` on 7 relations but on 11,479 path *ways*. Consequence for the OSM adapter: normalise `operator` spellings, read `sac_scale` from member ways when the relation has none, and treat the Bolzano WFS as the authoritative geometry for that province once its adapter exists.
+
+---
+
+## 0007 — A bundled low-zoom base pack
+
+**Date:** 2026-10-07 · **Status:** proposed (owner asked whether it is possible; numbers below)
+
+**Context.** Apps should show *something* offline before any region pack is downloaded. Measured from the same VersaTiles file the real packs use, gzip, over the bbox of all three regions:
+
+| Content | Size | Extract time |
+|---|---|---|
+| Basemap z0–9 | 5.7 MB | 5 s |
+| Basemap z0–10 | 13.2 MB | 9 s |
+| Basemap z0–11 | 32.5 MB | 9 s |
+| Terrain z0–8 / z0–9 | 3.0 MB / 7.7 MB | 5 s |
+| World basemap z0–5 (context outside the bbox) | 15.7 MB | 3 s |
+
+**Decision (proposed).** The pipeline builds one extra asset per data release, `base-nordest-basemap.pmtiles`: basemap only, z0–10, all regions in one bbox, about 13 MB. No terrain (too coarse at those zooms to be useful for profiles) and no world layer (the landcover polygons make low zooms expensive). Apps include the file in their own bundle and register its URL with `MaqsCore`; the map view uses it as the lowest-priority tile source, below downloaded packs and online tiles. The file is **not** committed to this repo (no data in git) and is not a package resource (SwiftPM cannot fetch files at build time); a yearly refresh in the apps is enough, since the low-zoom basemap changes slowly.
+
+**Consequences.** One more pipeline output and manifest entry (`base` pseudo-region, basemap layer only); one `MaqsCore` API to register a bundled pack; the style assembly in `MaqsUI` gains a third source tier.
