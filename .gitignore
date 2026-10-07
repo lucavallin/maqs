@@ -60,3 +60,29 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# maqs additions
+# Pipeline inputs and outputs — Releases only, never git
+.cache/
+dist/
+
+# Python (pipeline/)
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Xcode / SwiftPM local state
+DerivedData/
+*.xcresult
+*.xcuserstate
+.DS_Store
+
+# Claude Code: local-only state (settings.json IS committed)
+.claude/settings.local.json
+.claude/worktrees/
+.superpowers/
+.serena/cache/
+.xcodebuildmcp/
+.playwright-mcp/
