@@ -12,7 +12,7 @@ Out of scope for this plan: trails, places, curvature, overlay tiles, the geomet
 
 - `uv run maqs build --region test` produces `dist/test/test-basemap.pmtiles` and `dist/test/test-terrain.pmtiles`, validated and reported, in **under 5 minutes** locally and in CI, from a clean checkout after `pipeline/bootstrap.sh`.
 - `uv run maqs build --region veneto --layers basemap,terrain` reproduces the Phase 0 numbers within reason (basemap ≈ 240 MB and ≈ 19,000 tiles at z0–14; terrain ≈ 105 MB and ≈ 1,300 tiles at z0–12).
-- `uv run maqs build --region base` produces the base pack (basemap z0–10 over the union bbox) under 15 MB (ADR 0008).
+- `uv run maqs build --region base` produces every base pack in `base_packs` (today one: `base-triveneto-basemap.pmtiles`, basemap z0–10) under 15 MB each (ADR 0008).
 - `uv run maqs build --region triveneto` produces the combined pack and reproduces the 2026-10-08 measurement within reason: basemap **431 MB** (z0–14, gzip, border 1, 48 s) and terrain **291 MB** (z0–12, 21 s). Both far under the asset cap; together about 720 MB for the whole north-east, versus roughly 1 GB for the three overlapping regional packs.
 - A second run with nothing changed does no work; `--force` rebuilds.
 - Every output is under 1.9 GiB or the build fails.
@@ -50,34 +50,48 @@ pipeline/
 
 ```yaml
 schema_version: 1
-base:
-  max_zoom: 10            # the bundled pack: basemap only, union bbox of all regions
+hd_max_zoom: 13                 # terrain-hd default; a region may override
+base_packs:                     # bundled packs (ADR 0007): basemap only, each a named list of regions
+  - id: triveneto
+    regions: [triveneto]
+    max_zoom: 10
 regions:
   - id: test
     name: { it: Nevegal (test), en: Nevegal (test) }
     bbox: [12.21, 46.08, 12.29, 46.13]     # tuned in plan 1 so basemap+terrain stay under ~5 MB
     fixture: true                          # built for tests and CI only; never listed to apps, never released
+    osm: { geofabrik: europe/italy/nord-est }
   - id: triveneto
     name: { it: Triveneto, en: Triveneto }
     bbox: [10.3818, 44.7923, 13.9187, 47.0921]   # union of the three regions below: one download for all of them
+    osm: { geofabrik: europe/italy/nord-est }
+    clip: { admin: [43648, 179296, 45757] }      # plan 2: data layers cut by these OSM admin relations (ids verified in plan 2)
   - id: veneto
     name: { it: Veneto, en: Veneto }
     bbox: [10.6231, 44.7923, 13.1021, 46.6806]
+    osm: { geofabrik: europe/italy/nord-est }
+    clip: { admin: [43648] }
   - id: friuli-venezia-giulia
     name: { it: Friuli-Venezia Giulia, en: Friuli-Venezia Giulia }
     bbox: [12.3214, 45.5809, 13.9187, 46.6480]
+    osm: { geofabrik: europe/italy/nord-est }
+    clip: { admin: [179296] }
   - id: trentino-alto-adige
     name: { it: Trentino-Alto Adige/Südtirol, en: Trentino-South Tyrol }
     bbox: [10.3818, 45.6729, 12.4780, 47.0921]
+    osm: { geofabrik: europe/italy/nord-est }
+    clip: { admin: [45757] }
 ```
 
-Region ids are lowercase kebab-case and never change once released. **A region is the smallest unit a pack is cut at** (owner rule, 2026-10-08): there are no sub-region packs, and the `test` region is a fixture, excluded from the base pack's union bbox and from anything an app can list or download. Because tile extracts are bbox-based and the three regional bboxes overlap heavily, `triveneto` exists as a first-class region so a user who wants Veneto, Trentino-Alto Adige and Friuli together downloads one pack, not three overlapping ones; the single regions stay for users who want less. Plan 2 cuts the data layers by admin polygon, and for `triveneto` by the union of the three polygons. `trails.sources` per region is added by plan 2.
+**Worldwide by configuration.** The consuming apps are not all Italian: one is Italy-only, others may need any part of the world. Online, VersaTiles already serves the planet for both tile layers, so nothing is needed. Offline, a region anywhere is one entry: the tile steps read from the planet archives by bbox, and `osm.geofabrik` names the Geofabrik extract the data layers (plan 2) read from, so the pipeline downloads one PBF per distinct extract per run instead of assuming `nord-est`. `clip` is optional: without it, data layers are cut by bbox; with `admin`, by the union of those OSM relation polygons (ids, not names, so a rename cannot break a build; the ids above are verified against the PBF in plan 2). Nothing in the pipeline is Italy-specific except the trail-source adapters, which are per source anyway.
+
+Region ids are lowercase kebab-case and never change once released. **A region is the smallest unit a pack is cut at** (owner rule, 2026-10-08): there are no sub-region packs, and the `test` region is a fixture, excluded from every base pack and from anything an app can list or download. Because tile extracts are bbox-based and the three regional bboxes overlap heavily, `triveneto` exists as a first-class region so a user who wants Veneto, Trentino-Alto Adige and Friuli together downloads one pack, not three overlapping ones; the single regions stay for users who want less. Plan 2 cuts the data layers by admin polygon, and for `triveneto` by the union of the three polygons. `trails.sources` per region is added by plan 2.
 
 ## CLI
 
 ```
 maqs build --region <id>|all|base [--layers basemap,terrain,terrain-hd] [--force] [--dist DIR] [--cache DIR]
-maqs regions                      # prints ids, names, bboxes, and the computed base bbox
+maqs regions                      # prints ids, names, bboxes, OSM extracts, and the base packs with their computed bboxes
 maqs check-tools                  # prints each pinned CLI's version; non-zero exit on mismatch or missing tool
 ```
 
@@ -98,7 +112,7 @@ Downloads (plan 1 has only the Mapterhorn archives, which are read remotely and 
 | `basemap` | `https://download.versatiles.org/osm-landcover.versatiles` | `versatiles convert --bbox <bbox> --bbox-border 1 --compress gzip <src> <out>` | `<region>-basemap.pmtiles`, z0–14 |
 | `terrain` | `https://download.versatiles.org/elevation.versatiles` | `versatiles convert --bbox <bbox> --bbox-border 1 --max-zoom 12 <src> <out>` | `<region>-terrain.pmtiles`, z0–12, WebP terrarium |
 | `terrain-hd` | `https://download.mapterhorn.com/<z>-<x>-<y>.pmtiles` for every z6 tile intersecting the bbox | `pmtiles extract <archive> <part> --bbox=<bbox> --minzoom=13 --maxzoom=<hd_max_zoom>`, then `pmtiles merge <parts…> <out>` when more than one | `<region>-terrain-hd.pmtiles`, z13–13 by default |
-| `base` | same as `basemap` | `versatiles convert --bbox <union> --max-zoom 10 --compress gzip <src> <out>` | `base-basemap.pmtiles`, z0–10, no border |
+| `base` | same as `basemap` | per `base_packs` entry: `versatiles convert --bbox <union of its regions> --max-zoom <max_zoom> --compress gzip <src> <out>` | `base-<id>-basemap.pmtiles`, z0–10, no border |
 
 `--bbox-border 1` adds one ring of tiles around the region at every zoom so the map is not blank at the region edge; the base pack has no border. gzip is mandatory for the basemap (MapLibre rejects brotli, ADR 0001); the elevation archive is already uncompressed WebP and is left as is. `terrain-hd`'s max zoom is `hd_max_zoom: 13` in `regions.yaml`'s top level, overridable per region; z14 for Veneto is about 1 GB and stays opt-in by config, never the default. The `pmtiles merge` output must be clustered and gzip- or none-compressed; validation checks it like any other output.
 
@@ -111,7 +125,7 @@ Runs after every step, on the step's outputs:
 1. **Size cap:** fail if any file is ≥ 1.9 GiB (`1.9 * 2**30` bytes). Hard failure, no override.
 2. **Probe:** `versatiles probe <file>` must succeed; record tile type, zoom range, tile count, compression, and metadata. Fail if the compression is neither gzip nor none, if the zoom range is not what the step asked for, or if the tile count is zero.
 3. **Checksum:** SHA-256 of each output, streamed, recorded in the report.
-4. **Base pack budget:** fail if `base-basemap.pmtiles` exceeds 15 MB (ADR 0008); report the test region's basemap + terrain total so the bbox can be tuned, warn above 5 MB.
+4. **Base pack budget:** fail if any `base-<id>-basemap.pmtiles` exceeds 15 MB (ADR 0008); report the test region's basemap + terrain total so the bbox can be tuned, warn above 5 MB.
 
 Validation failures fail the build and are listed in the report.
 
@@ -165,7 +179,7 @@ osmium-tool and tippecanoe are installed now even though plan 2 is their first u
 
 ## Tests
 
-- `test_config.py`: loads the real `regions.yaml`; rejects a bad bbox, a duplicate id, a non-kebab id; computes the union bbox excluding `test`.
+- `test_config.py`: loads the real `regions.yaml`; rejects a bad bbox, a duplicate id, a non-kebab id, a base pack naming an unknown or fixture region; computes a base pack's union bbox; lists the distinct Geofabrik extracts.
 - `test_steps.py`: each step's `outputs()` and the exact argv it builds, with `tools.run` stubbed; the skip rule (outputs present, `--force`); the terrain-hd z6-tile enumeration for a bbox that spans two archives.
 - `test_validate.py`: size cap at the boundary; probe parsing from a captured `versatiles probe` text; rejection of brotli; SHA-256 of a known file.
 - `test_report.py`: the report shape and that failures are recorded.

@@ -31,8 +31,8 @@ Do not build toward these, and do not add abstractions that only make sense if t
 ### Domain vocabulary
 | Term | Meaning |
 |---|---|
-| Region | A named bbox with an id (`veneto`, `friuli-venezia-giulia`, `trentino-alto-adige`, `test`) and display names in `it` and `en`, declared in `config/regions.yaml`. The unit of download, build, and release. |
-| `test` region | A few km² around Nevegal. Builds end to end in under 5 minutes; CI and the Swift tests use its outputs as fixtures. Not a toy: it exercises every layer. |
+| Region | A named bbox with an id (`triveneto`, `veneto`, `friuli-venezia-giulia`, `trentino-alto-adige`, `test`), display names in `it` and `en`, its Geofabrik extract and optional admin-polygon clip, declared in `config/regions.yaml`. **The smallest unit of download, build, and release**; no sub-region packs. Regions can be anywhere in the world; nothing in the pipeline is Italy-specific except trail-source adapters. |
+| `test` region | ~35 km² around Nevegal, `fixture: true`: built for CI and the Swift tests only, never listed to apps or released. Builds end to end in under 5 minutes. Not a toy: it exercises every layer. |
 | Layer | One of `basemap`, `terrain`, `trails`, `places`, `curvature`. Apps declare which layers they need and only those are downloaded. Each layer has its own `layer_schema_version`. |
 | Region pack | The set of per-layer files for one region, listed in the manifest. Not a single archive. |
 | Basemap | Shortbread 1.0 vector tiles from VersaTiles, online from `tiles.versatiles.org/tiles/osm` and offline as `<region>-basemap.pmtiles` cut from `osm-landcover.versatiles` with `versatiles convert --bbox --compress gzip`. Same tiles both ways. |
@@ -536,7 +536,7 @@ Everything below is maqs-specific engineering law. It has the same force as §14
 |---|---|
 | Basemap | **Shortbread 1.0** from **VersaTiles only** (ADR 0004). Online `tiles.versatiles.org/tiles/osm`; offline `versatiles convert --bbox … --compress gzip https://download.versatiles.org/osm-landcover.versatiles` — a remote range-request extract, never a planet download. gzip is mandatory: MapLibre rejects brotli PMTiles |
 | Terrain | **Terrarium** DEM from **VersaTiles only**: the Mapterhorn build, 512 px WebP, z0–12. Online `tiles.versatiles.org/tiles/elevation`; offline `versatiles convert --bbox … https://download.versatiles.org/elevation.versatiles`. One encoding, one Swift decode path (ImageIO). Attribution: Mapterhorn plus its DEM sources |
-| OSM source | Geofabrik `europe/italy/nord-est` PBF, downloaded once per run, then `osmium extract` per region |
+| OSM source | Geofabrik extracts named per region in `regions.yaml` (`europe/italy/nord-est` for the launch regions), each downloaded once per run, then cut per region by admin relation ids or bbox |
 | Trails | **Source adapters** emitting one normalised record with provenance (ADR 0006); sources per region in `regions.yaml`, merged by priority with `ref` + overlap dedupe. Adapter 1 (only one shipped): OSM `route=hiking` relations assembled by our own pyosmium step from the uncut nord-est file, keeping `ref`, `ref:REI`, `name`, `cai_scale`, `sac_scale`, `network`, `operator`, `osmc:symbol`, `from`, `to`, `roundtrip`, `survey:date`, `website`. Planned: Alpenverein Südtirol, SAT, regional networks, each with a source ADR. `ascent_m`/`descent_m` from **our own** terrain data |
 | Places | peaks, volcanoes, saddles, `mountain_pass=yes`, alpine/wilderness huts, shelters, named village/hamlet/isolated_dwelling; names `name`, `name:it`, `name:de`, `name:fur`, `name:sl`; `ele`, `wikidata`; `rank_score` simple and documented |
 | Curvature | **Our own Python step** (ADR 0005): three-point-circle radius per segment, `curvature`-compatible bands and per-way score, plus the `corners` table (apex, min radius, direction, entry/exit). No GPL tool in the pipeline |
