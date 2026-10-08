@@ -30,7 +30,7 @@ These were chosen after research. Treat them as fixed. In Phase 0, verify that e
    - Offline: `versatiles convert --bbox … https://download.versatiles.org/elevation.versatiles region.pmtiles` (tiles are already uncompressed WebP; no recompression needed).
    - Same provider, same encoding, same tiles online and offline, so the Swift DEM sampler has one code path. Decoding goes through ImageIO (WebP is supported since iOS 14).
    - Attribution: `© Mapterhorn` plus the per-source credits from `https://download.mapterhorn.com/attribution.json` for sources intersecting our regions.
-3. **OSM source data: Geofabrik `europe/italy/nord-est` PBF.** Download it once per run, then `osmium extract` per region.
+3. **OSM source data: Geofabrik extracts, one per region as configured.** Each region in `config/regions.yaml` names its Geofabrik extract (`europe/italy/nord-est` for the launch regions); the pipeline downloads each distinct extract once per run, then cuts per region by admin polygon (OSM relation ids) or bbox. Nothing is Italy-specific: a region anywhere in the world is one config entry, and online tiles are worldwide already (amended 2026-10-08: one consuming app is Italy-only, others may need any part of the world).
 4. **Trails: multi-source by design** (ADR 0006). Trail stewardship is fragmented: CAI in most of Italy, the Alpenverein Südtirol (AVS) in South Tyrol, SAT in Trentino, and regional networks. Phase 0 measured it: only 25 % of hiking relations in Trentino-Alto Adige carry `cai_scale`, against ~60 % in Veneto and Friuli.
    - Every source is an **adapter** that emits one normalised trail record (id, ref, name, difficulty on a normalised scale plus the original value, operator, network, symbol, geometry, provenance: `source`, `source_id`, `source_licence`, `source_date`). Everything downstream (ascent/descent, SQLite, overlay tiles) sees only that format.
    - `config/regions.yaml` lists the trail sources per region in priority order. Duplicates across sources are resolved by `ref` plus geometric overlap; the higher-priority source wins and the other is kept as a secondary reference.
@@ -141,7 +141,7 @@ The package exposes one product per module (`MaqsCore`, `MaqsData`, `MaqsTerrain
   - Pin action versions.
   - Make reruns safe: re-uploading the same month replaces assets.
 - **`swift.yml`:** build and test the package on macOS runners: all products on the iOS Simulator, the three non-UI products on macOS, using the `test` region fixtures.
-- Initial regions in `regions.yaml`: `veneto`, `friuli-venezia-giulia`, `trentino-alto-adige`, `test`. Adding a region means adding one entry, nothing else.
+- Initial regions in `regions.yaml`: `triveneto` (the three below as one pack: a region is the smallest download unit, and the owner needs all three), `veneto`, `friuli-venezia-giulia`, `trentino-alto-adige`, and `test` (fixture only). Adding a region anywhere in the world means adding one entry, nothing else.
 
 ## Phase 4: Swift package `Maqs`
 
