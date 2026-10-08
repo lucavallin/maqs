@@ -65,7 +65,7 @@ regions:
     name: { it: Triveneto, en: Triveneto }
     bbox: [10.3818, 44.7923, 13.9187, 47.0921]   # union of the three regions below: one download for all of them
     osm: { geofabrik: europe/italy/nord-est }
-    clip: { admin: [43648, 179296, 45757] }      # plan 2: data layers cut by these OSM admin relations (ids verified in plan 2)
+    clip: { admin: [43648, 179296, 45757] }      # plan 2: data layers cut by these OSM admin relations (ids verified against the PBF, 2026-10-08)
   - id: veneto
     name: { it: Veneto, en: Veneto }
     bbox: [10.6231, 44.7923, 13.1021, 46.6806]
@@ -83,7 +83,7 @@ regions:
     clip: { admin: [45757] }
 ```
 
-**Worldwide by configuration.** The consuming apps are not all Italian: one is Italy-only, others may need any part of the world. Online, VersaTiles already serves the planet for both tile layers, so nothing is needed. Offline, a region anywhere is one entry: the tile steps read from the planet archives by bbox, and `osm.geofabrik` names the Geofabrik extract the data layers (plan 2) read from, so the pipeline downloads one PBF per distinct extract per run instead of assuming `nord-est`. `clip` is optional: without it, data layers are cut by bbox; with `admin`, by the union of those OSM relation polygons (ids, not names, so a rename cannot break a build; the ids above are verified against the PBF in plan 2). Nothing in the pipeline is Italy-specific except the trail-source adapters, which are per source anyway.
+**Worldwide by configuration.** The consuming apps are not all Italian: one is Italy-only, others may need any part of the world. Online, VersaTiles already serves the planet for both tile layers, so nothing is needed. Offline, a region anywhere is one entry: the tile steps read from the planet archives by bbox, and `osm.geofabrik` names the Geofabrik extract the data layers (plan 2) read from, so the pipeline downloads one PBF per distinct extract per run instead of assuming `nord-est`. `clip` is optional: without it, data layers are cut by bbox; with `admin`, by the union of those OSM relation polygons (ids, not names, so a rename cannot break a build; the three ids above were verified against the 2026-10-06 PBF). Nothing in the pipeline is Italy-specific except the trail-source adapters, which are per source anyway.
 
 Region ids are lowercase kebab-case and never change once released. **A region is the smallest unit a pack is cut at** (owner rule, 2026-10-08): there are no sub-region packs, and the `test` region is a fixture, excluded from every base pack and from anything an app can list or download. Because tile extracts are bbox-based and the three regional bboxes overlap heavily, `triveneto` exists as a first-class region so a user who wants Veneto, Trentino-Alto Adige and Friuli together downloads one pack, not three overlapping ones; the single regions stay for users who want less. Plan 2 cuts the data layers by admin polygon, and for `triveneto` by the union of the three polygons. `trails.sources` per region is added by plan 2.
 
