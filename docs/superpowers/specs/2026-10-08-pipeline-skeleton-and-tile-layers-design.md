@@ -13,6 +13,7 @@ Out of scope for this plan: trails, places, curvature, overlay tiles, the geomet
 - `uv run maqs build --region test` produces `dist/test/test-basemap.pmtiles` and `dist/test/test-terrain.pmtiles`, validated and reported, in **under 5 minutes** locally and in CI, from a clean checkout after `pipeline/bootstrap.sh`.
 - `uv run maqs build --region veneto --layers basemap,terrain` reproduces the Phase 0 numbers within reason (basemap ≈ 240 MB and ≈ 19,000 tiles at z0–14; terrain ≈ 105 MB and ≈ 1,300 tiles at z0–12).
 - `uv run maqs build --region base` produces the base pack (basemap z0–10 over the union bbox) under 15 MB (ADR 0008).
+- `uv run maqs build --region triveneto` produces the combined pack; its basemap and terrain sizes are recorded in the report and in ADR 0009 (measured on 2026-10-08, numbers filled in by plan 1).
 - A second run with nothing changed does no work; `--force` rebuilds.
 - Every output is under 1.9 GiB or the build fails.
 - `uv run pytest` and `uv run ruff check` are green; the step logic is unit-tested without the network.
@@ -55,6 +56,10 @@ regions:
   - id: test
     name: { it: Nevegal (test), en: Nevegal (test) }
     bbox: [12.21, 46.08, 12.29, 46.13]     # tuned in plan 1 so basemap+terrain stay under ~5 MB
+    fixture: true                          # built for tests and CI only; never listed to apps, never released
+  - id: triveneto
+    name: { it: Triveneto, en: Triveneto }
+    bbox: [10.3818, 44.7923, 13.9187, 47.0921]   # union of the three regions below: one download for all of them
   - id: veneto
     name: { it: Veneto, en: Veneto }
     bbox: [10.6231, 44.7923, 13.1021, 46.6806]
@@ -66,7 +71,7 @@ regions:
     bbox: [10.3818, 45.6729, 12.4780, 47.0921]
 ```
 
-Region ids are lowercase kebab-case and never change once released. The `test` region is excluded from the base pack's union bbox. `trails.sources` per region is added by plan 2.
+Region ids are lowercase kebab-case and never change once released. **A region is the smallest unit a pack is cut at** (owner rule, 2026-10-08): there are no sub-region packs, and the `test` region is a fixture, excluded from the base pack's union bbox and from anything an app can list or download. Because tile extracts are bbox-based and the three regional bboxes overlap heavily, `triveneto` exists as a first-class region so a user who wants Veneto, Trentino-Alto Adige and Friuli together downloads one pack, not three overlapping ones; the single regions stay for users who want less. Plan 2 cuts the data layers by admin polygon, and for `triveneto` by the union of the three polygons. `trails.sources` per region is added by plan 2.
 
 ## CLI
 
@@ -174,7 +179,7 @@ Deterministic: no network in unit tests, no sleeps, temp dirs per test.
 - `docs/data-format.md` (new, versioned): the PMTiles outputs (tile types, zoom ranges, compression, metadata fields), the base pack, `terrain-hd`, and the build report schema (`report_version: 1`).
 - `docs/architecture.md` (new): the pipeline's step model, idempotency rule, directories, tool pins, and how CI hands fixtures to the Swift tests.
 - `README.md` (new, minimal): what maqs is, how to run the test build, links to the docs and the licences. `DATA_LICENSE.md` (new): ODbL notice plus the OpenStreetMap, ESA WorldCover and Mapterhorn attribution strings verified in Phase 0.
-- `docs/decisions.md`: ADR 0009 for the test-region bbox and fixture hand-off (short).
+- `docs/decisions.md`: ADR 0009 for the region-as-smallest-unit rule, the `triveneto` combined region with its measured sizes, the test-region bbox and the fixture hand-off (short).
 
 ## Risks
 
