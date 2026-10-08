@@ -13,7 +13,7 @@ Out of scope for this plan: trails, places, curvature, overlay tiles, the geomet
 - `uv run maqs build --region test` produces `dist/test/test-basemap.pmtiles` and `dist/test/test-terrain.pmtiles`, validated and reported, in **under 5 minutes** locally and in CI, from a clean checkout after `pipeline/bootstrap.sh`.
 - `uv run maqs build --region veneto --layers basemap,terrain` reproduces the Phase 0 numbers within reason (basemap ≈ 240 MB and ≈ 19,000 tiles at z0–14; terrain ≈ 105 MB and ≈ 1,300 tiles at z0–12).
 - `uv run maqs build --region base` produces the base pack (basemap z0–10 over the union bbox) under 15 MB (ADR 0008).
-- `uv run maqs build --region triveneto` produces the combined pack; its basemap and terrain sizes are recorded in the report and in ADR 0009 (measured on 2026-10-08, numbers filled in by plan 1).
+- `uv run maqs build --region triveneto` produces the combined pack and reproduces the 2026-10-08 measurement within reason: basemap **431 MB** (z0–14, gzip, border 1, 48 s) and terrain **291 MB** (z0–12, 21 s). Both far under the asset cap; together about 720 MB for the whole north-east, versus roughly 1 GB for the three overlapping regional packs.
 - A second run with nothing changed does no work; `--force` rebuilds.
 - Every output is under 1.9 GiB or the build fails.
 - `uv run pytest` and `uv run ruff check` are green; the step logic is unit-tested without the network.
