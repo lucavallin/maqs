@@ -20,10 +20,51 @@ ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 RESERVED_IDS = frozenset({"all", "base"})
 SUPPORTED_SCHEMA_VERSION = 1
 DEFAULT_CONFIG_PATH = Path("config/regions.yaml")
+DEFAULT_HIGHWAYS: tuple[str, ...] = (
+    "motorway",
+    "trunk",
+    "primary",
+    "secondary",
+    "tertiary",
+    "unclassified",
+    "motorway_link",
+    "trunk_link",
+    "primary_link",
+    "secondary_link",
+    "tertiary_link",
+)
+DEFAULT_EXCLUDE_SURFACES: tuple[str, ...] = (
+    "gravel",
+    "dirt",
+    "ground",
+    "grass",
+    "sand",
+    "unpaved",
+    "compacted",
+    "fine_gravel",
+    "mud",
+    "earth",
+    "wood",
+    "pebblestone",
+)
+KNOWN_TRAIL_SOURCES = frozenset({"osm"})
+EXPECT_KEYS = frozenset({"trails", "places", "curvature_segments"})
 
 
 class ConfigError(ValueError):
     """The configuration file is invalid; the message says what and where."""
+
+
+@dataclass(frozen=True)
+class CurvatureConfig:
+    highways: tuple[str, ...]
+    exclude_surfaces: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RowRange:
+    min: int
+    max: int
 
 
 @dataclass(frozen=True)
@@ -36,6 +77,8 @@ class Region:
     fixture: bool
     hd_max_zoom: int | None
     bbox_border: int
+    trail_sources: tuple[str, ...]
+    expect: dict[str, RowRange]
 
 
 @dataclass(frozen=True)
@@ -51,6 +94,7 @@ class Config:
     hd_max_zoom: int
     base_packs: tuple[BasePack, ...]
     regions: tuple[Region, ...]
+    curvature: CurvatureConfig
 
     def region(self, region_id: str) -> Region:
         for r in self.regions:
@@ -137,6 +181,66 @@ def _entries(data: dict, key: str) -> list[dict]:
     return raw
 
 
+def _string_list(raw: object, where: str) -> tuple[str, ...]:
+    if not isinstance(raw, list) or not all(isinstance(s, str) for s in raw):
+        raise ConfigError(f"{where} must be a list of strings")
+    return tuple(raw)
+
+
+def _parse_curvature(raw: object) -> CurvatureConfig:
+    if raw is None:
+        return CurvatureConfig(DEFAULT_HIGHWAYS, DEFAULT_EXCLUDE_SURFACES)
+    if not isinstance(raw, dict):
+        raise ConfigError("curvature must be a mapping")
+    highways = (
+        _string_list(raw["highways"], "curvature.highways")
+        if "highways" in raw
+        else DEFAULT_HIGHWAYS
+    )
+    surfaces = (
+        _string_list(raw["exclude_surfaces"], "curvature.exclude_surfaces")
+        if "exclude_surfaces" in raw
+        else DEFAULT_EXCLUDE_SURFACES
+    )
+    return CurvatureConfig(highways, surfaces)
+
+
+def _parse_trail_sources(raw: object, where: str) -> tuple[str, ...]:
+    if raw is None:
+        return ("osm",)
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{where}: trails must be a mapping")
+    sources = raw.get("sources")
+    if not isinstance(sources, list) or not sources:
+        raise ConfigError(f"{where}: trails.sources must list at least one source")
+    for source in sources:
+        if source not in KNOWN_TRAIL_SOURCES:
+            raise ConfigError(
+                f"{where}: unknown trail source {source!r}; known: {sorted(KNOWN_TRAIL_SOURCES)}"
+            )
+    return tuple(sources)
+
+
+def _parse_expect(raw: object, where: str) -> dict[str, RowRange]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{where}: expect must be a mapping")
+    out: dict[str, RowRange] = {}
+    for key, value in raw.items():
+        if key not in EXPECT_KEYS:
+            raise ConfigError(f"{where}: unknown expect key {key!r}; known: {sorted(EXPECT_KEYS)}")
+        if not isinstance(value, list) or len(value) != 2 or not all(_is_int(v) for v in value):
+            raise ConfigError(f"{where}: expect.{key} must be [min, max]")
+        low, high = value
+        if low < 0:
+            raise ConfigError(f"{where}: expect.{key}: min must be >= 0")
+        if low > high:
+            raise ConfigError(f"{where}: expect.{key}: min must be <= max")
+        out[key] = RowRange(low, high)
+    return out
+
+
 def _parse_region(raw: dict) -> Region:
     rid = _check_id("region", raw.get("id"))
     where = f"region '{rid}'"
@@ -161,6 +265,8 @@ def _parse_region(raw: dict) -> Region:
         fixture=fixture,
         hd_max_zoom=hd,
         bbox_border=border,
+        trail_sources=_parse_trail_sources(raw.get("trails"), where),
+        expect=_parse_expect(raw.get("expect"), where),
     )
 
 
@@ -213,4 +319,5 @@ def load_config(path: Path) -> Config:
         hd_max_zoom=hd_default,
         base_packs=packs,
         regions=tuple(regions.values()),
+        curvature=_parse_curvature(data.get("curvature")),
     )

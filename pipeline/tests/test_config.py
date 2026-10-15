@@ -2,7 +2,14 @@ from pathlib import Path
 
 import pytest
 
-from maqs.config import ConfigError, load_config, union_bbox
+from maqs.config import (
+    DEFAULT_EXCLUDE_SURFACES,
+    DEFAULT_HIGHWAYS,
+    ConfigError,
+    RowRange,
+    load_config,
+    union_bbox,
+)
 
 REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
 
@@ -274,3 +281,76 @@ def test_invalid_yaml_names_the_file(tmp_path):
 def test_fixture_accepts_real_booleans(tmp_path):
     cfg = load_config(write(tmp_path, _region_with("fixture: true")))
     assert cfg.region("a").fixture is True
+
+
+BBOX_LINE = "bbox: [10.0, 45.0, 11.0, 46.0]"
+
+
+def with_region_key(extra: str) -> str:
+    return MINIMAL.replace(BBOX_LINE, f"{BBOX_LINE}\n    {extra}")
+
+
+def test_curvature_defaults_when_absent(tmp_path):
+    cfg = load_config(write(tmp_path, MINIMAL))
+    assert cfg.curvature.highways == DEFAULT_HIGHWAYS
+    assert cfg.curvature.exclude_surfaces == DEFAULT_EXCLUDE_SURFACES
+    assert "motorway" in DEFAULT_HIGHWAYS and "residential" not in DEFAULT_HIGHWAYS
+
+
+def test_curvature_lists_from_config(tmp_path):
+    text = MINIMAL + "curvature:\n  highways: [primary, secondary]\n  exclude_surfaces: [gravel]\n"
+    cfg = load_config(write(tmp_path, text))
+    assert cfg.curvature.highways == ("primary", "secondary")
+    assert cfg.curvature.exclude_surfaces == ("gravel",)
+
+
+def test_curvature_rejects_non_string_lists(tmp_path):
+    with pytest.raises(ConfigError, match="curvature.highways must be a list of strings"):
+        load_config(write(tmp_path, MINIMAL + "curvature:\n  highways: [1, 2]\n"))
+
+
+def test_trail_sources_default_and_explicit(tmp_path):
+    cfg = load_config(write(tmp_path, MINIMAL))
+    assert cfg.region("a").trail_sources == ("osm",)
+    text = with_region_key("trails: { sources: [osm] }")
+    assert load_config(write(tmp_path, text)).region("a").trail_sources == ("osm",)
+
+
+def test_trail_sources_rejects_unknown_and_empty(tmp_path):
+    bad = with_region_key("trails: { sources: [avs] }")
+    with pytest.raises(ConfigError, match="region 'a': unknown trail source 'avs'"):
+        load_config(write(tmp_path, bad))
+    empty = with_region_key("trails: { sources: [] }")
+    with pytest.raises(
+        ConfigError, match="region 'a': trails.sources must list at least one source"
+    ):
+        load_config(write(tmp_path, empty))
+
+
+def test_expect_ranges(tmp_path):
+    text = with_region_key("expect: { trails: [10, 20], curvature_segments: [1, 5] }")
+    r = load_config(write(tmp_path, text)).region("a")
+    assert r.expect == {"trails": RowRange(10, 20), "curvature_segments": RowRange(1, 5)}
+    assert load_config(write(tmp_path, MINIMAL)).region("a").expect == {}
+
+
+@pytest.mark.parametrize(
+    "expect, message",
+    [
+        ("{ lava: [1, 2] }", "unknown expect key 'lava'"),
+        ("{ trails: [5] }", "expect.trails must be \\[min, max\\]"),
+        ("{ trails: [5, 2] }", "expect.trails: min must be <= max"),
+        ("{ trails: [-1, 2] }", "expect.trails: min must be >= 0"),
+        ("{ trails: [true, 2] }", "expect.trails must be \\[min, max\\]"),
+    ],
+)
+def test_expect_rejects_bad_shapes(tmp_path, expect, message):
+    with pytest.raises(ConfigError, match=message):
+        load_config(write(tmp_path, with_region_key(f"expect: {expect}")))
+
+
+def test_real_config_has_veneto_expectations():
+    cfg = load_config(REAL)
+    assert cfg.region("veneto").expect["trails"] == RowRange(1500, 3000)
+    assert cfg.region("veneto").expect["places"] == RowRange(10000, 18000)
+    assert cfg.region("test").expect == {}

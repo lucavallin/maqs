@@ -1,6 +1,11 @@
 # config/regions.yaml
 schema_version: 1
 hd_max_zoom: 13
+curvature:
+  highways: [motorway, trunk, primary, secondary, tertiary, unclassified,
+             motorway_link, trunk_link, primary_link, secondary_link, tertiary_link]
+  exclude_surfaces: [gravel, dirt, ground, grass, sand, unpaved, compacted, fine_gravel,
+                     mud, earth, wood, pebblestone]
 base_packs:
   - id: triveneto
     regions: [triveneto]
@@ -23,6 +28,8 @@ regions:
     bbox: [10.6231, 44.7923, 13.1021, 46.6806]
     osm: { geofabrik: europe/italy/nord-est }
     clip: { admin: [43648] }
+    # Phase 0: 1,955 hiking relations, 13,408 place nodes
+    expect: { trails: [1500, 3000], places: [10000, 18000] }
   - id: friuli-venezia-giulia
     name: { it: Friuli-Venezia Giulia, en: Friuli-Venezia Giulia }
     bbox: [12.3214, 45.5809, 13.9187, 46.6480]
