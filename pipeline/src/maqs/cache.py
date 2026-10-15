@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import http.client
 import re
 import urllib.request
 from collections.abc import Callable
@@ -11,6 +12,8 @@ from pathlib import Path
 from maqs import __version__
 
 USER_AGENT = f"maqs-pipeline/{__version__} (+https://github.com/lucavallin/maqs)"
+# Seconds without a byte (connect or read) before a download is abandoned; not a total limit.
+TIMEOUT_S = 60
 _MD5_RE = re.compile(r"^([0-9a-fA-F]{32})\b")
 
 
@@ -47,10 +50,12 @@ def download(
     part = dest.with_suffix(dest.suffix + ".part")
     request = urllib.request.Request(url, headers={"User-Agent": user_agent})
     try:
-        with opener(request) as response, part.open("wb") as out:
+        with opener(request, timeout=TIMEOUT_S) as response, part.open("wb") as out:
             for chunk in iter(lambda: response.read(1 << 20), b""):
                 out.write(chunk)
         part.replace(dest)
-    except OSError as exc:
+    except (OSError, http.client.HTTPException) as exc:
+        # HTTPException covers a body cut short (IncompleteRead) and a dropped connection
+        # (RemoteDisconnected, also an OSError); timeouts and resets are OSErrors.
         part.unlink(missing_ok=True)
         raise FetchError(f"download of {url} failed: {exc}") from exc

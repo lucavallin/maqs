@@ -1,9 +1,10 @@
 import hashlib
+import http.client
 import io
 
 import pytest
 
-from maqs.cache import FetchError, download, md5_of, parse_md5_sidecar
+from maqs.cache import TIMEOUT_S, FetchError, download, md5_of, parse_md5_sidecar
 
 
 class FakeResponse(io.BytesIO):
@@ -27,24 +28,52 @@ def test_md5_of_and_sidecar(tmp_path):
 def test_download_streams_to_part_file_then_renames(tmp_path):
     seen = {}
 
-    def opener(request):
+    def opener(request, timeout=None):
         seen["ua"] = request.get_header("User-agent")
+        seen["timeout"] = timeout
         return FakeResponse(b"payload")
 
     dest = tmp_path / "x.pbf"
     download("https://example.test/x.pbf", dest, user_agent="maqs-test/1", opener=opener)
     assert dest.read_bytes() == b"payload" and not dest.with_suffix(".pbf.part").exists()
     assert seen["ua"] == "maqs-test/1"
+    assert seen["timeout"] == TIMEOUT_S == 60
 
 
 def test_download_failure_leaves_no_file(tmp_path):
-    def opener(request):
+    def opener(request, timeout=None):
         raise OSError("connection reset")
 
     dest = tmp_path / "x.pbf"
     with pytest.raises(FetchError, match="connection reset"):
         download("https://example.test/x.pbf", dest, user_agent="t", opener=opener)
     assert not dest.exists() and not list(tmp_path.iterdir())
+
+
+class TruncatedResponse(FakeResponse):
+    """A body that ends early: the first read returns bytes, the next raises IncompleteRead."""
+
+    def read(self, size=-1):
+        data = super().read(4)
+        if not data:
+            raise http.client.IncompleteRead(b"", 10)
+        return data
+
+
+def truncated_body(request, timeout=None):
+    return TruncatedResponse(b"part")
+
+
+def bad_status_line(request, timeout=None):
+    raise http.client.BadStatusLine("garbage")  # an HTTPException that is not an OSError
+
+
+@pytest.mark.parametrize("opener", [truncated_body, bad_status_line])
+def test_download_turns_http_errors_into_fetch_errors_and_leaves_no_file(tmp_path, opener):
+    dest = tmp_path / "x.pbf"
+    with pytest.raises(FetchError, match="download of https://example.test/x.pbf failed"):
+        download("https://example.test/x.pbf", dest, user_agent="t", opener=opener)
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_unit_tests_cannot_reach_the_network(tmp_path):
