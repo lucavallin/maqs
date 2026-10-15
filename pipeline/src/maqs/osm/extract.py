@@ -57,10 +57,32 @@ def geofabrik_pbf(ctx: BuildContext) -> Path:
     return dest
 
 
-def tags_filter(src: Path, dst: Path, expressions: Sequence[str]) -> list[str]:
-    argv = [_osmium(), "tags-filter", str(src), *expressions, "-o", str(dst), "--overwrite"]
+def _partial_path(dst: Path) -> Path:
+    """Where an osmium cut is written before it is renamed to `dst`.
+
+    The name keeps the `.osm.pbf` suffix, from which osmium picks the output format.
+    """
+    return dst.with_name(dst.name.removesuffix(".osm.pbf") + ".tmp.osm.pbf")
+
+
+def _run_into(argv: list[str], tmp: Path, dst: Path) -> None:
+    """Run an osmium command that writes `tmp`, then rename it to `dst`.
+
+    Callers reuse whatever exists at `dst`, so an interrupted or failed run must never leave a
+    truncated file there.
+    """
     dst.parent.mkdir(parents=True, exist_ok=True)
-    tools.run(argv)
+    try:
+        tools.run(argv)
+        tmp.replace(dst)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def tags_filter(src: Path, dst: Path, expressions: Sequence[str]) -> list[str]:
+    tmp = _partial_path(dst)
+    argv = [_osmium(), "tags-filter", str(src), *expressions, "-o", str(tmp), "--overwrite"]
+    _run_into(argv, tmp, dst)
     return argv
 
 
@@ -158,9 +180,9 @@ def _extent_args(ctx: BuildContext) -> list[str]:
 
 
 def _cut(ctx: BuildContext, src: Path, dst: Path, strategy: Sequence[str]) -> None:
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    argv = [_osmium(), "extract", *_extent_args(ctx), *strategy, str(src), "-o", str(dst)]
-    tools.run([*argv, "--overwrite"])
+    tmp = _partial_path(dst)
+    argv = [_osmium(), "extract", *_extent_args(ctx), *strategy, str(src), "-o", str(tmp)]
+    _run_into([*argv, "--overwrite"], tmp, dst)
 
 
 def region_pbf(ctx: BuildContext) -> Path:

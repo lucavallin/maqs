@@ -139,8 +139,10 @@ def test_hiking_pbf_runs_tags_filter_once(veneto, osmium_bin, no_download, monke
     src = seed_geofabrik(veneto)
     out = extract.hiking_pbf(veneto)
     assert out == src.with_name(f"{NORD_EST}-hiking.osm.pbf")
+    tmp = src.with_name(f"{NORD_EST}-hiking.tmp.osm.pbf")
     expected = ["/usr/bin/osmium", "tags-filter", str(src), "r/route=hiking"]
-    assert calls == [[*expected, "-o", str(out), "--overwrite"]]
+    assert calls == [[*expected, "-o", str(tmp), "--overwrite"]]
+    assert out.exists() and not tmp.exists()
     extract.hiking_pbf(veneto)
     assert len(calls) == 1
 
@@ -221,10 +223,12 @@ def test_region_pbf_uses_polygon_or_bbox(veneto, test_region, osmium_bin, no_dow
     assert out == veneto.cache / "veneto" / "region.osm.pbf"
     src = veneto.cache / "geofabrik" / f"{NORD_EST}-latest.osm.pbf"
     poly = veneto.cache / "veneto" / "clip.poly"
+    tmp = veneto.cache / "veneto" / "region.tmp.osm.pbf"
     assert calls[-1] == [
         *["/usr/bin/osmium", "extract", "--polygon", str(poly), "-s", "complete_ways"],
-        *[str(src), "-o", str(out), "--overwrite"],
+        *[str(src), "-o", str(tmp), "--overwrite"],
     ]
+    assert out.exists() and not tmp.exists()
     out2 = extract.region_pbf(test_region)
     assert calls[-1][2:4] == ["--bbox", "12.21,46.08,12.29,46.13"] and out2.name == "region.osm.pbf"
 
@@ -258,13 +262,63 @@ def test_filtered_region_pbf_filters_the_region_cut_once(
     assert [c[1] for c in calls] == ["extract", "tags-filter"]
     assert calls[-1] == [
         *["/usr/bin/osmium", "tags-filter", str(region), *roads],
-        *["-o", str(out), "--overwrite"],
+        *["-o", str(test_region.cache / "test" / "roads.tmp.osm.pbf"), "--overwrite"],
     ]
     assert extract.filtered_region_pbf(test_region, "roads", roads) == out
     assert len(calls) == 2  # reused
     test_region.force = True
     extract.filtered_region_pbf(test_region, "roads", roads)
     assert [c[1] for c in calls[2:]] == ["extract", "tags-filter"]
+
+
+def fail_after_writing(monkeypatch):
+    """An osmium run that writes part of its -o file and then exits non-zero."""
+
+    def fake_run(argv, **kw):
+        argv = [str(a) for a in argv]
+        Path(argv[argv.index("-o") + 1]).write_bytes(b"trunc")
+        raise tools.ToolError(argv, 1, "interrupted")
+
+    monkeypatch.setattr(tools, "run", fake_run)
+
+
+def test_failed_cuts_leave_neither_the_output_nor_a_partial_file(
+    test_region, osmium_bin, no_download, monkeypatch
+):
+    seed_geofabrik(test_region)
+    fail_after_writing(monkeypatch)
+    region_dir = test_region.cache / "test"
+    with pytest.raises(tools.ToolError):
+        extract.region_pbf(test_region)
+    assert list(region_dir.iterdir()) == []
+    region_dir.joinpath("region.osm.pbf").write_bytes(b"osm")
+    with pytest.raises(tools.ToolError):
+        extract.filtered_region_pbf(test_region, "roads", ["w/highway=primary"])
+    assert sorted(p.name for p in region_dir.iterdir()) == ["region.osm.pbf"]
+
+
+def test_failed_tags_filter_leaves_no_file_and_a_retry_runs_again(
+    veneto, osmium_bin, no_download, monkeypatch
+):
+    src = seed_geofabrik(veneto)
+    fail_after_writing(monkeypatch)
+    with pytest.raises(tools.ToolError):
+        extract.hiking_pbf(veneto)
+    assert [p.name for p in src.parent.iterdir()] == [src.name]
+    calls = record_runs(monkeypatch)
+    out = extract.hiking_pbf(veneto)
+    assert len(calls) == 1 and out.read_bytes() == b"osm"
+    assert sorted(p.name for p in src.parent.iterdir()) == sorted([src.name, out.name])
+
+
+def test_successful_cut_leaves_only_the_final_file(
+    test_region, osmium_bin, no_download, monkeypatch
+):
+    record_runs(monkeypatch)
+    seed_geofabrik(test_region)
+    out = extract.region_pbf(test_region)
+    assert [p.name for p in out.parent.iterdir()] == ["region.osm.pbf"]
+    assert out.read_bytes() == b"osm"
 
 
 def test_osm_timestamp(osmium_bin, monkeypatch):
