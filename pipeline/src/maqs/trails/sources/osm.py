@@ -8,6 +8,7 @@ build report. Nothing is dropped (brief item 4, ADR 0006).
 from __future__ import annotations
 
 import re
+from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -83,14 +84,52 @@ class WayGeom:
     tags: dict[str, str]
 
 
+Step = tuple[int, bool]  # a way id, and whether the leg walks it in its stored direction
+
+
+def _turned(steps: list[Step]) -> list[Step]:
+    """The same leg walked the other way."""
+    return [(wid, not forward) for wid, forward in reversed(steps)]
+
+
+def _orient(steps: list[Step], closed: bool, position: dict[int, int]) -> list[Step]:
+    """Turn a leg to follow member order (`position`: way id -> its first member index).
+
+    An open leg starts with whichever of its two end ways comes first in member order. A closed
+    leg has no ends: it is rotated to start with its earliest member and walked towards the
+    earlier of that member's two neighbours. A two-way loop has the same neighbour on both
+    sides, and a one-way leg has none, so those keep the direction they were built in.
+    """
+    if not closed:
+        return _turned(steps) if position[steps[0][0]] > position[steps[-1][0]] else steps
+    first = min(range(len(steps)), key=lambda i: position[steps[i][0]])
+    steps = steps[first:] + steps[:first]
+    if len(steps) > 2 and position[steps[1][0]] > position[steps[-1][0]]:
+        steps = _turned(steps)
+        steps = steps[-1:] + steps[:-1]
+    return steps
+
+
+def _leg_coords(steps: list[Step], ways: dict[int, WayGeom]) -> list[Coord]:
+    coords: list[Coord] = []
+    for wid, forward in steps:
+        walked = ways[wid].coords if forward else ways[wid].coords[::-1]
+        coords.extend(walked[1:] if coords else walked)  # consecutive ways share their end node
+    return coords
+
+
 def assemble(
     members: Sequence[tuple[int, str]], ways: dict[int, WayGeom]
 ) -> tuple[list[list[Coord]], str, list[Anomaly]]:
-    """Chain member ways into continuous legs; irregularities become anomalies, never errors."""
+    """Chain member ways into continuous legs; irregularities become anomalies, never errors.
+
+    Ways are chained by shared end nodes first; each finished leg is then turned to follow
+    member order, and a way walked against its stored direction is flagged `reversed`.
+    """
     anomalies: list[Anomaly] = []
-    unused: list[int] = []
+    position: dict[int, int] = {}
     missing = False
-    for wid, role in members:
+    for index, (wid, role) in enumerate(members):
         if wid not in ways or len(ways[wid].nodes) < 2:
             anomalies.append(
                 Anomaly("missing_member", f"way/{wid}", "member way not in the extract")
@@ -100,55 +139,44 @@ def assemble(
         if role in FLAGGED_ROLES:
             message = f"member role {role!r} kept in the main geometry"
             anomalies.append(Anomaly("role", f"way/{wid}", message))
-        if wid not in unused:
-            unused.append(wid)
+        position.setdefault(wid, index)
+    unused = list(position)  # usable way ids in member order, each once
     legs: list[list[Coord]] = []
     leg_ways: list[list[int]] = []  # way ids per leg, in leg order, for the gap anomalies
     reversed_message = "member way runs against the route direction"
     while unused:
         first_id = unused.pop(0)
-        first = ways[first_id]
-        nodes, coords, wids = list(first.nodes), list(first.coords), [first_id]
-        nxt = ways[unused[0]] if unused else None
-        # The next member in member order decides the direction. If the first way's end does
-        # not touch it and it starts where the first way starts (without ending there), the
-        # first way is stored against the route: flip and flag it, so the leg follows member
-        # order and later ways (closing loops included) are not blamed.
-        if (
-            nxt is not None
-            and nodes[-1] not in (nxt.nodes[0], nxt.nodes[-1])
-            and nxt.nodes[0] == nodes[0]
-            and nxt.nodes[-1] != nodes[0]
-        ):
-            nodes, coords = nodes[::-1], coords[::-1]
-            anomalies.append(Anomaly("reversed", f"way/{first_id}", reversed_message))
+        chain: deque[Step] = deque([(first_id, True)])
+        start, end = ways[first_id].nodes[0], ways[first_id].nodes[-1]
         extended = True
         while extended:
             extended = False
             for wid in list(unused):
-                w = ways[wid]
-                if w.nodes[0] == nodes[-1]:
-                    nodes, coords, wids = nodes + w.nodes[1:], coords + w.coords[1:], wids + [wid]
-                elif w.nodes[-1] == nodes[-1]:
-                    nodes = nodes + w.nodes[-2::-1]
-                    coords = coords + w.coords[-2::-1]
-                    wids = wids + [wid]
-                    anomalies.append(Anomaly("reversed", f"way/{wid}", reversed_message))
-                elif w.nodes[-1] == nodes[0]:
-                    nodes = w.nodes[:-1] + nodes
-                    coords = w.coords[:-1] + coords
-                    wids = [wid] + wids
-                elif w.nodes[0] == nodes[0]:
-                    nodes = w.nodes[:0:-1] + nodes
-                    coords = w.coords[:0:-1] + coords
-                    wids = [wid] + wids
-                    anomalies.append(Anomaly("reversed", f"way/{wid}", reversed_message))
+                head, tail = ways[wid].nodes[0], ways[wid].nodes[-1]
+                if head == end:
+                    chain.append((wid, True))
+                    end = tail
+                elif tail == end:
+                    chain.append((wid, False))
+                    end = head
+                elif tail == start:
+                    chain.appendleft((wid, True))
+                    start = head
+                elif head == start:
+                    chain.appendleft((wid, False))
+                    start = tail
                 else:
                     continue
                 unused.remove(wid)
                 extended = True
-        legs.append(coords)
-        leg_ways.append(wids)
+        steps = _orient(list(chain), start == end, position)
+        anomalies.extend(
+            Anomaly("reversed", f"way/{wid}", reversed_message)
+            for wid, forward in steps
+            if not forward
+        )
+        legs.append(_leg_coords(steps, ways))
+        leg_ways.append([wid for wid, _ in steps])
     for i in range(1, len(legs)):
         gap = haversine_m(legs[i - 1][-1], legs[i][0])
         message = f"gap of {gap:.0f} m before this way"
