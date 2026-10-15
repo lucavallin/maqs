@@ -28,6 +28,17 @@ def veneto(cfg, tmp_path):
 
 
 @pytest.fixture
+def fixture_region(cfg, tmp_path):
+    return BuildContext(
+        config=cfg,
+        dist=tmp_path / "dist",
+        cache=tmp_path / ".cache",
+        force=False,
+        region=cfg.region("test"),
+    )
+
+
+@pytest.fixture
 def versatiles_bin(monkeypatch):
     monkeypatch.setattr(tools, "find_tool", lambda name: Path("/usr/bin/versatiles"))
 
@@ -73,6 +84,30 @@ def test_terrain_argv_and_outputs(veneto, versatiles_bin):
     ]
     e = step.expectation(veneto)
     assert (e.min_zoom, e.max_zoom) == (0, 12) and e.tile_types == frozenset({"webp", "png"})
+
+
+def test_a_region_with_bbox_border_0_gets_no_border_flag(fixture_region, versatiles_bin):
+    out = fixture_region.dist / "test"
+    assert BasemapStep().argv(fixture_region) == [
+        "/usr/bin/versatiles",
+        "convert",
+        "--bbox",
+        "12.21,46.08,12.29,46.13",
+        "--compress",
+        "gzip",
+        tiles.OSM_SOURCE,
+        str(out / "test-basemap.pmtiles"),
+    ]
+    assert TerrainStep().argv(fixture_region) == [
+        "/usr/bin/versatiles",
+        "convert",
+        "--bbox",
+        "12.21,46.08,12.29,46.13",
+        "--max-zoom",
+        "12",
+        tiles.ELEVATION_SOURCE,
+        str(out / "test-terrain.pmtiles"),
+    ]
 
 
 def test_base_pack_argv_outputs_and_cap(cfg, tmp_path, versatiles_bin):

@@ -33,6 +33,7 @@ class Region:
     clip: dict | None
     fixture: bool
     hd_max_zoom: int | None
+    bbox_border: int
 
 
 @dataclass(frozen=True)
@@ -120,6 +121,9 @@ def _parse_region(raw: dict) -> Region:
     hd = raw.get("hd_max_zoom")
     if hd is not None and (not isinstance(hd, int) or hd < 13):
         raise ConfigError(f"{where}: hd_max_zoom must be an integer >= 13")
+    border = raw.get("bbox_border", 1)
+    if isinstance(border, bool) or not isinstance(border, int) or border < 0:
+        raise ConfigError(f"{where}: bbox_border must be an integer >= 0")
     return Region(
         id=rid,
         name={k: str(v) for k, v in name.items()},
@@ -128,6 +132,7 @@ def _parse_region(raw: dict) -> Region:
         clip=raw.get("clip"),
         fixture=bool(raw.get("fixture", False)),
         hd_max_zoom=hd,
+        bbox_border=border,
     )
 
 

@@ -9,6 +9,8 @@ regions:
   - id: test
     name: { it: Nevegal (test), en: Nevegal (test) }
     bbox: [12.21, 46.08, 12.29, 46.13]
+    # no tile ring: it costs ~15 MB at z0-11 whatever the bbox; without it the fixture stays < 5 MB
+    bbox_border: 0
     fixture: true
     osm: { geofabrik: europe/italy/nord-est }
   - id: triveneto

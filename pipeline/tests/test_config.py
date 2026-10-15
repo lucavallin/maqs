@@ -41,6 +41,30 @@ def test_minimal_config(tmp_path):
     r = cfg.region("a")
     assert r.bbox == (10.0, 45.0, 11.0, 46.0)
     assert r.fixture is False and r.osm is None and r.clip is None and r.hd_max_zoom is None
+    assert r.bbox_border == 1
+
+
+def test_real_config_builds_the_test_fixture_without_a_tile_border():
+    cfg = load_config(REAL)
+    assert cfg.region("test").bbox_border == 0
+    assert cfg.region("veneto").bbox_border == 1
+
+
+def test_explicit_bbox_border(tmp_path):
+    text = MINIMAL.replace(
+        "bbox: [10.0, 45.0, 11.0, 46.0]", "bbox: [10.0, 45.0, 11.0, 46.0]\n    bbox_border: 0"
+    )
+    assert load_config(write(tmp_path, text)).region("a").bbox_border == 0
+
+
+@pytest.mark.parametrize("value", ["-1", "1.5", "'1'", "true"])
+def test_rejects_bad_bbox_border(tmp_path, value):
+    text = MINIMAL.replace(
+        "bbox: [10.0, 45.0, 11.0, 46.0]",
+        f"bbox: [10.0, 45.0, 11.0, 46.0]\n    bbox_border: {value}",
+    )
+    with pytest.raises(ConfigError, match=r"region 'a': bbox_border must be an integer >= 0"):
+        load_config(write(tmp_path, text))
 
 
 def test_union_bbox():

@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from maqs import tools
-from maqs.config import Bbox
+from maqs.config import Bbox, Region
 from maqs.context import BuildContext
 from maqs.validate import BASE_PACK_CAP, Expectation
 
@@ -21,6 +21,11 @@ TERRAIN_MAX_ZOOM = 12
 
 def format_bbox(bbox: Bbox) -> str:
     return ",".join(f"{v:.7f}".rstrip("0").rstrip(".") for v in bbox)
+
+
+def _border_args(region: Region) -> list[str]:
+    """`--bbox-border N` when the region asks for a tile ring; nothing for a border of 0."""
+    return ["--bbox-border", str(region.bbox_border)] if region.bbox_border > 0 else []
 
 
 class _VersatilesStep:
@@ -50,8 +55,7 @@ class BasemapStep(_VersatilesStep):
             "convert",
             "--bbox",
             format_bbox(ctx.region.bbox),
-            "--bbox-border",
-            "1",
+            *_border_args(ctx.region),
             "--compress",
             "gzip",
             OSM_SOURCE,
@@ -73,8 +77,7 @@ class TerrainStep(_VersatilesStep):
             "convert",
             "--bbox",
             format_bbox(ctx.region.bbox),
-            "--bbox-border",
-            "1",
+            *_border_args(ctx.region),
             "--max-zoom",
             str(TERRAIN_MAX_ZOOM),
             ELEVATION_SOURCE,
