@@ -75,11 +75,20 @@ def main(ctx: click.Context, config_path: Path | None, verbose: bool) -> None:
     ctx.obj = {"config_path": config_path}
 
 
-def _load(ctx: click.Context) -> Config:
+def _config_path(ctx: click.Context) -> Path:
+    return _find_config(ctx.obj["config_path"]).resolve()
+
+
+def _load(config_path: Path) -> Config:
     try:
-        return load_config(_find_config(ctx.obj["config_path"]))
+        return load_config(config_path)
     except ConfigError as exc:
         raise click.ClickException(f"invalid configuration: {exc}") from exc
+
+
+def _repo_root(config_path: Path) -> Path:
+    """The parent of the `config/` directory holding regions.yaml; defaults live under it."""
+    return config_path.parent.parent
 
 
 def _join(values: Iterable[object]) -> str:
@@ -90,7 +99,7 @@ def _join(values: Iterable[object]) -> str:
 @click.pass_context
 def regions(ctx: click.Context) -> None:
     """List configured regions, their OSM extracts, and the base packs."""
-    cfg = _load(ctx)
+    cfg = _load(_config_path(ctx))
     for r in cfg.regions:
         extract = r.osm.get("geofabrik", "-") if r.osm else "-"
         flag = " (fixture)" if r.fixture else ""
@@ -210,14 +219,36 @@ def run_build(
     help="Comma-separated layer names.",
 )
 @click.option("--force", is_flag=True, help="Rebuild even when outputs exist.")
-@click.option("--dist", type=click.Path(path_type=Path), default=Path("dist"), show_default=True)
-@click.option("--cache", type=click.Path(path_type=Path), default=Path(".cache"), show_default=True)
+@click.option(
+    "--dist",
+    type=click.Path(path_type=Path),
+    default=None,
+    show_default="dist/ under the repo root",
+    help="Output directory; a given path is relative to the current directory.",
+)
+@click.option(
+    "--cache",
+    type=click.Path(path_type=Path),
+    default=None,
+    show_default=".cache/ under the repo root",
+    help="Download cache; a given path is relative to the current directory.",
+)
 @click.pass_context
 def build(
-    ctx: click.Context, target: str, layers: str, force: bool, dist: Path, cache: Path
+    ctx: click.Context,
+    target: str,
+    layers: str,
+    force: bool,
+    dist: Path | None,
+    cache: Path | None,
 ) -> None:
     """Build layers for a region (or all regions, or the base packs)."""
-    cfg = _load(ctx)
+    config_path = _config_path(ctx)
+    cfg = _load(config_path)
+    if dist is None:
+        dist = _repo_root(config_path) / "dist"
+    if cache is None:
+        cache = _repo_root(config_path) / ".cache"
     layer_names = _parse_layers(layers)
     _targets(cfg, target, dist=dist, cache=cache, force=force)  # validate before touching tools
     versions = _checked_tool_versions()

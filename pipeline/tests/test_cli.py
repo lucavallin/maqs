@@ -20,6 +20,16 @@ def build(*args: str):
     return CliRunner().invoke(main, ["--config", str(REAL), "build", *args])
 
 
+def fake_run_writing_archives(argv, **kw):
+    argv = [str(a) for a in argv]
+    out = Path(argv[-1])
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if "elevation.versatiles" in argv[-2]:
+        write_pmtiles(out, tile_type=4, max_zoom=12, tile_compression=1)
+    else:
+        write_pmtiles(out, tile_type=1, max_zoom=14, metadata={"attribution": "© OSM"})
+
+
 def test_regions_lists_ids_extracts_and_base_packs(monkeypatch):
     result = CliRunner().invoke(main, ["--config", str(REAL), "regions"])
     assert result.exit_code == 0
@@ -95,25 +105,54 @@ def test_build_stops_on_tool_mismatch(monkeypatch, tmp_path):
         ToolStatus("versatiles", "5.0.0", "4.9.0", Path("/x"), False, "found 4.9.0, pinned 5.0.0")
     ]
     monkeypatch.setattr(cli, "check_tools", lambda: bad)
+
+    def must_not_run(argv, **kw):
+        raise AssertionError(f"a step ran despite the tool mismatch: {argv}")
+
+    monkeypatch.setattr(tools, "run", must_not_run)
     result = build("--region", "test", "--dist", str(tmp_path))
     assert result.exit_code == 1 and "pinned 5.0.0" in result.output
+    assert not (tmp_path / "test").exists()
+
+
+def test_default_dist_and_cache_sit_under_the_repo_root_not_the_cwd(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
+    monkeypatch.setattr(tools, "run", fake_run_writing_archives)
+    repo = tmp_path / "repo"
+    (repo / "config").mkdir(parents=True)
+    config = repo / "config" / "regions.yaml"
+    config.write_text(REAL.read_text())
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    seen = {}
+    real_run_build = cli.run_build
+
+    def recording_run_build(cfg, **kw):
+        seen.update(kw)
+        return real_run_build(cfg, **kw)
+
+    monkeypatch.setattr(cli, "run_build", recording_run_build)
+    result = CliRunner().invoke(main, ["--config", str(config), "build", "--region", "test"])
+    assert result.exit_code == 0, result.output
+    assert (repo / "dist" / "test" / "test-basemap.pmtiles").exists()
+    assert (repo / "dist" / "test" / "build-report.json").exists()
+    assert seen["dist"] == repo / "dist" and seen["cache"] == repo / ".cache"
+    assert not (elsewhere / "dist").exists()
+
+
+def test_build_help_names_the_repo_root_defaults():
+    result = CliRunner().invoke(main, ["build", "--help"])
+    assert result.exit_code == 0
+    assert "dist/ under the repo root" in result.output
+    assert ".cache/ under the repo root" in result.output
 
 
 def test_build_runs_steps_and_writes_report(monkeypatch, tmp_path):
     ok_tools(monkeypatch)
     monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
-
-    def fake_run(argv, **kw):
-        argv = [str(a) for a in argv]
-        out = Path(argv[-1])
-        out.parent.mkdir(parents=True, exist_ok=True)
-        if "elevation.versatiles" in argv[-2]:
-            write_pmtiles(out, tile_type=4, max_zoom=12, tile_compression=1)
-        else:
-            write_pmtiles(out, tile_type=1, max_zoom=14, metadata={"attribution": "© OSM"})
-        return None
-
-    monkeypatch.setattr(tools, "run", fake_run)
+    monkeypatch.setattr(tools, "run", fake_run_writing_archives)
     result = build("--region", "test", "--dist", str(tmp_path))
     assert result.exit_code == 0, result.output
     report = json.loads((tmp_path / "test" / "build-report.json").read_text())

@@ -15,10 +15,6 @@ from maqs.validate import Expectation, OutputInfo, ValidationError, validate_out
 log = logging.getLogger("maqs.steps")
 
 
-class BuildError(Exception):
-    """At least one step failed; the CLI raises this after writing the report."""
-
-
 class Step(Protocol):
     name: str
 
