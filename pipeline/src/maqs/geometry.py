@@ -127,7 +127,13 @@ def circumradius(p: Coord, q: Coord, r: Coord) -> tuple[float, int]:
 
 
 def merge_close(coords: Sequence[Coord], min_m: float) -> list[Coord]:
-    """Drop vertices closer than min_m to the last kept one; the last vertex is always kept."""
+    """Drop vertices closer than min_m to their kept neighbour; both endpoints are always kept.
+
+    Forwards, a vertex closer than min_m to the last kept one is dropped. The end gets the same
+    treatment backwards: kept vertices closer than min_m to the last vertex are dropped. So
+    consecutive output vertices are at least min_m apart, unless the whole line is shorter, in
+    which case only the two endpoints remain.
+    """
     if len(coords) <= 2:
         return list(coords)
     out = [coords[0]]
@@ -135,4 +141,6 @@ def merge_close(coords: Sequence[Coord], min_m: float) -> list[Coord]:
         if haversine_m(out[-1], p) >= min_m:
             out.append(p)
     out.append(coords[-1])
+    while len(out) > 2 and haversine_m(out[-2], out[-1]) < min_m:
+        del out[-2]
     return out

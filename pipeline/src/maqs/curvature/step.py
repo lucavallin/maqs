@@ -52,7 +52,7 @@ def read_roads(pbf: Path, config: CurvatureConfig) -> tuple[list[SegmentRecord],
 
     Two-node ways are kept with score 0 and no corners: they carry the adjacency the corner
     lookahead follows across straight connectors. Ways with fewer than two located nodes are
-    skipped and reported.
+    skipped and reported; a kept way with unlocated nodes is joined over the gap and reported.
     """
     segments: list[SegmentRecord] = []
     anomalies: list[Anomaly] = []
@@ -69,6 +69,9 @@ def read_roads(pbf: Path, config: CurvatureConfig) -> tuple[list[SegmentRecord],
             message = f"{len(located)} located nodes; need 2"
             anomalies.append(Anomaly("too_short", f"way/{obj.id}", message))
             continue
+        if len(located) < len(obj.nodes):
+            message = f"{len(obj.nodes) - len(located)} of {len(obj.nodes)} nodes have no location"
+            anomalies.append(Anomaly("unlocated_nodes", f"way/{obj.id}", message))
         merged, score, corners = score_way([(n.lon, n.lat) for n in located])
         segments.append(
             SegmentRecord(

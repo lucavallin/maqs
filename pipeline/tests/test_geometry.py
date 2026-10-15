@@ -87,3 +87,14 @@ def test_merge_close_drops_vertices_under_the_threshold():
     assert merge_close([a, near, far], 5.0) == [a, far]
     assert merge_close([a, near], 5.0) == [a, near]  # the last vertex is always kept
     assert merge_close([a], 5.0) == [a]
+
+
+def test_merge_close_treats_the_end_like_the_start():
+    a = (12.25, 46.10)
+    b = (12.2506, 46.10)  # ~46 m east of a
+    c = (12.25068, 46.10)  # ~6 m past b
+    end = (12.25062, 46.10)  # ~1.5 m from b, ~4.6 m back from c
+    # c is >= 5 m from b so the forward pass keeps it; the end is too close to c, then to b
+    assert merge_close([a, b, c, end], 5.0) == [a, end]
+    assert merge_close([a, b, end], 5.0) == [a, end]
+    assert merge_close([a, b, (12.2512, 46.10)], 5.0) == [a, b, (12.2512, 46.10)]

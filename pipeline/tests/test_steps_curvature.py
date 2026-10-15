@@ -8,7 +8,7 @@ from maqs.curvature.step import CurvatureStep, parse_oneway, read_roads
 from maqs.geometry import bbox_of, decode_polyline
 from maqs.osm import extract
 from maqs.sqlite_out import open_readonly
-from maqs.steps.base import run_step
+from maqs.steps.base import Anomaly, run_step
 from tests.osm_fixtures import write_osm
 from tests.step_fixtures import stub_tags_filter
 from tests.test_curvature import arc, east
@@ -78,6 +78,23 @@ def test_read_roads_filters_and_scores(tmp_path):
     assert by_way[12].score == 0.0 and by_way[12].corners == []
     assert (by_way[12].start_node, by_way[12].end_node, len(by_way[12].coords)) == (11, 12, 2)
     assert [a.kind for a in anomalies] == ["too_short"] and anomalies[0].id == "way/15"
+
+
+def test_read_roads_keeps_a_way_with_unlocated_nodes_and_reports_them(tmp_path):
+    nodes = dict(enumerate(east(3), start=1))  # 1..3; nodes 500..502 are not in the file
+    ways = {
+        20: ([1, 500, 2, 3], {"highway": "primary"}),
+        21: ([1, 501, 502], {"highway": "primary"}),  # one located node: too short, nothing else
+    }
+    pbf = write_osm(tmp_path / "gaps.osm.pbf", nodes, ways, {})
+    segments, anomalies = read_roads(pbf, CurvatureConfig(("primary",), ()))
+    assert [(s.osm_way_id, s.start_node, s.end_node, len(s.coords)) for s in segments] == [
+        (20, 1, 3, 3)
+    ]
+    assert anomalies == [
+        Anomaly("unlocated_nodes", "way/20", "1 of 4 nodes have no location"),
+        Anomaly("too_short", "way/21", "1 located nodes; need 2"),
+    ]
 
 
 def test_build_writes_segments_and_corners(ctx, tmp_path, monkeypatch):

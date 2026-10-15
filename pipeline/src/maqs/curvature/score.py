@@ -34,14 +34,16 @@ def vertex_radii(coords: Sequence[Coord]) -> list[tuple[float, int]]:
 
 
 def way_score(coords: Sequence[Coord], radii: Sequence[tuple[float, int]]) -> float:
-    """Sum of segment length × the band weight of the segment's start vertex.
+    """Sum over interior vertices of the band weight × half of each adjacent segment's length.
 
-    The first segment starts at the way's first node, which has no radius, so it weighs 0.
+    Splitting each segment between its two end vertices makes the score independent of the
+    direction the way was drawn in. The endpoints have no radius, so half of the first and half
+    of the last segment weigh 0.
     """
     distances = cumulative_m(coords)
     score = 0.0
-    for i, (radius, _) in enumerate(radii, start=1):  # radius at vertex i weighs segment i -> i+1
-        score += (distances[i + 1] - distances[i]) * band_weight(radius)
+    for i, (radius, _) in enumerate(radii, start=1):  # vertex i sits between i-1 and i+1
+        score += (distances[i + 1] - distances[i - 1]) / 2 * band_weight(radius)
     return score
 
 

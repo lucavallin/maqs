@@ -48,13 +48,28 @@ def test_straight_roads_score_zero_with_no_corners():
         assert score == 0.0 and corners == [] and merged == coords
 
 
-def test_coincident_tail_scores_without_error():
-    # the 5 m merge always keeps the last vertex, so a way can end on a duplicate of its
-    # second-to-last vertex
+def test_a_coincident_tail_is_merged():
+    # a way ending on a duplicate of its previous vertex: the duplicate interior vertex goes,
+    # the end node stays; coincident vertices have no circle (no division by zero)
     coords = [*east(3), east(3)[-1]]
+    assert vertex_radii(coords) == [(math.inf, 0), (math.inf, 0)]
     merged, score, corners = score_way(coords)
-    assert merged == coords and score == 0.0 and corners == []
-    assert vertex_radii(merged) == [(math.inf, 0), (math.inf, 0)]
+    assert merged == east(3) and score == 0.0 and corners == []
+
+
+def test_a_short_offset_tail_makes_no_corner():
+    # the way ends 2 m past its last vertex and 1 m off the line, as junction nodes often do;
+    # unmerged, that vertex would be a 58 m left corner
+    coords = [*east(4), at(152, 1)]
+    merged, score, corners = score_way(coords)
+    assert merged == [*east(3), at(152, 1)] and score == 0.0 and corners == []
+
+
+def test_end_jitter_is_merged_back_to_the_last_distant_vertex():
+    # dropping only the second-to-last vertex would leave (0,0) (50,0) (52,1): a 58 m corner
+    coords = [at(0, 0), at(50, 0), at(56, 1), at(52, 1)]
+    merged, score, corners = score_way(coords)
+    assert merged == [coords[0], coords[-1]] and score == 0.0 and corners == []
 
 
 def test_vertex_radii_on_an_arc():
@@ -68,8 +83,10 @@ def test_arc_scores_in_band_3_and_yields_one_left_corner():
     coords = arc(50.0, 180, 270, 6)  # quarter circle, ~78.5 m
     merged, score, corners = score_way(coords)
     length = line_length_m(merged)
-    # the first segment has no vertex radius before it and weighs 0; the rest are band 3
-    expected = 3 * (length - line_length_m(merged[:2]))
+    # every interior vertex is band 3 and weighs half of each adjacent segment, so only half
+    # of the first and half of the last segment go unweighted
+    first, last = line_length_m(merged[:2]), line_length_m(merged[-2:])
+    expected = 3 * (length - (first + last) / 2)
     assert score == pytest.approx(expected, rel=0.01)
     (corner,) = corners
     assert corner.direction == "left" and corner.min_radius_m == pytest.approx(50.0, rel=0.05)
@@ -77,7 +94,7 @@ def test_arc_scores_in_band_3_and_yields_one_left_corner():
     assert corner.entry_m == 0.0 and corner.exit_m == pytest.approx(length)
 
 
-def test_s_curve_yields_two_opposite_corners():
+def s_curve():
     left = arc(60.0, 180, 270, 5)  # ends at the bottom of its circle, heading east
     # a right turn from there: a circle of the same radius centred 60 m south of the join point,
     # walked clockwise from its top (angle 90°) towards angle 0°
@@ -89,8 +106,11 @@ def test_s_curve_yields_two_opposite_corners():
         )
         for a in (72, 54, 36, 18, 0)
     ]
-    coords = left + right
-    _, score, corners = score_way(coords)
+    return left + right
+
+
+def test_s_curve_yields_two_opposite_corners():
+    _, score, corners = score_way(s_curve())
     assert score > 0 and len(corners) == 2
     assert [c.direction for c in corners] == ["left", "right"]
     assert corners[0].exit_m <= corners[1].entry_m
@@ -127,6 +147,15 @@ def test_jitter_is_merged_before_scoring():
     assert merged == coords and score == 0.0 and corners == []
 
 
-def test_way_score_uses_the_start_vertex_radius():
-    coords = east(3)
-    assert way_score(coords, [(20.0, 1)]) == pytest.approx(4 * 50.0, rel=0.01)
+def test_way_score_weighs_half_of_each_adjacent_segment():
+    coords = [at(0, 0), at(10, 0), at(40, 0)]
+    assert way_score(coords, [(20.0, 1)]) == pytest.approx(4 * (10 + 30) / 2, rel=0.01)
+
+
+def test_score_does_not_depend_on_the_drawing_direction():
+    hook = [at(0, 0), at(10, 0), at(20, 10), at(200, 10)]  # 15.8 m (band 4), then 134.5 m (band 1)
+    for coords in (hook, arc(50.0, 180, 270, 6), s_curve()):
+        assert score_way(coords)[1] == pytest.approx(score_way(coords[::-1])[1])
+    diagonal = math.hypot(10, 10)
+    expected = 4 * (10 + diagonal) / 2 + 1 * (diagonal + 180) / 2  # 145.4 m
+    assert score_way(hook)[1] == pytest.approx(expected, rel=0.01)
