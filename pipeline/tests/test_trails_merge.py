@@ -122,3 +122,35 @@ def test_different_ref_or_no_ref_never_merges():
 def test_single_source_is_unchanged():
     records = [record("osm", "501", A), record("osm", "502", FAR)]
     assert merge([("osm", records)]) == records
+
+
+def test_short_matching_leg_does_not_swallow_a_long_non_matching_leg():
+    short_on_winner = [(12.25, 46.10), (12.2512, 46.10)]
+    long_elsewhere = FAR[0]
+    candidate = record("synthetic", "501", [short_on_winner, long_elsewhere])
+    out = merge([("osm", [record("osm", "501", A)]), ("synthetic", [candidate])])
+    assert all(r.secondary_of is None for r in out)
+
+
+def test_winner_legs_are_not_bridged_across_a_gap():
+    winner = record(
+        "osm", "501", [[(12.25, 46.10), (12.251, 46.10)], [(12.27, 46.10), (12.271, 46.10)]]
+    )
+    along_the_chord = record("synthetic", "501", [[(12.2525, 46.10), (12.2685, 46.10)]])
+    out = merge([("osm", [winner]), ("synthetic", [along_the_chord])])
+    assert all(r.secondary_of is None for r in out)
+
+
+def test_share_must_exceed_min_share():
+    def secondary_of(min_share):
+        out = merge(
+            [
+                ("osm", [record("osm", "501", A)]),
+                ("synthetic", [record("synthetic", "501", A_SHIFTED)]),
+            ],
+            min_share=min_share,
+        )
+        return out[1].secondary_of
+
+    assert secondary_of(1.0) is None  # share is exactly 1.0: not "more than" 1.0
+    assert secondary_of(0.6) == 0

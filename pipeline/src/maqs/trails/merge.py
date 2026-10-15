@@ -22,6 +22,27 @@ def normalise_ref(ref: str | None) -> str | None:
     return text or None
 
 
+def _samples(legs: Sequence[Sequence[Coord]], step_m: float) -> list[Coord]:
+    """Resample every leg separately so gaps between legs get no phantom points."""
+    return [p for leg in legs if len(leg) >= 2 for p in resample(leg, step_m)]
+
+
+def _share(
+    candidate_legs: Sequence[Sequence[Coord]],
+    winner_legs: Sequence[Sequence[Coord]],
+    *,
+    overlap_m: float,
+    step_m: float,
+) -> float:
+    winner_points = _samples(winner_legs, step_m)
+    points = _samples(candidate_legs, step_m)
+    if not points or not winner_points:
+        return 0.0
+    tolerance = overlap_m + step_m / 2
+    near = sum(1 for p in points if any(haversine_m(p, w) <= tolerance for w in winner_points))
+    return near / len(points)
+
+
 def overlap_share(
     candidate: Sequence[Coord],
     winner: Sequence[Coord],
@@ -29,14 +50,13 @@ def overlap_share(
     overlap_m: float,
     step_m: float,
 ) -> float:
-    """Share of the candidate's resampled points lying within overlap_m of the winner."""
-    if len(candidate) < 2 or len(winner) < 2:
-        return 0.0
-    winner_points = resample(winner, step_m)
-    tolerance = overlap_m + step_m / 2
-    points = resample(candidate, step_m)
-    near = sum(1 for p in points if any(haversine_m(p, w) <= tolerance for w in winner_points))
-    return near / len(points)
+    """Share of the candidate's resampled points lying near the winner.
+
+    Both lines are resampled every step_m; a candidate point is near when it is within
+    overlap_m + step_m / 2 of a winner sample point (vertex distance, not distance to the
+    winner's line, hence the half-step allowance).
+    """
+    return _share([candidate], [winner], overlap_m=overlap_m, step_m=step_m)
 
 
 def _find_winner(
@@ -47,12 +67,11 @@ def _find_winner(
     min_share: float,
     step_m: float,
 ) -> int | None:
+    """First candidate that the whole record (all legs, length-weighted) overlaps."""
     for index, winner in enumerate(candidates):
-        winner_coords = winner.coords
-        for leg in record.legs:
-            share = overlap_share(leg, winner_coords, overlap_m=overlap_m, step_m=step_m)
-            if share >= min_share:
-                return index
+        share = _share(record.legs, winner.legs, overlap_m=overlap_m, step_m=step_m)
+        if share > min_share:
+            return index
     return None
 
 
