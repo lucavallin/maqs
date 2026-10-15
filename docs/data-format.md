@@ -40,7 +40,7 @@ Two PMTiles v3 archives of gzip-compressed MVT tiles, written by tippecanoe from
 | `<region>-trails.pmtiles` | `trails` | 6–14 | one per primary trail with geometry: a LineString, or a MultiLineString when the trail has several legs | `id`, `ref`, `name`, `difficulty`, `network`, `osmc_symbol` |
 | `<region>-places.pmtiles` | `places` | 8–14 | one Point per place | `id`, `kind`, `name`, `ele`, `rank_score` |
 
-Secondary trails (`secondary_of` set) and trails without geometry are in the SQLite file only. Apart from the layer name and the zoom range, tippecanoe runs with its defaults: lines are simplified to each tile's resolution, and below z14 points are thinned (about one in 2.5 kept per zoom level). The build passes no ordering option, so `rank_score` does not decide which points survive; the SQLite files are the complete record. Like the other tile archives, the overlays carry no `layer_schema_version` yet.
+Secondary trails (`secondary_of` set) and trails without geometry are in the SQLite file only. Apart from the layer name and the zoom range, tippecanoe runs with its defaults, so trail lines are simplified to each tile's resolution. The places overlay adds `-r1` (drop rate 1): every place is in every zoom from 8 to 14, and the style decides which to label, with `rank_score` for priority. Without it tippecanoe would keep about one point in 2.5 per zoom level below 14, chosen by density, not by `rank_score`. Measured on Triveneto (2026-10-15): all 29,198 places are present at z8, z11 and z14, in 7,515,620 bytes and 15,410 tiles. Like the other tile archives, the overlays carry no `layer_schema_version` yet.
 
 ## SQLite layers
 

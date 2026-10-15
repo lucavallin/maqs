@@ -39,6 +39,9 @@ KINDS: tuple[str, ...] = (
 )
 PLACES_MIN_ZOOM = 8
 PLACES_MAX_ZOOM = 14
+# tippecanoe thins points below the max zoom by density (2.5x per zoom), not by rank_score;
+# -r1 keeps every place at every zoom so the style decides what to label.
+PLACES_TIPPECANOE_FLAGS: tuple[str, ...] = ("-r1",)
 _ELE_RE = re.compile(r"^\s*(-?\d+(?:[.,]\d+)?)\s*(?:m|meters|metres)?\s*$", re.IGNORECASE)
 
 
@@ -191,5 +194,12 @@ class PlacesStep:
 
         write_sqlite(sqlite_path, "places", meta, fill)
         features = (place_feature(r, i + 1) for i, r in enumerate(records))
-        argv = build_overlay(features, overlay_path, "places", PLACES_MIN_ZOOM, PLACES_MAX_ZOOM)
+        argv = build_overlay(
+            features,
+            overlay_path,
+            "places",
+            PLACES_MIN_ZOOM,
+            PLACES_MAX_ZOOM,
+            PLACES_TIPPECANOE_FLAGS,
+        )
         return StepOutcome(argv, anomalies)

@@ -363,6 +363,8 @@ The real regions were built with trails, places and curvature only. Without terr
 | friuli-venezia-giulia | 4,329,472 | 4,246,707 | 1,007,616 | 704,302 | 22,237,184 |
 | trentino-alto-adige | 11,309,056 | 13,993,920 | 1,699,840 | 1,285,656 | 30,420,992 |
 
+The places overlays above were built before the places step passed `-r1`, so tippecanoe had thinned their points below z14. With `-r1` Triveneto's places overlay keeps all 29,198 places at every zoom and is 7,515,620 bytes (15,410 tiles), 2.2 times the size above.
+
 | Region | `geometry_status`: ordered / gaps / incomplete | `difficulty_scheme`: none / cai_scale / sac_scale / sac_scale:ways |
 |---|---|---|
 | veneto | 1,596 / 313 / 44 | 282 / 1,199 / 2 / 470 |

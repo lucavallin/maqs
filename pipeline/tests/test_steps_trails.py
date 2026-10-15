@@ -93,6 +93,7 @@ def test_build_writes_sqlite_overlay_and_anomalies(ctx, stubs):
         and "-l" in stubs["argv"]
         and "-Z6" in stubs["argv"]
         and "-z14" in stubs["argv"]
+        and not any(a.startswith("-r") for a in stubs["argv"])  # trails keep tippecanoe's default
     )
     conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
     rows = conn.execute(

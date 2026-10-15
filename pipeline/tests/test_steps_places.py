@@ -145,6 +145,9 @@ def test_build_writes_sqlite_and_overlay(ctx, tmp_path, monkeypatch):
     result = run_step(PlacesStep(), ctx)
     assert result.status == "built", result.error
     assert filtered["expressions"] == list(PLACE_FILTERS)
+    # every point kept at every zoom: no density-based dot dropping below z14
+    assert captured["argv"][-2] == "-r1" and captured["argv"][-1].endswith(".geojsonseq")
+    assert result.command == captured["argv"]
     conn = open_readonly(ctx.out_dir / "test-places.sqlite")
     rows = conn.execute(
         "SELECT osm_id, kind, name, ele, rank_score FROM places ORDER BY rank_score DESC"
