@@ -24,7 +24,7 @@ A thin Python orchestrator around pinned CLIs. One map provider, VersaTiles, sup
 - `unit`: `ruff check`, `ruff format --check` and `pytest`, without the external tools; time-boxed to 10 minutes.
 - `smoke`: restores the tool binaries from a cache keyed by the pins, or runs `pipeline/bootstrap.sh` on a miss; runs `maqs check-tools`; builds the `test` region against the live archives; prints the report; runs the live network test (`pytest tests/test_integration_network.py --run-network`), which builds the region again into a temporary directory and fails the job unless the basemap is gzip, z0–14 and more than 20 tiles, the terrain is WebP z0–12, and the two together stay under 5,000,000 bytes; uploads `dist/test` as the `test-region-fixtures` artifact (three files, about 3.1 MB, kept 7 days). The Swift tests (Phase 4) will download that artifact instead of committing binaries.
 
-A cold run (cache miss, bootstrap about 2 min) takes about 3 min 15 s; a warm run takes about 1 min 20 s.
+A warm run (tool cache hit) took 2 min 15 s on 2026-10-15: 46 s for the test-region build and 43 s for the network test, which is a second build; both follow the download server's speed. A cache miss adds about 2 min of bootstrap.
 
 ## Swift package
 
