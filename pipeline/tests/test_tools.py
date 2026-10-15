@@ -58,11 +58,20 @@ def test_check_tools_reports_missing_and_mismatched(monkeypatch):
     assert statuses["pmtiles"].ok is True
 
 
-def test_check_tools_accepts_pmtiles_dev_with_a_note(monkeypatch):
+def test_check_tools_accepts_pmtiles_dev_on_macos_with_a_note(monkeypatch):
+    monkeypatch.setattr(tools.sys, "platform", "darwin")
     monkeypatch.setattr(tools, "find_tool", lambda name: Path("/opt/homebrew/bin/pmtiles"))
     monkeypatch.setattr(tools, "tool_version", lambda name: "dev")
     (status,) = check_tools(["pmtiles"])
     assert status.ok is True and "unverifiable" in status.note
+
+
+def test_check_tools_rejects_pmtiles_dev_off_macos(monkeypatch):
+    monkeypatch.setattr(tools.sys, "platform", "linux")
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path("/usr/local/bin/pmtiles"))
+    monkeypatch.setattr(tools, "tool_version", lambda name: "dev")
+    (status,) = check_tools(["pmtiles"])
+    assert status.ok is False and status.note == "found dev, pinned 1.31.2"
 
 
 def test_check_tools_reports_missing(monkeypatch):

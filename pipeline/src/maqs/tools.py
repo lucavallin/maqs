@@ -7,6 +7,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -116,7 +117,9 @@ def check_tools(names: Iterable[str] = PINS) -> list[ToolStatus]:
         found = tool_version(name)
         if found == pinned:
             statuses.append(ToolStatus(name, pinned, found, path, True, "ok"))
-        elif name == "pmtiles" and found == "dev":
+        elif name == "pmtiles" and found == "dev" and sys.platform == "darwin":
+            # Homebrew's build reports "dev"; elsewhere bootstrap.sh installs a release that
+            # reports its version, so "dev" there is a mismatch.
             note = "Homebrew build reports 'dev': version unverifiable, assumed pinned"
             statuses.append(ToolStatus(name, pinned, found, path, True, note))
         else:

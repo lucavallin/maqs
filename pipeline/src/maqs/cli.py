@@ -208,7 +208,7 @@ def run_build(
             if total > TEST_REGION_WARN:
                 click.echo(
                     f"warning: {ctx.label} basemap+terrain is {total} bytes,"
-                    f" over {TEST_REGION_WARN}; shrink its bbox"
+                    f" over {TEST_REGION_WARN}; shrink its bbox or set bbox_border: 0"
                 )
         report = build_report(ctx.label, results, tool_versions)
         write_report(report_path(ctx.out_dir), report)

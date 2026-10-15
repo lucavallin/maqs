@@ -168,6 +168,17 @@ def test_build_runs_steps_and_writes_report(monkeypatch, tmp_path):
     assert second.exit_code == 0 and "skipped" in second.output
 
 
+def test_fixture_over_the_size_warning_names_both_levers(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
+    monkeypatch.setattr(tools, "run", fake_run_writing_archives)
+    monkeypatch.setattr(cli, "TEST_REGION_WARN", 0)
+    result = build("--region", "test", "--dist", str(tmp_path))
+    assert result.exit_code == 0, result.output
+    assert "warning: test basemap+terrain is" in result.output
+    assert "shrink its bbox or set bbox_border: 0" in result.output
+
+
 def test_build_exit_1_when_a_step_fails(monkeypatch, tmp_path):
     ok_tools(monkeypatch)
     monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
