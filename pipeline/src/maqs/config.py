@@ -16,6 +16,8 @@ import yaml
 Bbox = tuple[float, float, float, float]
 
 ID_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
+# `maqs build --region` keywords; a region or base pack with one of these ids could not be named.
+RESERVED_IDS = frozenset({"all", "base"})
 SUPPORTED_SCHEMA_VERSION = 1
 DEFAULT_CONFIG_PATH = Path("config/regions.yaml")
 
@@ -110,52 +112,81 @@ def _parse_bbox(raw: object, where: str) -> Bbox:
     return (lon_min, lat_min, lon_max, lat_max)
 
 
+def _check_id(kind: str, value: object) -> str:
+    if not isinstance(value, str) or not ID_RE.match(value):
+        raise ConfigError(f"{kind} id {value!r} must match {ID_RE.pattern}")
+    if value in RESERVED_IDS:
+        raise ConfigError(f"{kind} id '{value}' is reserved")
+    return value
+
+
+def _is_int(value: object) -> bool:
+    """True for an integer; YAML booleans are ints in Python and are rejected."""
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def _entries(data: dict, key: str) -> list[dict]:
+    raw = data.get(key)
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise ConfigError(f"{key} must be a list")
+    for index, entry in enumerate(raw):
+        if not isinstance(entry, dict):
+            raise ConfigError(f"{key}[{index}] must be a mapping, got {entry!r}")
+    return raw
+
+
 def _parse_region(raw: dict) -> Region:
-    rid = raw.get("id")
-    if not isinstance(rid, str) or not ID_RE.match(rid):
-        raise ConfigError(f"region id {rid!r} must match {ID_RE.pattern}")
+    rid = _check_id("region", raw.get("id"))
     where = f"region '{rid}'"
     name = raw.get("name")
     if not isinstance(name, dict) or not {"it", "en"} <= set(name):
         raise ConfigError(f"{where}: name must have 'it' and 'en'")
     hd = raw.get("hd_max_zoom")
-    if hd is not None and (not isinstance(hd, int) or hd < 13):
+    if hd is not None and (not _is_int(hd) or hd < 13):
         raise ConfigError(f"{where}: hd_max_zoom must be an integer >= 13")
     border = raw.get("bbox_border", 1)
-    if isinstance(border, bool) or not isinstance(border, int) or border < 0:
+    if not _is_int(border) or border < 0:
         raise ConfigError(f"{where}: bbox_border must be an integer >= 0")
+    fixture = raw.get("fixture", False)
+    if not isinstance(fixture, bool):
+        raise ConfigError(f"{where}: fixture must be true or false, got {fixture!r}")
     return Region(
         id=rid,
         name={k: str(v) for k, v in name.items()},
         bbox=_parse_bbox(raw.get("bbox"), where),
         osm=raw.get("osm"),
         clip=raw.get("clip"),
-        fixture=bool(raw.get("fixture", False)),
+        fixture=fixture,
         hd_max_zoom=hd,
         bbox_border=border,
     )
 
 
 def _parse_base_pack(raw: dict, regions: dict[str, Region]) -> BasePack:
-    pid = raw.get("id")
-    if not isinstance(pid, str) or not ID_RE.match(pid):
-        raise ConfigError(f"base pack id {pid!r} must match {ID_RE.pattern}")
+    pid = _check_id("base pack", raw.get("id"))
     names = raw.get("regions")
     if not isinstance(names, list) or not names:
         raise ConfigError(f"base pack '{pid}' must list at least one region")
     for n in names:
+        if not isinstance(n, str):
+            raise ConfigError(f"base pack '{pid}': regions must be region ids, got {n!r}")
         if n not in regions:
             raise ConfigError(f"base pack '{pid}' names unknown region '{n}'")
         if regions[n].fixture:
             raise ConfigError(f"base pack '{pid}' names fixture region '{n}'")
     max_zoom = raw.get("max_zoom", 10)
-    if not isinstance(max_zoom, int) or not 0 <= max_zoom <= 14:
+    if not _is_int(max_zoom) or not 0 <= max_zoom <= 14:
         raise ConfigError(f"base pack '{pid}': max_zoom must be an integer in 0..14")
     return BasePack(id=pid, regions=tuple(names), max_zoom=max_zoom)
 
 
 def load_config(path: Path) -> Config:
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise ConfigError(f"{path}: invalid YAML: {exc}") from exc
     if not isinstance(data, dict):
         raise ConfigError(f"{path}: top level must be a mapping")
     version = data.get("schema_version")
@@ -164,17 +195,17 @@ def load_config(path: Path) -> Config:
             f"schema_version {version} is not supported (expected {SUPPORTED_SCHEMA_VERSION})"
         )
     hd_default = data.get("hd_max_zoom", 13)
-    if not isinstance(hd_default, int) or hd_default < 13:
+    if not _is_int(hd_default) or hd_default < 13:
         raise ConfigError("hd_max_zoom must be an integer >= 13")
     regions: dict[str, Region] = {}
-    for raw in data.get("regions") or []:
+    for raw in _entries(data, "regions"):
         region = _parse_region(raw)
         if region.id in regions:
             raise ConfigError(f"duplicate region id '{region.id}'")
         regions[region.id] = region
     if not regions:
         raise ConfigError("at least one region is required")
-    packs = tuple(_parse_base_pack(raw, regions) for raw in data.get("base_packs") or [])
+    packs = tuple(_parse_base_pack(raw, regions) for raw in _entries(data, "base_packs"))
     if len({p.id for p in packs}) != len(packs):
         raise ConfigError("duplicate base pack id")
     return Config(
