@@ -23,20 +23,23 @@ regions:
     bbox: [10.3818, 44.7923, 13.9187, 47.0921]
     osm: { geofabrik: europe/italy/nord-est }
     clip: { admin: [43648, 179296, 45757] }
+    expect: { trails: [5000, 17000], places: [17000, 58000], curvature_segments: [130000, 440000] }
   - id: veneto
     name: { it: Veneto, en: Veneto }
     bbox: [10.6231, 44.7923, 13.1021, 46.6806]
     osm: { geofabrik: europe/italy/nord-est }
     clip: { admin: [43648] }
     # Phase 0: 1,955 hiking relations, 13,408 place nodes
-    expect: { trails: [1500, 3000], places: [10000, 18000] }
+    expect: { trails: [1500, 3000], places: [10000, 18000], curvature_segments: [75000, 250000] }
   - id: friuli-venezia-giulia
     name: { it: Friuli-Venezia Giulia, en: Friuli-Venezia Giulia }
     bbox: [12.3214, 45.5809, 13.9187, 46.6480]
     osm: { geofabrik: europe/italy/nord-est }
     clip: { admin: [179296] }
+    expect: { trails: [750, 2500], places: [3500, 11500], curvature_segments: [28000, 94000] }
   - id: trentino-alto-adige
     name: { it: Trentino-Alto Adige/Südtirol, en: Trentino-South Tyrol }
     bbox: [10.3818, 45.6729, 12.4780, 47.0921]
     osm: { geofabrik: europe/italy/nord-est }
     clip: { admin: [45757] }
+    expect: { trails: [3500, 11500], places: [6000, 20000], curvature_segments: [27000, 91000] }
