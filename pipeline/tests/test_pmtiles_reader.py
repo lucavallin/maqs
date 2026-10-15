@@ -99,14 +99,16 @@ def test_archive_returns_uncompressed_tile_as_is(tmp_path):
     assert PMTilesArchive(p).tile(12, 1, 1) == b"RIFF...."
 
 
-def test_archive_follows_a_leaf_directory(tmp_path):
+def _write_leaf_archive(tmp_path, root_leaf_offset_varint=1):
     tile_id = zxy_to_tile_id(12, 5, 6)
     tile = b"leaf-tile"
     leaf = gzip.compress(
         _varint(1) + _varint(tile_id) + _varint(1) + _varint(len(tile)) + _varint(1), mtime=0
     )
     # root: one leaf pointer (run length 0) at leaf offset 0
-    root = gzip.compress(_varint(1) + _varint(0) + _varint(0) + _varint(len(leaf)) + _varint(1))
+    root = gzip.compress(
+        _varint(1) + _varint(0) + _varint(0) + _varint(len(leaf)) + _varint(root_leaf_offset_varint)
+    )
     meta = gzip.compress(b"{}", mtime=0)
     root_off = 127
     meta_off = root_off + len(root)
@@ -131,7 +133,11 @@ def test_archive_follows_a_leaf_directory(tmp_path):
     header += bytes([0]) + struct.pack("<ii", 0, 0)
     p = tmp_path / "leaf.pmtiles"
     p.write_bytes(bytes(header) + root + meta + leaf + tile)
-    archive = PMTilesArchive(p)
+    return p
+
+
+def test_archive_follows_a_leaf_directory(tmp_path):
+    archive = PMTilesArchive(_write_leaf_archive(tmp_path))
     assert archive.tile(12, 5, 6) == b"leaf-tile"
     assert archive.tile(12, 5, 7) is None
 
@@ -166,3 +172,24 @@ def test_archive_rejects_gzip_bomb_tile(tmp_path):
     p.write_bytes(bytes(data))
     with pytest.raises(PMTilesError, match="exceeds"):
         PMTilesArchive(p).tile(0, 0, 0)
+
+
+def test_archive_rejects_leaf_pointer_beyond_the_leaf_section(tmp_path):
+    p = _write_leaf_archive(tmp_path, root_leaf_offset_varint=1000)
+    with pytest.raises(PMTilesError, match="beyond the leaf section"):
+        PMTilesArchive(p).tile(12, 5, 6)
+
+
+def test_archive_rejects_unsupported_tile_compression(tmp_path):
+    p = write_pmtiles(tmp_path / "a.pmtiles", max_zoom=12, tile_compression=1, tile_id=0)
+    data = bytearray(p.read_bytes())
+    data[98] = 3  # brotli
+    p.write_bytes(bytes(data))
+    with pytest.raises(PMTilesError, match="unsupported tile compression"):
+        PMTilesArchive(p).tile(0, 0, 0)
+
+
+def test_read_directory_rejects_a_first_entry_with_offset_zero():
+    data = _varint(1) + _varint(0) + _varint(1) + _varint(5) + _varint(0)
+    with pytest.raises(PMTilesError, match="negative tile offset"):
+        read_directory(data)

@@ -66,7 +66,7 @@ def read_directory(data: bytes) -> list[Entry]:
     count, pos = _read_varint(data, 0)
     # Each entry needs at least four bytes, so a larger count is corrupt (and must not drive
     # a huge allocation).
-    if count > len(data):
+    if count * 4 > len(data):
         raise PMTilesError(f"directory claims {count} entries in {len(data)} bytes")
     ids: list[int] = []
     last = 0
@@ -89,6 +89,8 @@ def read_directory(data: bytes) -> list[Entry]:
             offsets.append(offsets[i - 1] + lengths[i - 1])
         else:
             offsets.append(value - 1)
+        if offsets[i] < 0:
+            raise PMTilesError("directory entry has a negative tile offset")
     return [Entry(ids[i], offsets[i], lengths[i], runs[i]) for i in range(count)]
 
 
