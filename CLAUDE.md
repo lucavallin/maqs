@@ -86,6 +86,12 @@ config/sources.json        # online providers, priority order — fetched by cli
 config/regions.yaml        # region id, names (it/en), bbox — adding a region is one entry here
 config/schemas/            # JSON Schemas for manifest.json and sources.json; CI validates against them
 pipeline/                  # Python (uv) orchestrator + per-layer steps; bootstrap.sh installs pinned CLIs
+pipeline/src/maqs/         # cli, config, validate, report, tools; cache.py (downloads), geometry.py (polyline6, circles), sqlite_out.py, overlay.py, pmtiles_*.py
+pipeline/src/maqs/steps/   # step runner and the tile layers
+pipeline/src/maqs/osm/     # Geofabrik download, osmium cuts, terrain sampling
+pipeline/src/maqs/trails/  # trail record, source adapters (sources/osm.py), merge, trails step
+pipeline/src/maqs/places/  # places step and rank_score
+pipeline/src/maqs/curvature/ # curvature score, corners, curvature step
 .github/workflows/         # pipeline.yml (pipeline lint, tests and test-region smoke build), build-maps.yml (data) and swift.yml (package)
 .cache/                    # downloaded inputs (gitignored, idempotent reuse)
 dist/<region>/             # build outputs (gitignored; Releases only, never git)
@@ -106,9 +112,9 @@ xcodebuild -scheme Maqs -destination 'platform=iOS Simulator,name=iPhone 17' bui
 # Pipeline
 pipeline/bootstrap.sh                                      # install pinned CLIs (macOS / Ubuntu)
 uv run maqs build --region test                            # end-to-end in < 5 min; the pipeline's "done" bar
-uv run maqs build --region veneto --layers basemap,terrain # one real region, a subset of layers
+uv run maqs build --region veneto --layers basemap,terrain # one real region, a subset of layers (default: basemap,terrain,trails,places,curvature; terrain-hd is opt-in)
 uv run pytest                                              # pipeline unit tests (from pipeline/)
-uv run pytest --run-network                                # plus the live test-region build (CI's smoke job runs it)
+uv run pytest --run-network                                # plus the live test-region build (CI's smoke job runs it); downloads the Geofabrik extract into .cache/ once
 uv run ruff check . && uv run ruff format --check .        # pipeline lint/format
 
 # Data release (the workflow does this; run by hand only to debug)
@@ -218,7 +224,10 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **"Decisions already made" are fixed, but their facts are not.** Every URL, license, version, size, and capability in the brief must be re-verified against the live source in Phase 0. If one is wrong, stop and report before building on it — do not quietly substitute.
 - **tiles.versatiles.org is a demo server.** No SLA, per-IP rate limit answered with 429 and no Retry-After, six-hour `Cache-Control`, no ETag (every revalidation is a full download), data refreshed roughly quarterly. Send an identifying User-Agent, never no-cache, back off on 429. The provider swap lives in `sources.json`, so an outage is a config change, not an app update.
 - **MapLibre reads PMTiles with gzip or no compression only.** VersaTiles writes brotli by default; every basemap extract passes `--compress gzip` or MapLibre throws "Compression method not supported".
-- **`osmium export` does not assemble route relations**, only multipolygons and boundaries; member ways come out with their own tags. Trail geometry is our pyosmium step. And 5–10 % of hiking relations cross region borders: read relations from the uncut nord-est file, not the clipped region PBF.
+- **`osmium export` does not assemble route relations**, only multipolygons and boundaries; member ways come out with their own tags. Trail geometry is our pyosmium step. And 5–10 % of hiking relations cross region borders: cut them per region from the `route=hiking` filter of the uncut extract with `osmium extract -s smart -S types=route`, never from the `complete_ways` region PBF.
+- **pyosmium fixture writers must emit nodes, then ways, then relations, each by ascending id**, or osmium rejects the file. `pipeline/tests/osm_fixtures.py` does it; reuse it.
+- **A `.poly` file holds several sections, and `osmium extract --polygon` takes exactly one file.** A clip of several admin relations (`triveneto`) is one `.poly` with one section per ring.
+- **`|` is a character of the encoded-polyline alphabet** (codes 63–126), so it can never separate polylines in text. Trail legs are joined by `;`.
 - **PMTiles sources cannot use MapLibre offline packs** (an ambient cache for remote PMTiles exists since 6.27, irrelevant to us). Offline is our PMTiles files plus bundled glyphs and sprite; a style that references remote glyphs or sprites breaks offline silently (labels disappear).
 - **`releases/latest/download/<asset>` resolves "latest" by GitHub's rules** (most recent non-draft, non-prerelease by creation date). Re-running a month must update the existing release's assets, not create a second release with the same tag or a prerelease; verify the behaviour and record it in Phase 3's ADR.
 - **GitHub Release assets are capped at 2 GiB**; we enforce 1.9 GiB. A region that exceeds it needs a split or a lower max zoom — decided by ADR, never by raising the limit.
