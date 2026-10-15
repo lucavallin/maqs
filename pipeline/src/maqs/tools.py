@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shlex
 import shutil
 import subprocess
 from collections.abc import Iterable, Sequence
@@ -55,14 +56,17 @@ def run(
 ) -> subprocess.CompletedProcess[str]:
     """Run a command without a shell; raise ToolError on non-zero exit."""
     command = [str(a) for a in argv]
-    log.info("run: %s", " ".join(command))
-    result = subprocess.run(
-        command,
-        cwd=str(cwd) if cwd else None,
-        capture_output=capture,
-        text=True,
-        check=False,
-    )
+    log.info("run: %s", shlex.join(command))
+    try:
+        result = subprocess.run(
+            command,
+            cwd=str(cwd) if cwd else None,
+            capture_output=capture,
+            text=True,
+            check=False,
+        )
+    except OSError as exc:
+        raise ToolError(command, -1, str(exc)) from exc
     if result.returncode != 0:
         tail = (result.stderr or "")[-4000:]
         raise ToolError(command, result.returncode, tail)
@@ -70,7 +74,7 @@ def run(
 
 
 def parse_version(name: str, output: str) -> str | None:
-    if name == "pmtiles" and output.startswith("pmtiles dev"):
+    if name == "pmtiles" and output.strip().startswith("pmtiles dev"):
         return "dev"
     match = _VERSION_RE.search(output.splitlines()[0] if output else "")
     return match.group(1) if match else None

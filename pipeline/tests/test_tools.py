@@ -72,3 +72,46 @@ def test_check_tools_reports_missing(monkeypatch):
     monkeypatch.setattr(tools, "find_tool", missing)
     (status,) = check_tools(["versatiles"])
     assert status.ok is False and status.found is None and "not found" in status.note
+
+
+def test_run_wraps_a_missing_binary_in_tool_error(tmp_path):
+    missing = tmp_path / "no-such-tool"
+    with pytest.raises(ToolError) as exc:
+        run([missing, "--version"])
+    assert exc.value.returncode == -1
+    assert exc.value.argv == [str(missing), "--version"]
+    assert "No such file" in exc.value.stderr_tail
+
+
+def test_run_wraps_a_bad_cwd_in_tool_error(tmp_path):
+    with pytest.raises(ToolError) as exc:
+        run([sys.executable, "-c", "pass"], cwd=tmp_path / "nope")
+    assert exc.value.returncode == -1
+
+
+def _fake_run(stdout="", stderr="", error=None):
+    def fake(argv, **kwargs):
+        if error:
+            raise error
+        return subprocess.CompletedProcess(argv, 0, stdout, stderr)
+
+    return fake
+
+
+def test_tool_version_reads_stdout(monkeypatch):
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path("/fake/versatiles"))
+    monkeypatch.setattr(tools, "run", _fake_run(stdout="versatiles 5.0.0\n"))
+    assert tools.tool_version("versatiles") == "5.0.0"
+
+
+def test_tool_version_falls_back_to_stderr_on_success(monkeypatch):
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path("/fake/tippecanoe"))
+    monkeypatch.setattr(tools, "run", _fake_run(stderr="tippecanoe v2.79.0\n"))
+    assert tools.tool_version("tippecanoe") == "2.79.0"
+
+
+def test_tool_version_parses_stderr_of_a_failing_version_command(monkeypatch):
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path("/fake/tippecanoe"))
+    error = ToolError(["tippecanoe", "--version"], 1, "tippecanoe v2.79.0\n")
+    monkeypatch.setattr(tools, "run", _fake_run(error=error))
+    assert tools.tool_version("tippecanoe") == "2.79.0"
