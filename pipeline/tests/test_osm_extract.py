@@ -246,6 +246,27 @@ def test_region_hiking_pbf_uses_smart_strategy(cfg, tmp_path, osmium_bin, no_dow
     assert [c[1] for c in calls[2:]] == ["tags-filter", "extract"]
 
 
+def test_filtered_region_pbf_filters_the_region_cut_once(
+    test_region, osmium_bin, no_download, monkeypatch
+):
+    calls = record_runs(monkeypatch)
+    seed_geofabrik(test_region)
+    roads = ["w/highway=primary,secondary"]
+    out = extract.filtered_region_pbf(test_region, "roads", roads)
+    region = test_region.cache / "test" / "region.osm.pbf"
+    assert out == test_region.cache / "test" / "roads.osm.pbf"
+    assert [c[1] for c in calls] == ["extract", "tags-filter"]
+    assert calls[-1] == [
+        *["/usr/bin/osmium", "tags-filter", str(region), *roads],
+        *["-o", str(out), "--overwrite"],
+    ]
+    assert extract.filtered_region_pbf(test_region, "roads", roads) == out
+    assert len(calls) == 2  # reused
+    test_region.force = True
+    extract.filtered_region_pbf(test_region, "roads", roads)
+    assert [c[1] for c in calls[2:]] == ["extract", "tags-filter"]
+
+
 def test_osm_timestamp(osmium_bin, monkeypatch):
     def reply(stdout):
         return lambda argv, **kw: subprocess.CompletedProcess(argv, 0, stdout, "")

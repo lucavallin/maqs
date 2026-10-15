@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import UTC, datetime
 from pathlib import Path
 
 from maqs.context import BuildContext
@@ -12,8 +11,9 @@ from maqs.osm import extract
 from maqs.osm.terrain_sampler import TerrainSampler, ascent_descent
 from maqs.overlay import build_overlay
 from maqs.pmtiles_header import PMTilesError
-from maqs.sqlite_out import COUNT_TABLES, TABLES, Metadata, write_sqlite
+from maqs.sqlite_out import COUNT_TABLES, TABLES, write_sqlite
 from maqs.steps.base import Anomaly, StepOutcome
+from maqs.steps.data import metadata_for
 from maqs.trails.merge import merge
 from maqs.trails.model import TrailRecord
 from maqs.trails.sources.osm import read_osm_trails
@@ -117,11 +117,11 @@ class TrailsStep:
         region = ctx.require_region()
         anomalies: list[Anomaly] = []
         hiking = extract.region_hiking_pbf(ctx)
-        timestamp = extract.osm_timestamp(extract.geofabrik_pbf(ctx))
+        meta = metadata_for(ctx, "trails")
         per_source: list[tuple[str, list[TrailRecord]]] = []
         for source in region.trail_sources:
             if source == "osm":
-                per_source.append(("osm", read_osm_trails(hiking, source_date=timestamp)))
+                per_source.append(("osm", read_osm_trails(hiking, source_date=meta.osm_timestamp)))
         records = merge(per_source)
         terrain = ctx.out_dir / f"{ctx.label}-terrain.pmtiles"
         sampler: TerrainSampler | None = None
@@ -162,7 +162,6 @@ class TrailsStep:
                         (trail_id, lon_min, lon_max, lat_min, lat_max),
                     )
 
-        meta = Metadata("trails", region.id, datetime.now(UTC).strftime("%Y-%m-%d"), timestamp)
         write_sqlite(sqlite_path, "trails", meta, fill)
         features = (trail_feature(r, i) for i, r in primaries if r.legs)
         argv = build_overlay(features, overlay_path, "trails", TRAILS_MIN_ZOOM, TRAILS_MAX_ZOOM)

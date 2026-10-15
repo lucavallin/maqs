@@ -1,12 +1,7 @@
 import dataclasses
-import json
-import subprocess
-from pathlib import Path
 
 import pytest
 
-from maqs import tools
-from maqs.config import load_config
 from maqs.context import BuildContext
 from maqs.geometry import decode_polyline
 from maqs.osm import extract
@@ -17,9 +12,9 @@ from maqs.trails.step import TrailsStep
 from maqs.validate import SqliteExpectation
 from tests.helpers import write_pmtiles
 from tests.osm_fixtures import write_osm
+from tests.step_fixtures import stub_tippecanoe
 from tests.test_terrain_sampler import terrarium_tile
 
-REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
 P = {
     1: (12.250, 46.100),
     2: (12.251, 46.101),
@@ -27,18 +22,6 @@ P = {
     4: (12.253, 46.103),
     5: (12.260, 46.110),
 }
-
-
-@pytest.fixture
-def ctx(tmp_path):
-    cfg = load_config(REAL)
-    return BuildContext(
-        config=cfg,
-        dist=tmp_path / "dist",
-        cache=tmp_path / ".cache",
-        force=False,
-        region=cfg.region("test"),
-    )
 
 
 @pytest.fixture
@@ -71,22 +54,7 @@ def stubs(ctx, hiking, monkeypatch):
     monkeypatch.setattr(extract, "region_hiking_pbf", lambda c: hiking)
     monkeypatch.setattr(extract, "geofabrik_pbf", lambda c: hiking)
     monkeypatch.setattr(extract, "osm_timestamp", lambda p: "2026-10-06T20:21:06Z")
-    monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/usr/bin/{name}"))
-    calls = {}
-
-    def fake_run(argv, **kw):
-        argv = [str(a) for a in argv]
-        calls["argv"] = argv
-        src = Path(argv[-1])
-        calls["features"] = [
-            json.loads(line) for line in src.read_text().splitlines() if line.strip()
-        ]
-        out = Path(argv[argv.index("-o") + 1])
-        write_pmtiles(out, tile_type=1, min_zoom=6, max_zoom=14)
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    monkeypatch.setattr(tools, "run", fake_run)
-    return calls
+    return stub_tippecanoe(monkeypatch, min_zoom=6, max_zoom=14)
 
 
 def test_outputs_and_expectations(ctx):

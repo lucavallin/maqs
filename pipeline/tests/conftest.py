@@ -1,6 +1,10 @@
 import urllib.request
+from pathlib import Path
 
 import pytest
+
+from maqs.context import BuildContext
+from tests.step_fixtures import region_ctx
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -31,3 +35,9 @@ def _no_network_in_unit_tests(request: pytest.FixtureRequest, monkeypatch: pytes
         raise RuntimeError("network disabled in unit tests")
 
     monkeypatch.setattr(urllib.request, "urlopen", refuse)
+
+
+@pytest.fixture
+def ctx(tmp_path: Path) -> BuildContext:
+    """The `test` region's build context, writing under tmp_path; a module may override it."""
+    return region_ctx(tmp_path)

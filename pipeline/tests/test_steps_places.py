@@ -1,14 +1,7 @@
-import json
-import subprocess
-from pathlib import Path
-
 import osmium
 import osmium.osm.mutable as mutable
 import pytest
 
-from maqs import tools
-from maqs.config import load_config
-from maqs.context import BuildContext
 from maqs.osm import extract
 from maqs.places.step import (
     PLACE_FILTERS,
@@ -20,9 +13,7 @@ from maqs.places.step import (
 )
 from maqs.sqlite_out import open_readonly
 from maqs.steps.base import run_step
-from tests.helpers import write_pmtiles
-
-REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
+from tests.step_fixtures import stub_tags_filter, stub_tippecanoe
 
 
 @pytest.mark.parametrize(
@@ -144,43 +135,13 @@ def test_read_places(tmp_path):
     assert (peak.lon, peak.lat) == (12.25, 46.10)
 
 
-@pytest.fixture
-def ctx(tmp_path):
-    cfg = load_config(REAL)
-    return BuildContext(
-        config=cfg,
-        dist=tmp_path / "dist",
-        cache=tmp_path / ".cache",
-        force=False,
-        region=cfg.region("test"),
-    )
-
-
 def test_build_writes_sqlite_and_overlay(ctx, tmp_path, monkeypatch):
     fixture = write_places(tmp_path)
     monkeypatch.setattr(extract, "region_pbf", lambda c: fixture)
     monkeypatch.setattr(extract, "geofabrik_pbf", lambda c: fixture)
     monkeypatch.setattr(extract, "osm_timestamp", lambda p: "2026-10-06T20:21:06Z")
-    filtered = {}
-
-    def fake_tags_filter(src, dst, expressions):
-        filtered["expressions"] = list(expressions)
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        dst.write_bytes(src.read_bytes())
-        return ["osmium", "tags-filter"]
-
-    monkeypatch.setattr(extract, "tags_filter", fake_tags_filter)
-    monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/usr/bin/{name}"))
-    captured = {}
-
-    def fake_run(argv, **kw):
-        argv = [str(a) for a in argv]
-        lines = Path(argv[-1]).read_text().splitlines()
-        captured["features"] = [json.loads(line) for line in lines if line.strip()]
-        write_pmtiles(Path(argv[argv.index("-o") + 1]), tile_type=1, min_zoom=8, max_zoom=14)
-        return subprocess.CompletedProcess(argv, 0, "", "")
-
-    monkeypatch.setattr(tools, "run", fake_run)
+    filtered = stub_tags_filter(monkeypatch)
+    captured = stub_tippecanoe(monkeypatch, min_zoom=8, max_zoom=14)
     result = run_step(PlacesStep(), ctx)
     assert result.status == "built", result.error
     assert filtered["expressions"] == list(PLACE_FILTERS)

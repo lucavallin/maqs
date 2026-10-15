@@ -6,7 +6,6 @@ import re
 import sqlite3
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 
 import osmium
@@ -14,8 +13,9 @@ import osmium
 from maqs.context import BuildContext
 from maqs.osm import extract
 from maqs.overlay import build_overlay
-from maqs.sqlite_out import COUNT_TABLES, TABLES, Metadata, write_sqlite
+from maqs.sqlite_out import COUNT_TABLES, TABLES, write_sqlite
 from maqs.steps.base import Anomaly, StepOutcome
+from maqs.steps.data import metadata_for
 from maqs.validate import Expectation, SqliteExpectation
 
 PLACE_FILTERS: tuple[str, ...] = (
@@ -158,12 +158,8 @@ class PlacesStep:
         return Expectation(PLACES_MIN_ZOOM, PLACES_MAX_ZOOM, frozenset({"mvt"}))
 
     def build(self, ctx: BuildContext) -> StepOutcome:
-        region = ctx.require_region()
-        source = extract.region_pbf(ctx)
-        filtered = ctx.cache / region.id / "places.osm.pbf"
-        if not filtered.exists() or ctx.force:
-            extract.tags_filter(source, filtered, PLACE_FILTERS)
-        timestamp = extract.osm_timestamp(extract.geofabrik_pbf(ctx))
+        filtered = extract.filtered_region_pbf(ctx, "places", PLACE_FILTERS)
+        meta = metadata_for(ctx, "places")
         records = read_places(filtered)
         anomalies = [a for r in records for a in r.anomalies]
         sqlite_path, overlay_path = self.outputs(ctx)
@@ -193,7 +189,6 @@ class PlacesStep:
                     (place_id, r.lon, r.lon, r.lat, r.lat),
                 )
 
-        meta = Metadata("places", region.id, datetime.now(UTC).strftime("%Y-%m-%d"), timestamp)
         write_sqlite(sqlite_path, "places", meta, fill)
         features = (place_feature(r, i + 1) for i, r in enumerate(records))
         argv = build_overlay(features, overlay_path, "places", PLACES_MIN_ZOOM, PLACES_MAX_ZOOM)

@@ -179,6 +179,18 @@ def region_hiking_pbf(ctx: BuildContext) -> Path:
     return dst
 
 
+def filtered_region_pbf(ctx: BuildContext, name: str, expressions: Sequence[str]) -> Path:
+    """The region cut narrowed by `osmium tags-filter`, cached as `<cache>/<region>/<name>.osm.pbf`.
+
+    The cache key is the name alone: after changing the expressions, rebuild with --force.
+    """
+    dst = ctx.cache / ctx.require_region().id / f"{name}.osm.pbf"
+    if dst.exists() and not ctx.force:
+        return dst
+    tags_filter(region_pbf(ctx), dst, expressions)
+    return dst
+
+
 def osm_timestamp(pbf: Path) -> str | None:
     header = "header.option.osmosis_replication_timestamp"
     result = tools.run([_osmium(), "fileinfo", "-g", header, str(pbf)])
