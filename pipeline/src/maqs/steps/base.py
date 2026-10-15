@@ -10,9 +10,33 @@ from typing import Literal, Protocol
 
 from maqs.context import BuildContext
 from maqs.tools import ToolError, ToolMissing
-from maqs.validate import Expectation, OutputInfo, ValidationError, validate_output
+from maqs.validate import (
+    Expectation,
+    OutputInfo,
+    SqliteExpectation,
+    ValidationError,
+    validate_output,
+)
 
 log = logging.getLogger("maqs.steps")
+
+
+MAX_REPORTED_ANOMALIES = 1000
+
+
+@dataclass(frozen=True)
+class Anomaly:
+    """A data problem (broken relation, missing tag) the build records and carries on past."""
+
+    kind: str
+    id: str
+    message: str
+
+
+@dataclass
+class StepOutcome:
+    command: list[str] = field(default_factory=list)
+    anomalies: list[Anomaly] = field(default_factory=list)
 
 
 class Step(Protocol):
@@ -20,9 +44,9 @@ class Step(Protocol):
 
     def outputs(self, ctx: BuildContext) -> list[Path]: ...
 
-    def expectation(self, ctx: BuildContext) -> Expectation: ...
+    def expectation(self, ctx: BuildContext, output: Path) -> Expectation | SqliteExpectation: ...
 
-    def build(self, ctx: BuildContext) -> list[str]: ...
+    def build(self, ctx: BuildContext) -> StepOutcome: ...
 
 
 @dataclass
@@ -33,12 +57,29 @@ class StepResult:
     command: list[str] = field(default_factory=list)
     outputs: list[OutputInfo] = field(default_factory=list)
     error: str | None = None
+    anomalies: list[Anomaly] = field(default_factory=list)
+    anomaly_count: int = 0
 
 
 def _failed(
-    step: Step, started: float, command: list[str], outputs: list[OutputInfo], error: str
+    step: Step,
+    started: float,
+    command: list[str],
+    outputs: list[OutputInfo],
+    error: str,
+    anomalies: list[Anomaly] | None = None,
+    anomaly_count: int = 0,
 ) -> StepResult:
-    return StepResult(step.name, "failed", time.monotonic() - started, command, outputs, error)
+    return StepResult(
+        step.name,
+        "failed",
+        time.monotonic() - started,
+        command,
+        outputs,
+        error,
+        anomalies or [],
+        anomaly_count,
+    )
 
 
 def run_step(step: Step, ctx: BuildContext) -> StepResult:
@@ -50,6 +91,8 @@ def run_step(step: Step, ctx: BuildContext) -> StepResult:
     started = time.monotonic()
     outputs = step.outputs(ctx)
     command: list[str] = []
+    anomalies: list[Anomaly] = []
+    anomaly_count = 0
     status: Literal["built", "skipped"]
     if all(p.exists() for p in outputs) and not ctx.force:
         log.info("%s: skipped: outputs present", step.name)
@@ -57,19 +100,29 @@ def run_step(step: Step, ctx: BuildContext) -> StepResult:
     else:
         try:
             ctx.out_dir.mkdir(parents=True, exist_ok=True)
-            command = step.build(ctx)
+            outcome = step.build(ctx)
         except (ToolError, ToolMissing, OSError) as exc:
             log.error("%s: %s", step.name, exc)
             argv = list(exc.argv) if isinstance(exc, ToolError) else []
             return _failed(step, started, argv, [], str(exc))
+        command = outcome.command
+        anomalies = outcome.anomalies[:MAX_REPORTED_ANOMALIES]
+        anomaly_count = len(outcome.anomalies)
         status = "built"
     infos: list[OutputInfo] = []
-    expect = step.expectation(ctx)
     for path in outputs:
         try:
-            infos.append(validate_output(path, expect))
+            infos.append(validate_output(path, step.expectation(ctx, path)))
         except (ValidationError, OSError) as exc:
             hint = " Rerun with --force to rebuild it." if status == "skipped" else ""
             log.error("%s: validation failed: %s", step.name, exc)
-            return _failed(step, started, command, infos, f"{exc}{hint}")
-    return StepResult(step.name, status, time.monotonic() - started, command, infos)
+            return _failed(step, started, command, infos, f"{exc}{hint}", anomalies, anomaly_count)
+    return StepResult(
+        step.name,
+        status,
+        time.monotonic() - started,
+        command,
+        infos,
+        anomalies=anomalies,
+        anomaly_count=anomaly_count,
+    )

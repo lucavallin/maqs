@@ -2,7 +2,7 @@ import json
 from datetime import UTC, datetime
 
 from maqs.report import REPORT_VERSION, build_report, report_path, write_report
-from maqs.steps.base import StepResult
+from maqs.steps.base import Anomaly, StepResult
 from maqs.validate import OutputInfo
 
 
@@ -60,3 +60,32 @@ def test_write_report_is_json_and_atomic(tmp_path):
     write_report(path, {"a": 1})
     assert json.loads(path.read_text()) == {"a": 1}
     assert not (tmp_path / "build-report.json.tmp").exists()
+
+
+def test_report_carries_rows_and_anomalies():
+    sqlite_info = OutputInfo(
+        file="test-trails.sqlite",
+        bytes=10,
+        sha256="ab" * 32,
+        tile_type=None,
+        min_zoom=None,
+        max_zoom=None,
+        tiles=None,
+        compression=None,
+        attribution="© OSM",
+        source_data_date="2026-10-06T20:21:06Z",
+        source=None,
+        metadata={},
+        rows={"trails": 3},
+    )
+    anomalies = [Anomaly("gap", "relation/1", "gap of 12 m")]
+    result = StepResult(
+        "trails", "built", 1.0, ["osmium"], [sqlite_info], anomalies=anomalies, anomaly_count=1
+    )
+    step = build_report("test", [result], {})["steps"][0]
+    assert step["outputs"][0]["rows"] == {"trails": 3} and step["outputs"][0]["tile_type"] is None
+    assert step["anomalies"] == [{"kind": "gap", "id": "relation/1", "message": "gap of 12 m"}]
+    assert step["anomaly_count"] == 1
+    tile = build_report("test", [StepResult("basemap", "built", 1.0, [], [info()])], {})
+    assert "rows" not in tile["steps"][0]["outputs"][0]
+    assert tile["steps"][0]["anomalies"] == [] and tile["steps"][0]["anomaly_count"] == 0

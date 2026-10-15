@@ -63,7 +63,7 @@ def test_basemap_argv_and_outputs(veneto, versatiles_bin):
         tiles.OSM_SOURCE,
         str(veneto.dist / "veneto" / "veneto-basemap.pmtiles"),
     ]
-    e = step.expectation(veneto)
+    e = step.expectation(veneto, step.outputs(veneto)[0])
     assert (e.min_zoom, e.max_zoom) == (0, 14) and e.tile_types == frozenset({"mvt"})
     assert e.source == tiles.OSM_SOURCE
 
@@ -83,7 +83,7 @@ def test_terrain_argv_and_outputs(veneto, versatiles_bin):
         tiles.ELEVATION_SOURCE,
         str(veneto.dist / "veneto" / "veneto-terrain.pmtiles"),
     ]
-    e = step.expectation(veneto)
+    e = step.expectation(veneto, step.outputs(veneto)[0])
     assert (e.min_zoom, e.max_zoom) == (0, 12) and e.tile_types == frozenset({"webp", "png"})
     assert e.source == tiles.ELEVATION_SOURCE
 
@@ -129,7 +129,7 @@ def test_base_pack_argv_outputs_and_cap(cfg, tmp_path, versatiles_bin):
         tiles.OSM_SOURCE,
         str(tmp_path / "base" / "base-triveneto-basemap.pmtiles"),
     ]
-    e = step.expectation(ctx)
+    e = step.expectation(ctx, step.outputs(ctx)[0])
     assert (e.min_zoom, e.max_zoom) == (0, 10) and e.size_cap == 15_000_000
     assert e.tile_types == frozenset({"mvt"}) and e.source == tiles.OSM_SOURCE
 
@@ -138,5 +138,5 @@ def test_build_runs_the_argv(veneto, versatiles_bin, monkeypatch):
     ran = []
     monkeypatch.setattr(tools, "run", lambda argv, **kw: ran.append([str(a) for a in argv]))
     step = BasemapStep()
-    assert step.build(veneto) == step.argv(veneto)
+    assert step.build(veneto).command == step.argv(veneto)
     assert ran == [step.argv(veneto)]

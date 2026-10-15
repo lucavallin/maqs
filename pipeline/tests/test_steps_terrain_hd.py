@@ -55,7 +55,7 @@ def ctx(tmp_path):
 def test_outputs_and_expectation(ctx):
     step = TerrainHDStep()
     assert step.outputs(ctx) == [ctx.dist / "veneto" / "veneto-terrain-hd.pmtiles"]
-    e = step.expectation(ctx)
+    e = step.expectation(ctx, step.outputs(ctx)[0])
     assert (e.min_zoom, e.max_zoom) == (13, 13) and e.source == MAPTERHORN_BASE
 
 
@@ -83,7 +83,7 @@ def test_build_extracts_non_empty_archives_and_merges(ctx, monkeypatch):
     monkeypatch.setattr(tools, "run", fake_run)
     step = TerrainHDStep()
     ctx.out_dir.mkdir(parents=True)
-    command = step.build(ctx)
+    command = step.build(ctx).command
     extracts = [c for c in calls if c[1] == "extract" and "--dry-run" not in c]
     assert [c[2] for c in extracts] == [archive_url(33, 22), archive_url(34, 22)]
     assert all(
@@ -116,7 +116,7 @@ def test_build_with_a_single_archive_skips_merge(tmp_path, monkeypatch):
 
     monkeypatch.setattr(tools, "run", fake_run)
     ctx.out_dir.mkdir(parents=True)
-    command = TerrainHDStep().build(ctx)
+    command = TerrainHDStep().build(ctx).command
     assert command[1] == "extract" and TerrainHDStep().outputs(ctx)[0].read_bytes() == b"part"
 
 
@@ -163,7 +163,7 @@ def test_single_later_archive_names_that_archive(ctx, monkeypatch):
     monkeypatch.setattr(tools, "run", _runner(calls, ["6-34-23"]))
     ctx.out_dir.mkdir(parents=True)
     step = TerrainHDStep()
-    command = step.build(ctx)
+    command = step.build(ctx).command
     assert command[2] == archive_url(34, 23) and command[3] == str(step.outputs(ctx)[0])
     assert step.outputs(ctx)[0].read_bytes() == b"part"
     real = [c for c in calls if c[1] == "extract" and "--dry-run" not in c]

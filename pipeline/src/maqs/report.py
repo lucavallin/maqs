@@ -30,6 +30,8 @@ def build_report(
         for o in r.outputs:
             d = asdict(o)
             d.pop("metadata")
+            if d["rows"] is None:
+                d.pop("rows")
             outputs.append(d)
         step = {
             "name": r.name,
@@ -37,6 +39,8 @@ def build_report(
             "seconds": round(r.seconds, 3),
             "command": r.command,
             "outputs": outputs,
+            "anomalies": [asdict(a) for a in r.anomalies],
+            "anomaly_count": r.anomaly_count,
         }
         if r.error:
             step["error"] = r.error

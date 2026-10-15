@@ -11,6 +11,7 @@ from pathlib import Path
 from maqs import tools
 from maqs.config import BasePack, Bbox, Region
 from maqs.context import BuildContext
+from maqs.steps.base import StepOutcome
 from maqs.validate import BASE_PACK_CAP, Expectation
 
 OSM_SOURCE = "https://download.versatiles.org/osm-landcover.versatiles"
@@ -38,10 +39,10 @@ class _VersatilesStep:
     def argv(self, ctx: BuildContext) -> list[str]:
         raise NotImplementedError
 
-    def build(self, ctx: BuildContext) -> list[str]:
+    def build(self, ctx: BuildContext) -> StepOutcome:
         argv = self.argv(ctx)
         tools.run(argv)
-        return argv
+        return StepOutcome(argv)
 
 
 class BasemapStep(_VersatilesStep):
@@ -62,7 +63,7 @@ class BasemapStep(_VersatilesStep):
             str(self.outputs(ctx)[0]),
         ]
 
-    def expectation(self, ctx: BuildContext) -> Expectation:
+    def expectation(self, ctx: BuildContext, output: Path) -> Expectation:
         return Expectation(0, BASEMAP_MAX_ZOOM, frozenset({"mvt"}), source=OSM_SOURCE)
 
 
@@ -84,7 +85,7 @@ class TerrainStep(_VersatilesStep):
             str(self.outputs(ctx)[0]),
         ]
 
-    def expectation(self, ctx: BuildContext) -> Expectation:
+    def expectation(self, ctx: BuildContext, output: Path) -> Expectation:
         return Expectation(0, TERRAIN_MAX_ZOOM, frozenset({"webp", "png"}), source=ELEVATION_SOURCE)
 
 
@@ -115,7 +116,7 @@ class BasePackStep(_VersatilesStep):
             str(self.outputs(ctx)[0]),
         ]
 
-    def expectation(self, ctx: BuildContext) -> Expectation:
+    def expectation(self, ctx: BuildContext, output: Path) -> Expectation:
         return Expectation(
             0, self.pack.max_zoom, frozenset({"mvt"}), size_cap=BASE_PACK_CAP, source=OSM_SOURCE
         )

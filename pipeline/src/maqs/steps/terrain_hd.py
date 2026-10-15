@@ -14,6 +14,7 @@ from pathlib import Path
 from maqs import tools
 from maqs.config import Bbox
 from maqs.context import BuildContext
+from maqs.steps.base import StepOutcome
 from maqs.steps.tiles import format_bbox
 from maqs.tools import ToolError
 from maqs.validate import Expectation
@@ -60,7 +61,7 @@ class TerrainHDStep:
         assert ctx.region is not None
         return ctx.region.hd_max_zoom or ctx.config.hd_max_zoom
 
-    def expectation(self, ctx: BuildContext) -> Expectation:
+    def expectation(self, ctx: BuildContext, output: Path) -> Expectation:
         return Expectation(
             HD_MIN_ZOOM, self.max_zoom(ctx), frozenset({"webp", "png"}), source=MAPTERHORN_BASE
         )
@@ -79,7 +80,7 @@ class TerrainHDStep:
         ]
         return [*argv, "--dry-run"] if dry_run else argv
 
-    def build(self, ctx: BuildContext) -> list[str]:
+    def build(self, ctx: BuildContext) -> StepOutcome:
         assert ctx.region is not None
         bbox, max_zoom = ctx.region.bbox, self.max_zoom(ctx)
         out = self.outputs(ctx)[0]
@@ -111,7 +112,7 @@ class TerrainHDStep:
             if len(parts) == 1:
                 url, part = parts[0]
                 part.replace(out)
-                return self._extract_argv(url, out, bbox, max_zoom, dry_run=False)
+                return StepOutcome(self._extract_argv(url, out, bbox, max_zoom, dry_run=False))
             argv = [
                 str(tools.find_tool("pmtiles")),
                 "merge",
@@ -120,7 +121,7 @@ class TerrainHDStep:
             ]
             tools.run(argv)
             merged.replace(out)
-            return argv
+            return StepOutcome(argv)
         finally:
             for _, part in parts:
                 part.unlink(missing_ok=True)

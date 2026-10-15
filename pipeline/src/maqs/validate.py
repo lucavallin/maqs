@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+import logging
+import sqlite3
+from dataclasses import dataclass, field
 from pathlib import Path
 
+from maqs.config import RowRange
 from maqs.pmtiles_header import PMTilesError, read_header, read_metadata
+from maqs.sqlite_out import open_readonly, table_names
+
+log = logging.getLogger("maqs.validate")
 
 SIZE_CAP = int(1.9 * 2**30)
 BASE_PACK_CAP = 15_000_000
@@ -29,19 +35,30 @@ class Expectation:
 
 
 @dataclass(frozen=True)
+class SqliteExpectation:
+    layer: str
+    region: str
+    tables: frozenset[str]
+    count_tables: tuple[str, ...]
+    row_ranges: dict[str, RowRange] = field(default_factory=dict)
+    size_cap: int = SIZE_CAP
+
+
+@dataclass(frozen=True)
 class OutputInfo:
     file: str
     bytes: int
     sha256: str
-    tile_type: str
-    min_zoom: int
-    max_zoom: int
-    tiles: int
-    compression: str
+    tile_type: str | None
+    min_zoom: int | None
+    max_zoom: int | None
+    tiles: int | None
+    compression: str | None
     attribution: str | None
     source_data_date: str | None
     source: str | None
     metadata: dict
+    rows: dict[str, int] | None = None
 
 
 def sha256(path: Path) -> str:
@@ -52,7 +69,7 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def validate_output(path: Path, expect: Expectation) -> OutputInfo:
+def validate_pmtiles(path: Path, expect: Expectation) -> OutputInfo:
     failures: list[str] = []
     size = path.stat().st_size
     if size >= expect.size_cap:
@@ -103,3 +120,73 @@ def validate_output(path: Path, expect: Expectation) -> OutputInfo:
         source=expect.source,
         metadata=metadata,
     )
+
+
+def validate_sqlite(path: Path, expect: SqliteExpectation) -> OutputInfo:
+    failures: list[str] = []
+    size = path.stat().st_size
+    if size >= expect.size_cap:
+        failures.append(f"{size} bytes exceeds the size cap of {expect.size_cap}")
+    try:
+        conn = open_readonly(path)
+    except sqlite3.Error as exc:
+        raise ValidationError(f"{path.name}: cannot open: {exc}") from exc
+    try:
+        try:
+            check = conn.execute("PRAGMA integrity_check").fetchone()
+        except sqlite3.DatabaseError as exc:
+            raise ValidationError(f"{path.name}: {exc}") from exc
+        if check != ("ok",):
+            raise ValidationError(f"{path.name}: integrity check failed: {check}")
+        missing = sorted(expect.tables - table_names(conn))
+        if missing:
+            raise ValidationError(f"{path.name}: missing tables: {', '.join(missing)}")
+        meta = conn.execute(
+            "SELECT schema_version, layer, region, osm_timestamp, attribution FROM metadata"
+        ).fetchall()
+        if len(meta) != 1:
+            failures.append(f"metadata has {len(meta)} rows, expected 1")
+            osm_timestamp, attribution = None, None
+        else:
+            schema_version, layer, region, osm_timestamp, attribution = meta[0]
+            if layer != expect.layer:
+                failures.append(f"metadata layer {layer!r}, expected {expect.layer!r}")
+            if region != expect.region:
+                failures.append(f"metadata region {region!r}, expected {expect.region!r}")
+            if not isinstance(schema_version, int):
+                failures.append(f"metadata schema_version {schema_version!r} is not an integer")
+        rows: dict[str, int] = {}
+        for table in expect.count_tables:
+            rows[table] = conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            wanted = expect.row_ranges.get(table)
+            if wanted is not None and not (wanted.min <= rows[table] <= wanted.max):
+                failures.append(
+                    f"{table} has {rows[table]} rows, expected {wanted.min}..{wanted.max}"
+                )
+            elif wanted is None and rows[table] == 0:
+                log.warning("%s: %s has zero rows", path.name, table)
+    finally:
+        conn.close()
+    if failures:
+        raise ValidationError(f"{path.name}: " + "; ".join(failures))
+    return OutputInfo(
+        file=path.name,
+        bytes=size,
+        sha256=sha256(path),
+        tile_type=None,
+        min_zoom=None,
+        max_zoom=None,
+        tiles=None,
+        compression=None,
+        attribution=attribution,
+        source_data_date=osm_timestamp,
+        source=None,
+        metadata={},
+        rows=rows,
+    )
+
+
+def validate_output(path: Path, expect: Expectation | SqliteExpectation) -> OutputInfo:
+    if isinstance(expect, SqliteExpectation):
+        return validate_sqlite(path, expect)
+    return validate_pmtiles(path, expect)

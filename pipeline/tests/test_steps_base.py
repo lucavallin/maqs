@@ -2,11 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from maqs.config import load_config
+from maqs.config import RowRange, load_config
 from maqs.context import BuildContext
-from maqs.steps.base import run_step
+from maqs.sqlite_out import COUNT_TABLES, TABLES, Metadata, write_sqlite
+from maqs.steps.base import Anomaly, StepOutcome, run_step
 from maqs.tools import ToolError, ToolMissing
-from maqs.validate import Expectation
+from maqs.validate import Expectation, SqliteExpectation
 from tests.helpers import write_pmtiles
 
 REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
@@ -15,16 +16,17 @@ REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
 class FakeStep:
     name = "fake"
 
-    def __init__(self, fail=False, raises=None, writes=True):
+    def __init__(self, fail=False, raises=None, writes=True, anomalies=None):
         self.calls = 0
         self.fail = fail
         self.raises = raises
         self.writes = writes
+        self.anomalies = anomalies or []
 
     def outputs(self, ctx):
         return [ctx.out_dir / f"{ctx.label}-fake.pmtiles"]
 
-    def expectation(self, ctx):
+    def expectation(self, ctx, output):
         return Expectation(0, 14, frozenset({"mvt"}))
 
     def build(self, ctx):
@@ -35,7 +37,7 @@ class FakeStep:
             raise self.raises
         if self.writes:
             write_pmtiles(self.outputs(ctx)[0], max_zoom=14)
-        return ["versatiles", "convert", "x"]
+        return StepOutcome(["versatiles", "convert", "x"], list(self.anomalies))
 
 
 @pytest.fixture
@@ -112,6 +114,63 @@ def test_build_that_writes_nothing_fails_validation(ctx):
 def test_unexpected_errors_still_propagate(ctx):
     with pytest.raises(KeyError):
         run_step(FakeStep(raises=KeyError("bug")), ctx)
+
+
+def test_anomalies_are_kept_and_capped(ctx):
+    found = [Anomaly("gap", f"relation/{i}", "gap of 12 m") for i in range(1200)]
+    result = run_step(FakeStep(anomalies=found), ctx)
+    assert result.status == "built" and result.anomaly_count == 1200
+    assert len(result.anomalies) == 1000
+    assert result.anomalies[0] == Anomaly("gap", "relation/0", "gap of 12 m")
+
+
+def test_failed_validation_keeps_the_anomalies(ctx):
+    found = [Anomaly("gap", "relation/1", "gap of 12 m")]
+    result = run_step(FakeStep(writes=False, anomalies=found), ctx)
+    assert result.status == "failed" and result.anomalies == found and result.anomaly_count == 1
+
+
+def test_each_output_gets_its_own_expectation(ctx):
+    class TwoOutputs(FakeStep):
+        def outputs(self, ctx):
+            return [ctx.out_dir / "a.pmtiles", ctx.out_dir / "b.pmtiles"]
+
+        def expectation(self, ctx, output):
+            return Expectation(0, 14 if output.name == "a.pmtiles" else 12, frozenset({"mvt"}))
+
+        def build(self, ctx):
+            write_pmtiles(ctx.out_dir / "a.pmtiles", max_zoom=14)
+            write_pmtiles(ctx.out_dir / "b.pmtiles", max_zoom=12)
+            return StepOutcome(["x"])
+
+    result = run_step(TwoOutputs(), ctx)
+    assert result.status == "built" and [o.max_zoom for o in result.outputs] == [14, 12]
+
+
+def test_row_count_outside_expected_range_fails_and_keeps_the_file(ctx):
+    class SqliteStep(FakeStep):
+        def outputs(self, ctx):
+            return [ctx.out_dir / "test-trails.sqlite"]
+
+        def expectation(self, ctx, output):
+            return SqliteExpectation(
+                "trails",
+                "test",
+                TABLES["trails"],
+                COUNT_TABLES["trails"],
+                {"trails": RowRange(5, 10)},
+            )
+
+        def build(self, ctx):
+            meta = Metadata("trails", "test", "2026-10-15", None)
+            write_sqlite(self.outputs(ctx)[0], "trails", meta, lambda conn: None)
+            return StepOutcome(["x"])
+
+    step = SqliteStep()
+    result = run_step(step, ctx)
+    assert result.status == "failed"
+    assert "trails has 0 rows, expected 5..10" in result.error
+    assert step.outputs(ctx)[0].exists()
 
 
 def test_base_pack_context(tmp_path):
