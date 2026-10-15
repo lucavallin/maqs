@@ -172,7 +172,8 @@ def test_build_computes_ascent_from_the_terrain_archive(ctx, stubs):
     assert (
         ascent is not None and ascent > 0 and descent == 0.0
     )  # the trail runs east, uphill on this tile
-    assert "terrain_missing" not in {a.kind for a in result.anomalies}
+    kinds = {a.kind for a in result.anomalies}
+    assert not kinds & {"terrain_missing", "terrain_gap", "terrain_no_coverage"}
 
 
 def test_secondary_rows_point_at_their_winner(ctx, stubs):
@@ -213,3 +214,97 @@ def test_build_stores_null_ascent_when_no_sample_has_a_terrain_tile(ctx, stubs):
     assert [a.id for a in no_coverage] == ["relation/100", "relation/101"]
     assert "samples without a terrain tile" in no_coverage[0].message
     assert "terrain_missing" not in {a.kind for a in result.anomalies}
+
+
+EAST = (12.31, 46.11)  # z12 tile 2188/1455, which the fixture archive lacks
+
+
+def _terrain_archive(ctx):
+    ctx.out_dir.mkdir(parents=True, exist_ok=True)
+    tile = terrarium_tile(lambda px, py: 1000.0 + 2.0 * px)
+    write_pmtiles(
+        ctx.out_dir / "test-terrain.pmtiles",
+        tile_type=4,
+        min_zoom=0,
+        max_zoom=12,
+        tile_compression=1,
+        tile=tile,
+        tile_id=zxy_to_tile_id(12, 2187, 1455),
+    )
+
+
+def _use_pbf(monkeypatch, tmp_path, nodes, ways, relations):
+    pbf = write_osm(tmp_path / "other.osm.pbf", nodes, ways, relations)
+    monkeypatch.setattr(extract, "region_hiking_pbf", lambda c: pbf)
+
+
+def _route(ref):
+    return {"type": "route", "route": "hiking", "ref": ref}
+
+
+def _covered_values(ctx, stubs, monkeypatch, tmp_path):
+    """Ascent and descent of the trail confined to the covered tile (baseline for (b))."""
+    _use_pbf(
+        monkeypatch,
+        tmp_path,
+        {1: P[1], 2: P[2], 3: P[3]},
+        {10: ([1, 2, 3], {"highway": "path"})},
+        {100: ([("w", 10, "")], _route("1"))},
+    )
+    result = run_step(TrailsStep(), ctx)
+    assert result.status == "built", result.error
+    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    return conn.execute("SELECT ascent_m, descent_m FROM trails").fetchone()
+
+
+def test_partial_coverage_keeps_values_and_records_a_gap(ctx, stubs, monkeypatch, tmp_path):
+    _terrain_archive(ctx)
+    _use_pbf(
+        monkeypatch,
+        tmp_path,
+        {1: P[1], 5: P[5], 6: EAST},
+        {10: ([1, 5, 6], {"highway": "path"})},
+        {100: ([("w", 10, "")], _route("700"))},
+    )
+    result = run_step(TrailsStep(), ctx)
+    assert result.status == "built", result.error
+    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    ascent, descent = conn.execute("SELECT ascent_m, descent_m FROM trails").fetchone()
+    assert ascent is not None and ascent > 0 and descent is not None
+    gaps = [a for a in result.anomalies if a.kind == "terrain_gap"]
+    assert [a.id for a in gaps] == ["relation/100"]
+    assert "terrain_no_coverage" not in {a.kind for a in result.anomalies}
+
+
+def test_only_covered_legs_contribute_to_ascent(ctx, stubs, monkeypatch, tmp_path):
+    _terrain_archive(ctx)
+    expected = _covered_values(ctx, stubs, monkeypatch, tmp_path)
+    ctx.force = True
+    _use_pbf(
+        monkeypatch,
+        tmp_path,
+        {1: P[1], 2: P[2], 3: P[3], 7: EAST, 8: (12.312, 46.112)},
+        {10: ([1, 2, 3], {"highway": "path"}), 11: ([7, 8], {"highway": "path"})},
+        {100: ([("w", 10, ""), ("w", 11, "")], _route("1"))},
+    )
+    result = run_step(TrailsStep(), ctx)
+    assert result.status == "built", result.error
+    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    assert conn.execute("SELECT ascent_m, descent_m FROM trails").fetchone() == expected
+    assert len(stubs["features"][0]["geometry"]["coordinates"]) == 2  # two legs
+    assert [a.kind for a in result.anomalies if a.kind.startswith("terrain")] == ["terrain_gap"]
+
+
+def test_unreadable_terrain_archive_leaves_columns_null_and_the_build_going(ctx, stubs):
+    ctx.out_dir.mkdir(parents=True)
+    (ctx.out_dir / "test-terrain.pmtiles").write_bytes(b"x" * 17)
+    result = run_step(TrailsStep(), ctx)
+    assert result.status == "built", result.error
+    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    assert conn.execute("SELECT ascent_m, descent_m FROM trails").fetchall() == [
+        (None, None),
+        (None, None),
+    ]
+    unreadable = [a for a in result.anomalies if a.kind == "terrain_unreadable"]
+    assert len(unreadable) == 1 and unreadable[0].id == "test-terrain.pmtiles"
+    assert (ctx.out_dir / "test-trails.pmtiles").exists()

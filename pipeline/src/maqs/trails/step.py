@@ -11,6 +11,7 @@ from maqs.geometry import encode_polyline
 from maqs.osm import extract
 from maqs.osm.terrain_sampler import TerrainSampler, ascent_descent
 from maqs.overlay import build_overlay
+from maqs.pmtiles_header import PMTilesError
 from maqs.sqlite_out import COUNT_TABLES, TABLES, Metadata, write_sqlite
 from maqs.steps.base import Anomaly, StepOutcome
 from maqs.trails.merge import merge
@@ -123,14 +124,27 @@ class TrailsStep:
                 per_source.append(("osm", read_osm_trails(hiking, source_date=timestamp)))
         records = merge(per_source)
         terrain = ctx.out_dir / f"{ctx.label}-terrain.pmtiles"
-        sampler = TerrainSampler(terrain) if terrain.exists() else None
-        if sampler is None:
+        sampler: TerrainSampler | None = None
+        unreadable = False
+        if not terrain.exists():
             message = "no terrain archive in this build; ascent and descent are null"
             anomalies.append(Anomaly("terrain_missing", ctx.label, message))
+        else:
+            try:
+                sampler = TerrainSampler(terrain)
+            except PMTilesError as exc:
+                unreadable = True
+                anomalies.append(Anomaly("terrain_unreadable", terrain.name, str(exc)))
         for record in records:
             anomalies.extend(record.anomalies)
-            if sampler is not None and record.legs:
-                _add_elevation(record, sampler, anomalies)
+            if sampler is not None and not unreadable and record.legs:
+                try:
+                    _add_elevation(record, sampler, anomalies)
+                except PMTilesError as exc:
+                    # A broken archive is a data condition here; the terrain step fails it itself.
+                    unreadable = True
+                    record.ascent_m = record.descent_m = None
+                    anomalies.append(Anomaly("terrain_unreadable", terrain.name, str(exc)))
         sqlite_path, overlay_path = self.outputs(ctx)
         primaries = [(i + 1, r) for i, r in enumerate(records) if r.secondary_of is None]
 
