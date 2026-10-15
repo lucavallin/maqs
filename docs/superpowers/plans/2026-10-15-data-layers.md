@@ -417,7 +417,7 @@ curvature:
                      mud, earth, wood, pebblestone]
 ```
 
-and to the `veneto` region: `expect: { trails: [1500, 3000], places: [10000, 18000] }` (Phase 0: 1,955 relations, 13,408 place nodes). No `expect` on the other regions yet (Task 11 fills `test`; the others after their first build).
+and to the `veneto` region: `expect: { trails: [1500, 3000], places: [10000, 18000] }` (Phase 0: 1,955 relations, 13,408 place nodes). No `expect` on the other regions yet (Task 12 measures `test`; see the ledger ruling: `test` keeps no `expect`, the network test asserts its ranges; the others after their first build).
 
 In `config.py`:
 
@@ -711,7 +711,7 @@ def test_write_poly_from_geojson_features(tmp_path):
     assert extract.write_poly(features, path, "veneto") == 3
     text = path.read_text()
     assert text.startswith("veneto\n")
-    assert text.count("\nEND\n") == 4  # three sections + the file terminator
+    assert text.count("END\n") == 4  # three sections + the file terminator
     assert "!" in text.split("END")[1]  # second section is the inner ring
     assert "   12.2 46.0\n" in text and "   13.1 46.1\n" in text
 
@@ -820,7 +820,7 @@ class FetchError(OSError):
 
 
 def md5_of(path: Path) -> str:
-    digest = hashlib.md5()  # noqa: S324 - Geofabrik publishes md5, integrity only
+    digest = hashlib.md5()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(1 << 20), b""):
             digest.update(chunk)
@@ -1173,12 +1173,12 @@ def terrarium_tile(elevation_at) -> bytes:
 
 def test_terrarium_decode():
     assert terrarium_to_m(128, 0, 0) == 0.0
-    assert terrarium_to_m(132, 232, 128) == pytest.approx(1000.5)
+    assert terrarium_to_m(131, 232, 128) == pytest.approx(1000.5)
 
 
 def test_lonlat_to_pixel_center_of_the_test_bbox():
     tx, ty, px, py = lonlat_to_pixel(12.25, 46.105, 12, SIZE)
-    assert (tx, ty) == (2187, 1465)
+    assert (tx, ty) == (2187, 1455)
     assert 0 <= px < SIZE and 0 <= py < SIZE
 
 
@@ -1186,7 +1186,7 @@ def test_lonlat_to_pixel_center_of_the_test_bbox():
 def archive(tmp_path):
     tile = terrarium_tile(lambda px, py: 1000.0 + px)  # 1 m per pixel eastwards
     return write_pmtiles(tmp_path / "terrain.pmtiles", tile_type=4, min_zoom=0, max_zoom=12,
-                         tile_compression=1, tile=tile, tile_id=zxy_to_tile_id(12, 2187, 1465))
+                         tile_compression=1, tile=tile, tile_id=zxy_to_tile_id(12, 2187, 1455))
 
 
 def test_elevation_is_bilinear_within_the_tile(archive):
@@ -1547,7 +1547,7 @@ def test_write_sqlite_creates_schema_metadata_and_indexes(tmp_path):
     assert table_names(conn) >= TABLES["trails"]
     row = conn.execute("SELECT schema_version, layer, region, data_date, osm_timestamp, attribution FROM metadata").fetchall()
     assert row == [(SCHEMA_VERSION["trails"], "trails", "test", "2026-10-15", "2026-10-06T20:21:06Z", ATTRIBUTION)]
-    assert conn.execute("SELECT id FROM trails_fts WHERE trails_fts MATCH 'cima grande'").fetchall() == [(1,)]
+    assert conn.execute("SELECT rowid FROM trails_fts WHERE trails_fts MATCH 'cima grande'").fetchall() == [(1,)]
     assert conn.execute("SELECT id FROM trails_rtree WHERE min_lon <= 12.25 AND max_lon >= 12.25 AND min_lat <= 46.05 AND max_lat >= 46.05").fetchall() == [(1,)]
     with pytest.raises(sqlite3.OperationalError):
         conn.execute("INSERT INTO trails (id, source, source_id, length_m, geometry, geometry_status) VALUES (2, 'x', 'y', 1, 'g', 'ordered')")
@@ -2036,7 +2036,7 @@ def test_assemble_reports_gaps_with_distance():
     legs, status, anomalies = assemble([(10, ""), (11, "")], ways)
     assert status == "gaps" and len(legs) == 2
     (gap,) = [a for a in anomalies if a.kind == "gap"]
-    assert gap.id == "way/11" and "gap of 2" in gap.message and gap.message.endswith("m")  # ~2.8 km
+    assert gap.id == "way/11" and "gap of 2" in gap.message and gap.message.endswith("before this way")  # ~2.6 km
 
 
 def test_assemble_flags_missing_member_but_keeps_the_rest():
@@ -2122,7 +2122,7 @@ def test_read_osm_trails_maps_tags_and_geometry(hiking_pbf):
     assert r.operator == "Alpenverein Südtirol"
     assert (r.from_name, r.to_name, r.roundtrip, r.survey_date, r.website) == ("Nevegal", "Col Visentin", 0, "2025-06-01", "https://example.org")
     assert r.geometry_status == "ordered" and r.legs == [[P[1], P[2], P[3], P[4], P[5]]]
-    assert r.length_m == pytest.approx(1546, abs=20) and r.bbox == (12.25, 46.1, 12.26, 46.11)
+    assert r.length_m == pytest.approx(1353, abs=20) and r.bbox == (12.25, 46.1, 12.26, 46.11)
     assert records[101].geometry_status == "incomplete" and records[101].legs == [[P[6], P[7]]]
     assert any(a.kind == "missing_member" and a.id == "way/99" for a in records[101].anomalies)
     assert (records[102].difficulty, records[102].difficulty_scheme, records[102].difficulty_value) == (4, "sac_scale:ways", "alpine_hiking")
@@ -2540,7 +2540,7 @@ git commit -m "feat(pipeline): merge trails across sources by ref and overlap"
 ### Task 8: The trails step
 
 **Files:**
-- Create: `pipeline/src/maqs/trails/step.py`, `pipeline/tests/test_steps_trails.py`
+- Create: `pipeline/src/maqs/overlay.py`, `pipeline/src/maqs/trails/step.py`, `pipeline/tests/test_steps_trails.py`
 
 **Interfaces:**
 - Consumes: `extract.region_hiking_pbf`, `extract.geofabrik_pbf`, `extract.osm_timestamp` (Task 3); `read_osm_trails` (Task 6); `merge` (Task 7); `TerrainSampler`, `ascent_descent` (Task 4); `write_sqlite`, `Metadata`, `TABLES`, `COUNT_TABLES` (Task 5); `encode_polyline`; `SqliteExpectation`, `Expectation`, `StepOutcome`, `Anomaly`; `tools.run`, `tools.find_tool`.
@@ -2639,7 +2639,7 @@ def test_build_writes_sqlite_overlay_and_anomalies(ctx, stubs):
     assert [(r[1], r[3], r[4]) for r in rows] == [("501", 2, "ordered"), ("502", None, "incomplete")]
     assert decode_polyline(rows[0][7])[0] == pytest.approx(P[1], abs=1e-6) and rows[0][5] > 1000
     assert rows[0][6] is None  # no terrain archive in this build
-    assert conn.execute("SELECT id FROM trails_fts WHERE trails_fts MATCH 'alta'").fetchall() == [(1,)]
+    assert conn.execute("SELECT rowid FROM trails_fts WHERE trails_fts MATCH 'alta'").fetchall() == [(1,)]
     assert conn.execute("SELECT count(*) FROM trails_rtree").fetchone() == (2,)
     kinds = {a.kind for a in result.anomalies}
     assert {"missing_member", "terrain_missing"} <= kinds
@@ -2652,7 +2652,7 @@ def test_build_computes_ascent_from_the_terrain_archive(ctx, stubs):
     ctx.out_dir.mkdir(parents=True)
     tile = terrarium_tile(lambda px, py: 1000.0 + 2.0 * px)  # 2 m per pixel eastwards
     write_pmtiles(ctx.out_dir / "test-terrain.pmtiles", tile_type=4, min_zoom=0, max_zoom=12, tile_compression=1,
-                  tile=tile, tile_id=zxy_to_tile_id(12, 2187, 1465))
+                  tile=tile, tile_id=zxy_to_tile_id(12, 2187, 1455))
     result = run_step(TrailsStep(), ctx)
     assert result.status == "built", result.error
     conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
@@ -2835,7 +2835,7 @@ The `trails` table has 31 columns; keep `trail_row`'s tuple length and the `plac
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `uv run pytest tests/test_steps_trails.py -q`
-Expected: all pass. `test_build_computes_ascent_from_the_terrain_archive`: the fixture tile covers the test bbox's z12 tile `2187/1465`; the trail's points all fall inside it, so `missing` is 0.
+Expected: all pass. `test_build_computes_ascent_from_the_terrain_archive`: the fixture tile covers the test bbox's z12 tile `2187/1455`; the trail's points all fall inside it, so `missing` is 0.
 
 - [ ] **Step 5: Lint and commit**
 
@@ -3785,7 +3785,7 @@ Note the `--cache` under `tmp_path`: the network test downloads the 625 MB Geofa
 - [ ] **Step 2: Build the test region live, all layers**
 
 Run (from `pipeline/`): `time uv run maqs build --region test --force --dist <scratch>/dist` (the default `--cache` is the repo root's `.cache/`, which keeps the Geofabrik file for the later steps).
-Expected: exit 0, `ok`. Record: wall time (the first run includes the ~625 MB download), per-step seconds from the report, every output's bytes, `rows` for trails/places/segments/corners, `anomaly_count` per step and the kinds seen, `geometry_status` distribution (`sqlite3 dist/test/test-trails.sqlite "select geometry_status, count(*) from trails group by 1"`), and whether `ascent_m` is populated. Open `test-trails.sqlite` and eyeball three trails' names/refs for sanity.
+Expected: exit 0, `ok`. Record: wall time (the first run includes the ~625 MB download), per-step seconds from the report, every output's bytes, `rows` for trails/places/segments/corners, `anomaly_count` per step and the kinds seen, `geometry_status` distribution (`sqlite3 <scratch>/dist/test/test-trails.sqlite "select geometry_status, count(*) from trails group by 1"`), and whether `ascent_m` is populated. Open `test-trails.sqlite` and eyeball three trails' names/refs for sanity.
 
 - [ ] **Step 3: Set the `test` expectations**
 
