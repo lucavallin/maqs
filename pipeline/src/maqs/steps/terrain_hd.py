@@ -45,9 +45,9 @@ def archive_url(x: int, y: int) -> str:
     return f"{MAPTERHORN_BASE}/6-{x}-{y}.pmtiles"
 
 
-def parse_dry_run_tiles(output: str) -> int:
+def parse_dry_run_tiles(output: str) -> int | None:
     match = _DRY_RUN_RE.search(output)
-    return int(match.group(1)) if match else 0
+    return int(match.group(1)) if match else None
 
 
 class TerrainHDStep:
@@ -81,28 +81,45 @@ class TerrainHDStep:
         assert ctx.region is not None
         bbox, max_zoom = ctx.region.bbox, self.max_zoom(ctx)
         out = self.outputs(ctx)[0]
-        parts: list[Path] = []
-        for x, y in z6_tiles(bbox):
-            url = archive_url(x, y)
-            part = out.with_name(f"{out.name}.part-{x}-{y}")
-            probe = tools.run(self._extract_argv(url, part, bbox, max_zoom, dry_run=True))
-            if parse_dry_run_tiles((probe.stderr or "") + (probe.stdout or "")) == 0:
-                continue
-            tools.run(self._extract_argv(url, part, bbox, max_zoom, dry_run=False))
-            parts.append(part)
-        if not parts:
-            raise ToolError(
-                ["pmtiles", "extract"], 1, f"no high-resolution terrain tiles cover {ctx.label}"
-            )
-        if len(parts) == 1:
-            parts[0].replace(out)
-            return self._extract_argv(
-                archive_url(*z6_tiles(bbox)[0]), out, bbox, max_zoom, dry_run=False
-            )
-        tmp = out.with_name(out.name + ".part-merged")
-        argv = [str(tools.find_tool("pmtiles")), "merge", *(str(p) for p in parts), str(tmp)]
-        tools.run(argv)
-        tmp.replace(out)
-        for p in parts:
-            p.unlink(missing_ok=True)
-        return argv
+        parts: list[tuple[str, Path]] = []
+        merged = out.with_name(out.name + ".part-merged")
+        try:
+            for x, y in z6_tiles(bbox):
+                url = archive_url(x, y)
+                part = out.with_name(f"{out.name}.part-{x}-{y}")
+                dry_argv = self._extract_argv(url, part, bbox, max_zoom, dry_run=True)
+                probe = tools.run(dry_argv)
+                text = (probe.stderr or "") + (probe.stdout or "")
+                tiles = parse_dry_run_tiles(text)
+                if tiles is None:
+                    raise ToolError(
+                        dry_argv,
+                        1,
+                        "could not read the tile count from pmtiles extract --dry-run output: "
+                        + text.strip()[-200:],
+                    )
+                if tiles == 0:
+                    continue
+                tools.run(self._extract_argv(url, part, bbox, max_zoom, dry_run=False))
+                parts.append((url, part))
+            if not parts:
+                raise ToolError(
+                    ["pmtiles", "extract"], 1, f"no high-resolution terrain tiles cover {ctx.label}"
+                )
+            if len(parts) == 1:
+                url, part = parts[0]
+                part.replace(out)
+                return self._extract_argv(url, out, bbox, max_zoom, dry_run=False)
+            argv = [
+                str(tools.find_tool("pmtiles")),
+                "merge",
+                *(str(part) for _, part in parts),
+                str(merged),
+            ]
+            tools.run(argv)
+            merged.replace(out)
+            return argv
+        finally:
+            for _, part in parts:
+                part.unlink(missing_ok=True)
+            merged.unlink(missing_ok=True)

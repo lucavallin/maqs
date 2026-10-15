@@ -31,7 +31,7 @@ def test_archive_url():
 def test_parse_dry_run_tiles():
     text = "2026/10/07 20:51:22 extract.go:450: fetching 4 tiles, 1 chunks, 1 requests\n"
     assert parse_dry_run_tiles(text) == 4
-    assert parse_dry_run_tiles("no such line") == 0
+    assert parse_dry_run_tiles("no such line") is None
 
 
 @pytest.fixture
@@ -46,7 +46,7 @@ def ctx(tmp_path):
     )
 
 
-def test_outputs_and_expectation(ctx, monkeypatch):
+def test_outputs_and_expectation(ctx):
     step = TerrainHDStep()
     assert step.outputs(ctx) == [ctx.dist / "veneto" / "veneto-terrain-hd.pmtiles"]
     e = step.expectation(ctx)
@@ -126,4 +126,84 @@ def test_build_fails_when_every_archive_is_empty(ctx, monkeypatch):
     monkeypatch.setattr(tools, "run", fake_run)
     ctx.out_dir.mkdir(parents=True)
     with pytest.raises(ToolError, match="no high-resolution terrain tiles"):
+        TerrainHDStep().build(ctx)
+
+
+def _runner(ctx_calls, non_empty, fail_on=None):
+    def fake_run(argv, **kw):
+        argv = [str(a) for a in argv]
+        ctx_calls.append(argv)
+        if "--dry-run" in argv:
+            n = 5 if any(u in argv[2] for u in non_empty) else 0
+
+            class R:
+                stdout, stderr = "", f"fetching {n} tiles"
+
+            return R()
+        if fail_on and argv[1] == fail_on:
+            raise ToolError(argv, 1, "boom")
+        if argv[1] == "extract":
+            Path(argv[3]).write_bytes(b"part")
+        if argv[1] == "merge":
+            Path(argv[-1]).write_bytes(b"merged")
+        return None
+
+    return fake_run
+
+
+def test_single_later_archive_names_that_archive(ctx, monkeypatch):
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path("/usr/bin/pmtiles"))
+    calls = []
+    monkeypatch.setattr(tools, "run", _runner(calls, ["6-34-23"]))
+    ctx.out_dir.mkdir(parents=True)
+    step = TerrainHDStep()
+    command = step.build(ctx)
+    assert command[2] == archive_url(34, 23) and command[3] == str(step.outputs(ctx)[0])
+    assert step.outputs(ctx)[0].read_bytes() == b"part"
+    real = [c for c in calls if c[1] == "extract" and "--dry-run" not in c]
+    assert len(real) == 1 and real[0][2] == archive_url(34, 23)
+    assert not list(ctx.out_dir.glob("*.part-*"))
+
+
+def test_failed_extract_leaves_no_parts(ctx, monkeypatch):
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path("/usr/bin/pmtiles"))
+    calls = []
+    runner = _runner(calls, ["6-33-22", "6-34-22"])
+    extracts = []
+
+    def run(argv, **kw):
+        if "--dry-run" not in [str(a) for a in argv]:
+            extracts.append(argv)
+            if len(extracts) == 2:
+                raise ToolError([str(a) for a in argv], 1, "boom")
+        return runner(argv, **kw)
+
+    monkeypatch.setattr(tools, "run", run)
+    ctx.out_dir.mkdir(parents=True)
+    with pytest.raises(ToolError):
+        TerrainHDStep().build(ctx)
+    assert list(ctx.out_dir.iterdir()) == []
+
+
+def test_failed_merge_leaves_no_parts_or_output(ctx, monkeypatch):
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path("/usr/bin/pmtiles"))
+    monkeypatch.setattr(tools, "run", _runner([], ["6-33-22", "6-34-22"], fail_on="merge"))
+    ctx.out_dir.mkdir(parents=True)
+    with pytest.raises(ToolError):
+        TerrainHDStep().build(ctx)
+    assert list(ctx.out_dir.iterdir()) == []
+
+
+def test_unparseable_dry_run_raises(ctx, monkeypatch):
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path("/usr/bin/pmtiles"))
+
+    def run(argv, **kw):
+        class R:
+            stdout, stderr = "", "format changed"
+
+        return R()
+
+    monkeypatch.setattr(tools, "run", run)
+    ctx.out_dir.mkdir(parents=True)
+    with pytest.raises(ToolError, match="could not read the tile count"):
         TerrainHDStep().build(ctx)
