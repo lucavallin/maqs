@@ -16,7 +16,7 @@ uv run maqs build --region veneto --layers basemap,terrain  # only some layers
 uv run maqs regions
 ```
 
-Outputs go to `dist/<region>/` at the repository root, even when you run from `pipeline/`; `--dist` overrides it. A full build writes `<region>-basemap.pmtiles`, `<region>-terrain.pmtiles`, `<region>-trails.sqlite`, `<region>-trails.pmtiles`, `<region>-places.sqlite`, `<region>-places.pmtiles`, `<region>-curvature.sqlite` and `build-report.json`, all described in [`docs/data-format.md`](docs/data-format.md). The trails, places and curvature layers read the region's Geofabrik extract (625 MB for `europe/italy/nord-est`), downloaded once into `.cache/` and reused; delete it to get a fresh one. Adding a region anywhere in the world is one entry in `config/regions.yaml`; [`docs/architecture.md`](docs/architecture.md) lists its fields.
+Outputs go to `dist/<region>/` at the repository root, even when you run from `pipeline/`; `--dist` overrides it. A full build writes `<region>-basemap.pmtiles`, `<region>-terrain.pmtiles`, `<region>-trails.sqlite`, `<region>-trails.pmtiles`, `<region>-places.sqlite`, `<region>-places.pmtiles`, `<region>-curvature.sqlite` and `build-report.json`, all described in [`docs/data-format.md`](docs/data-format.md). The trails, places and curvature layers read the region's Geofabrik extract (about 625 MB for `europe/italy/nord-est` in October 2026), downloaded once into `.cache/` and reused; delete it to get a fresh one. Adding a region anywhere in the world is one entry in `config/regions.yaml`; [`docs/architecture.md`](docs/architecture.md) lists its fields.
 
 ## Develop
 

@@ -131,8 +131,8 @@ def merge_close(coords: Sequence[Coord], min_m: float) -> list[Coord]:
 
     Forwards, a vertex closer than min_m to the last kept one is dropped. The end gets the same
     treatment backwards: kept vertices closer than min_m to the last vertex are dropped. So
-    consecutive output vertices are at least min_m apart, unless the whole line is shorter, in
-    which case only the two endpoints remain.
+    consecutive output vertices are at least min_m apart, except when only the two endpoints
+    remain and they are closer than min_m (a line shorter than min_m, or one that doubles back).
     """
     if len(coords) <= 2:
         return list(coords)

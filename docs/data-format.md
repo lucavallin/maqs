@@ -101,7 +101,7 @@ One row per trail record from the region's trail sources (`trails.sources` in `c
 | `ascent_m`, `descent_m` | metres climbed and descended along the legs (below); null when unknown, never 0 for unknown |
 | `min_lon` … `max_lat` | the bbox of all legs |
 | `geometry` | one polyline per leg, legs joined by `;` |
-| `geometry_status` | `ordered`: one continuous leg that uses every member way. `gaps`: several legs. `incomplete`: a member way is missing from the extract (or has fewer than two located nodes), or the relation has no way at all |
+| `geometry_status` | `ordered`: one continuous leg that uses every member way. `gaps`: several legs, no member way missing. `incomplete`, whatever the number of legs: a member way is missing from the extract (or has fewer than two located nodes), or the relation has no way at all |
 | `secondary_of` | null for a primary; for a secondary, the `id` of the primary it duplicates |
 
 **Geometry assembly (OSM adapter).** Member ways are chained into legs by shared end nodes. A leg starts at the first member way not yet used, turned so that it leads into the next member, and grows at either end with any unused way that shares its end node, reversed when needed, until none fits; then the next leg starts. Each way is used once. Ways with the role `alternative`, `excursion` or `connection` stay in the geometry and are flagged. Node members are ignored. Relation members (superroutes) are ignored and flagged. Nodes without a location are left out of a way. Every irregularity becomes an anomaly in the build report.
@@ -121,9 +121,9 @@ One row per trail record from the region's trail sources (`trails.sources` in `c
 
 **Ascent and descent.** Each leg is resampled every 25 m, plus its end points. A sample's elevation comes from `<region>-terrain.pmtiles` in the same output directory, at the archive's maximum zoom (12): the terrarium value interpolated bilinearly between the four nearest pixel centres of the tile under the sample, clamped at the tile's edge (no interpolation across tiles). Along a leg, a reference elevation moves only when a sample is more than 5 m above or below it; the whole difference then counts as ascent or descent. The legs' totals are summed. Samples without a terrain tile are skipped, so:
 
-- with no terrain archive in the output directory, or an unreadable one, both columns are null for every trail (anomaly `terrain_missing` or `terrain_unreadable`);
+- with no terrain archive in the output directory, both columns are null for every trail (anomaly `terrain_missing`); when the archive cannot be read, they are null from that point on: for every trail if it cannot be opened, otherwise for the trail being sampled and every later one (`terrain_unreadable`);
 - when no sample of a trail has a tile, both are null (`terrain_no_coverage`);
-- when only some samples have a tile, as for a relation that runs beyond the region's terrain coverage (its bbox plus the tile border), the values cover only those samples (`terrain_gap`), while `length_m` is the whole relation.
+- when only some samples have a tile, as for a relation that runs beyond the region's terrain coverage (its bbox plus the tile border), the values cover only those samples (`terrain_gap`), while `length_m` is the whole relation (decision open, ADR 0011).
 
 ### Places (`layer_schema_version` 1)
 
@@ -198,7 +198,7 @@ CREATE VIRTUAL TABLE corners_rtree USING rtree(id, min_lon, max_lon, min_lat, ma
 
 **Formula.** ADR 0008 makes this the one corner definition maqs uses. This text is normative; `pipeline/src/maqs/curvature/score.py` implements it.
 
-1. **Vertex merge.** Walking from the first vertex, a vertex closer than 5 m to the last kept one is dropped; the last vertex is always kept. Then, from the end: while more than two vertices remain and the second-to-last is closer than 5 m to the last, the second-to-last is dropped. Consecutive vertices end up at least 5 m apart, unless the whole way is shorter, in which case only its two ends remain. The stored geometry, `length_m`, the score and the corner distances all use the merged vertices.
+1. **Vertex merge.** Walking from the first vertex, a vertex closer than 5 m to the last kept one is dropped; the last vertex is always kept. Then, from the end: while more than two vertices remain and the second-to-last is closer than 5 m to the last, the second-to-last is dropped. Consecutive vertices end up at least 5 m apart; the only exception is a way left with just its two end vertices, closer than 5 m to each other (a way shorter than 5 m, or one that doubles back, such as 0 m, 6 m, 4 m along a line). The stored geometry, `length_m`, the score and the corner distances all use the merged vertices.
 2. **Radius.** At each interior vertex B, with neighbours A and C, the radius of the circle through A, B and C, computed in a local plane centred on B: x = Δlon × 111,320 × cos(lat_B), y = Δlat × 110,574, in metres. The turn is left when C lies to the left of the line from A through B, right otherwise. Collinear or coincident points (twice the triangle area under 10⁻⁹ m²) have an infinite radius and no turn.
 3. **Band weight.** 4 under 30 m; 3 from 30 m to under 60 m; 2 from 60 m to under 100 m; 1 from 100 m to under 175 m; 0 from 175 m and for straight vertices.
 4. **Score.** score = Σ over interior vertices B of weight(radius at B) × (|AB| + |BC|) / 2. Each vertex weighs half of each adjacent segment, so a way scores the same in both directions. The end vertices have no radius, so half of the first and half of the last segment weigh 0. With fewer than three merged vertices the score is 0.

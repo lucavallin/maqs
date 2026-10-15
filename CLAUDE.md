@@ -157,7 +157,7 @@ Grep xcodebuild output for `": error:"`; a bare `error` matches unrelated tool p
 - Logging (pipeline): the standard `logging` module, one logger per step, machine-readable `build-report.json` as the durable record.
 - Validation at trust boundaries: `manifest.json` and `sources.json` are validated against `config/schemas/` on the pipeline side and parsed with strict `Codable` on the Swift side (unknown `manifest_version` → typed error, not a crash). Downloaded files are verified by SHA-256 before install. PMTiles headers and directories are bounds-checked before any read — the file may be truncated, corrupt, or hostile.
 - Vendor boundary: `import MapLibre` only inside `Sources/MaqsUI/`. `[ENFORCED: CI import check once Phase 4 lands]`
-- Geometry storage: one encoding (encoded polyline or float32 blob — chosen by ADR in Phase 1) used by every layer. Do not add a second.
+- Geometry storage: one encoding (encoded polyline, precision 6, ADR 0010) used by every layer. Do not add a second.
 - Identifiers: OSM ids are stored as-is with their type (`relation`/`way`/`node`) — never collapsed into one integer space. Region ids are lowercase kebab-case and are stable forever once released.
 - Accessibility target: the attribution view and anything else `MaqsUI` renders is VoiceOver-labelled and respects Dynamic Type; the map view itself is MapLibre's. Smallest supported viewport: whatever the app chooses — the package makes no layout assumptions.
 - Timestamps in files and manifests are ISO 8601 UTC. Sizes are bytes. Coordinates are WGS 84 lon/lat in that order in data files, `CLLocationCoordinate2D` in Swift.
