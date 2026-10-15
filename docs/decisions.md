@@ -374,7 +374,14 @@ The places overlays above were built before the places step passed `-r1`, so tip
 
 Veneto matches Phase 0: 1,953 trails against 1,955 relations, 13,400 places against 13,408 nodes. Triveneto's 8,686 trails are fewer than the three regions' 9,006 because a relation that spans regions counts once. In Trentino-Alto Adige 2,598 of 5,786 trails (45 %) are graded from their ways' `sac_scale`, as ADR 0006 expected.
 
-The trails steps recorded 20,050 anomalies for Veneto, 72,857 for Triveneto, 16,687 for Friuli-Venezia Giulia, 43,392 for Trentino-Alto Adige and 1,427 for `test`. Those builds listed every reversed member way on its own: 933 of Triveneto's first 1,000 listed entries were `reversed`, and the per-kind totals were not recorded. The build now writes one `reversed` entry per relation and the full count per kind (`anomaly_kinds`); the real regions have not been rebuilt since, so their per-kind counts are still to be measured. The places steps recorded one `ele` anomaly each in Triveneto and Trentino-Alto Adige.
+The trails steps recorded 20,050 anomalies for Veneto, 72,857 for Triveneto, 16,687 for Friuli-Venezia Giulia, 43,392 for Trentino-Alto Adige and 1,427 for `test`, listing every reversed member way on its own. The build now writes one `reversed` entry per relation and counts every kind (`anomaly_kinds`). Veneto and Triveneto were rebuilt that way the same day (trails only, same extract, no terrain):
+
+| Region | Total | `missing_member` | `reversed` (relations) | `gap` | `role` | `relation_member` | `no_geometry` | `difficulty` | `terrain_missing` |
+|---|---|---|---|---|---|---|---|---|---|
+| veneto | 3,319 | 840 | 1,421 | 639 | 341 | 39 | 38 | 0 | 1 |
+| triveneto | 19,657 | 9,411 | 6,368 | 2,228 | 1,474 | 90 | 84 | 1 | 1 |
+
+Friuli-Venezia Giulia, Trentino-Alto Adige and `test` have not been rebuilt, so their per-kind counts are not measured. The rebuild also orients every leg by member order (`data-format.md`), and the first point moved for 563 of Veneto's 1,915 trails with geometry and 2,371 of Triveneto's 8,602: in Veneto 507 first legs now run the other way, 45 loops are walked the other way round and 11 loops only start elsewhere, so the first build had more than a quarter of the trails backwards, with ascent and descent swapped. Without the old first-way flip, a way that closes a loop can be chained at the other end of the leg, which adds one leg to 3 Veneto and 5 Triveneto trails; one Veneto trail moves from `ordered` to `gaps` (the status table above is from the first build). The places steps recorded one `ele` anomaly each in Triveneto and Trentino-Alto Adige.
 
 The `test` build meets its 5-minute budget with a wide margin, in CI too; the CI timings are in `docs/architecture.md`.
 
@@ -391,4 +398,4 @@ How the bytes split between tables and indexes has not been measured. The decisi
 
 **CONTRADICTS BRIEF (minor):** brief item 6 asks for the per-way score summed "the way `curvature` does", so the numbers stay comparable. ADR 0008 already dropped comparability as a goal. The bands are the same, but the half-segment attribution gives different scores from `curvature`'s; item 6 should be amended.
 
-**Consequences.** The Swift package mirrors these formulas from `data-format.md` (ADR 0008). A release build must include terrain whenever it builds trails; the fixed step order runs terrain first. Open: the owner's decisions on the curvature size and on the ascent rule for partly covered trails, and the per-kind anomaly counts of the real regions.
+**Consequences.** The Swift package mirrors these formulas from `data-format.md` (ADR 0008). A release build must include terrain whenever it builds trails; the fixed step order runs terrain first. Open: the owner's decisions on the curvature size and on the ascent rule for partly covered trails, and the per-kind anomaly counts of Friuli-Venezia Giulia and Trentino-Alto Adige.
