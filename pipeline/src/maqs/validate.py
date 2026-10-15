@@ -10,7 +10,7 @@ from pathlib import Path
 
 from maqs.config import RowRange
 from maqs.pmtiles_header import PMTilesError, read_header, read_metadata
-from maqs.sqlite_out import open_readonly, table_names
+from maqs.sqlite_out import SCHEMA_VERSION, open_readonly, table_names
 
 log = logging.getLogger("maqs.validate")
 
@@ -153,8 +153,13 @@ def validate_sqlite(path: Path, expect: SqliteExpectation) -> OutputInfo:
                 failures.append(f"metadata layer {layer!r}, expected {expect.layer!r}")
             if region != expect.region:
                 failures.append(f"metadata region {region!r}, expected {expect.region!r}")
+            expected_version = SCHEMA_VERSION.get(expect.layer)
             if not isinstance(schema_version, int):
                 failures.append(f"metadata schema_version {schema_version!r} is not an integer")
+            elif schema_version != expected_version:
+                failures.append(
+                    f"metadata schema_version {schema_version}, expected {expected_version}"
+                )
         rows: dict[str, int] = {}
         for table in expect.count_tables:
             rows[table] = conn.execute(f"SELECT count(*) FROM {table}").fetchone()[0]

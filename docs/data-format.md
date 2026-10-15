@@ -261,7 +261,7 @@ Every SQLite file:
 - smaller than 1.9 GiB;
 - opens read-only and `PRAGMA integrity_check` answers `ok`;
 - every table of its layer exists: `metadata`, `trails`, `trails_fts`, `trails_rtree`; `metadata`, `places`, `places_fts`, `places_rtree`; `metadata`, `segments`, `corners`, `segments_rtree`, `corners_rtree`;
-- `metadata` has exactly one row, its `layer` and `region` match the step and the region, and its `schema_version` is an integer;
+- `metadata` has exactly one row, its `layer` and `region` match the step and the region, and its `schema_version` is the layer's `layer_schema_version` (1 for all three today);
 - the row counts of the counted tables are recorded, and a count outside the region's `expect` range in `config/regions.yaml` fails the step (`trails` for the `trails` table, `places` for `places`, `curvature_segments` for `segments`; `corners` has no range). A region without an `expect` entry records its counts unchecked. A table with zero rows logs a warning, also when zero is inside the range;
 - its SHA-256 recorded.
 

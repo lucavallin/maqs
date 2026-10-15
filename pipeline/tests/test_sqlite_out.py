@@ -113,6 +113,21 @@ def test_validate_sqlite_rejects_missing_table_and_wrong_metadata(tmp_path):
         validate_output(path, expectation())
 
 
+@pytest.mark.parametrize("stored", [0, 2])
+def test_validate_sqlite_rejects_a_schema_version_other_than_the_layers(tmp_path, stored):
+    path = tmp_path / "test-trails.sqlite"
+    write_sqlite(path, "trails", META, fill_one_trail)
+    conn = sqlite3.connect(path)
+    conn.execute("UPDATE metadata SET schema_version = ?", (stored,))
+    conn.commit()
+    conn.close()
+    expected = SCHEMA_VERSION["trails"]
+    with pytest.raises(
+        ValidationError, match=f"metadata schema_version {stored}, expected {expected}"
+    ):
+        validate_output(path, expectation())
+
+
 def test_validate_sqlite_rejects_garbage_and_truncation(tmp_path):
     garbage = tmp_path / "g.sqlite"
     garbage.write_bytes(b"not a database" * 100)
