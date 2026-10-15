@@ -52,9 +52,11 @@ def test_assemble_flips_a_backwards_first_way_on_loops_and_lollipops(closing):
 
 
 def test_assemble_prepends_when_a_way_joins_the_start():
+    # Member order is 10 then 11, so the route walks 10 first: 5 -> 3, then 11 down to 1.
     ways = {10: way(10, [3, 4, 5]), 11: way(11, [1, 2, 3])}
-    legs, status, _ = assemble([(10, ""), (11, "")], ways)
-    assert status == "ordered" and legs == [[P[1], P[2], P[3], P[4], P[5]]]
+    legs, status, anomalies = assemble([(10, ""), (11, "")], ways)
+    assert status == "ordered" and legs == [[P[5], P[4], P[3], P[2], P[1]]]
+    assert [(a.kind, a.id) for a in anomalies] == [("reversed", "way/10"), ("reversed", "way/11")]
 
 
 def test_assemble_reports_gaps_with_distance():
