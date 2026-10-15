@@ -111,10 +111,9 @@ def test_a_region_with_bbox_border_0_gets_no_border_flag(fixture_region, versati
 
 
 def test_base_pack_argv_outputs_and_cap(cfg, tmp_path, versatiles_bin):
-    ctx = BuildContext(
-        config=cfg, dist=tmp_path, cache=tmp_path, force=False, base_pack=cfg.base_pack("triveneto")
-    )
-    step = BasePackStep()
+    ctx = BuildContext(config=cfg, dist=tmp_path, cache=tmp_path, force=False)
+    step = BasePackStep(cfg.base_pack("triveneto"))
+    assert step.name == "base-triveneto"
     assert step.outputs(ctx) == [tmp_path / "base" / "base-triveneto-basemap.pmtiles"]
     assert step.argv(ctx) == [
         "/usr/bin/versatiles",

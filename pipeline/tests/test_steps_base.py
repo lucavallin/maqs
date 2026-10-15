@@ -115,12 +115,6 @@ def test_unexpected_errors_still_propagate(ctx):
 
 
 def test_base_pack_context(tmp_path):
-    cfg = load_config(REAL)
-    ctx = BuildContext(
-        config=cfg,
-        dist=tmp_path,
-        cache=tmp_path,
-        force=False,
-        base_pack=cfg.base_pack("triveneto"),
-    )
-    assert ctx.out_dir == tmp_path / "base" and ctx.label == "base-triveneto"
+    ctx = BuildContext(config=load_config(REAL), dist=tmp_path, cache=tmp_path, force=False)
+    assert ctx.region is None
+    assert ctx.out_dir == tmp_path / "base" and ctx.label == "base"

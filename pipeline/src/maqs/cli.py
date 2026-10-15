@@ -9,7 +9,7 @@ from pathlib import Path
 import click
 
 from maqs.config import DEFAULT_CONFIG_PATH, Config, ConfigError, load_config
-from maqs.context import BuildContext
+from maqs.context import BASE_TARGET, BuildContext
 from maqs.report import build_report, report_path, write_report
 from maqs.steps.base import Step, run_step
 from maqs.steps.terrain_hd import TerrainHDStep
@@ -143,11 +143,15 @@ def _parse_layers(raw: str) -> list[str]:
 def _targets(
     cfg: Config, target: str, *, dist: Path, cache: Path, force: bool
 ) -> list[BuildContext]:
-    """Resolve --region into build contexts; anything unknown is a usage error (exit 2)."""
-    if target == "base":
+    """Resolve --region into build contexts; anything unknown is a usage error (exit 2).
+
+    `base` is one context with no region: every base pack is a step of it, so all packs share
+    `dist/base/` and one build report.
+    """
+    if target == BASE_TARGET:
         if not cfg.base_packs:
             raise click.UsageError("--region base: no base_packs are configured")
-        return [BuildContext(cfg, dist, cache, force, base_pack=p) for p in cfg.base_packs]
+        return [BuildContext(cfg, dist, cache, force)]
     if target == "all":
         return [
             BuildContext(cfg, dist, cache, force, region=cfg.region(rid))
@@ -186,7 +190,9 @@ def run_build(
         tool_versions = {s.name: s.found for s in check_tools()}
     for ctx in _targets(cfg, target, dist=dist, cache=cache, force=force):
         steps: list[Step] = (
-            [BasePackStep()] if ctx.base_pack else [LAYER_STEPS[name]() for name in layers]
+            [BasePackStep(p) for p in cfg.base_packs]
+            if ctx.region is None
+            else [LAYER_STEPS[name]() for name in layers]
         )
         results = [run_step(step, ctx) for step in steps]
         for r in results:

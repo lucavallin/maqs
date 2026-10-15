@@ -223,4 +223,43 @@ def test_build_base_packs(monkeypatch, tmp_path):
     result = build("--region", "base", "--dist", str(tmp_path))
     assert result.exit_code == 0, result.output
     assert (tmp_path / "base" / "base-triveneto-basemap.pmtiles").exists()
-    assert (tmp_path / "base" / "build-report.json").exists()
+    report = json.loads((tmp_path / "base" / "build-report.json").read_text())
+    assert report["region"] == "base" and report["validation"]["ok"] is True
+    assert [s["name"] for s in report["steps"]] == ["base-triveneto"]
+    assert report["steps"][0]["outputs"][0]["file"] == "base-triveneto-basemap.pmtiles"
+
+
+def test_build_base_puts_every_pack_in_one_report(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
+
+    def fake_run(argv, **kw):
+        out = Path(str(argv[-1]))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        write_pmtiles(out, tile_type=1, max_zoom=int(argv[argv.index("--max-zoom") + 1]))
+
+    monkeypatch.setattr(tools, "run", fake_run)
+    config = tmp_path / "regions.yaml"
+    config.write_text(
+        "schema_version: 1\n"
+        "base_packs:\n"
+        "  - { id: north, regions: [a], max_zoom: 8 }\n"
+        "  - { id: south, regions: [b], max_zoom: 9 }\n"
+        "regions:\n"
+        "  - { id: a, name: { it: A, en: A }, bbox: [12.2, 46.0, 12.3, 46.1] }\n"
+        "  - { id: b, name: { it: B, en: B }, bbox: [12.2, 45.0, 12.3, 45.1] }\n"
+    )
+    dist = tmp_path / "dist"
+    result = CliRunner().invoke(
+        main, ["--config", str(config), "build", "--region", "base", "--dist", str(dist)]
+    )
+    assert result.exit_code == 0, result.output
+    assert sorted(p.name for p in (dist / "base").iterdir()) == [
+        "base-north-basemap.pmtiles",
+        "base-south-basemap.pmtiles",
+        "build-report.json",
+    ]
+    report = json.loads((dist / "base" / "build-report.json").read_text())
+    assert report["region"] == "base"
+    assert [s["name"] for s in report["steps"]] == ["base-north", "base-south"]
+    assert [s["outputs"][0]["max_zoom"] for s in report["steps"]] == [8, 9]

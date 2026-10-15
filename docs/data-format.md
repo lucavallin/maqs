@@ -15,7 +15,7 @@ The tile archives carry no `layer_schema_version` yet. The per-layer version arr
 | `<region>-terrain-hd.pmtiles` | terrain-hd (opt-in) | terrarium, as Mapterhorn stores it (WebP or PNG accepted) | 13–`hd_max_zoom` (13 by default) | gzip or none | `download.mapterhorn.com/6-<x>-<y>.pmtiles`, the region's bbox, merged into one archive when the bbox spans several; no border |
 | `base-<pack>-basemap.pmtiles` | base pack, bundled inside apps | MVT, Shortbread 1.0 | 0–`max_zoom` (10 by default) | gzip | as the basemap, over the union bbox of the pack's regions; no border |
 
-Region outputs are written to `dist/<region>/`, base packs to `dist/base/`.
+Region outputs are written to `dist/<region>/`, every base pack to `dist/base/`.
 
 Terrarium decoding: `elevation_m = (R * 256 + G + B / 256) - 32768`. The tiles are 512 px, so at zoom 12 one pixel is about 13 m at 46° N (a z12 tile is about 6.8 km wide there).
 
@@ -25,12 +25,12 @@ Measured sizes per region are in [`docs/decisions.md`](decisions.md), ADR 0009.
 
 ## Build report (`build-report.json`, `report_version` 1)
 
-Every run writes `dist/<region>/build-report.json`, or `dist/base/build-report.json` for the base packs, also when a step fails.
+Every run writes `dist/<region>/build-report.json`, also when a step fails. `--region base` writes one `dist/base/build-report.json` for all base packs, with one step per pack named `base-<pack>`.
 
 | Field | Meaning |
 |---|---|
 | `report_version` | 1 |
-| `region` | the region id, or `base-<pack>` |
+| `region` | the region id, or `base` for the base packs |
 | `built_at` | ISO 8601 UTC, `YYYY-MM-DDTHH:MM:SSZ` |
 | `tools` | tool name → version found (`dev` for the Homebrew `pmtiles` build) |
 | `steps[]` | `name`, `status` (`built`, `skipped` or `failed`), `seconds`, `command` (argv; empty when skipped), `outputs[]`, and `error` when failed |

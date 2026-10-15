@@ -5,31 +5,26 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from maqs.config import BasePack, Config, Region
+from maqs.config import Config, Region
+
+# The label and output directory of the base-pack target; reserved as a region id.
+BASE_TARGET = "base"
 
 
 @dataclass
 class BuildContext:
+    """One build target: a region, or, with `region` None, every base pack together."""
+
     config: Config
     dist: Path
     cache: Path
     force: bool
     region: Region | None = None
-    base_pack: BasePack | None = None
-
-    @property
-    def out_dir(self) -> Path:
-        if self.base_pack is not None:
-            return self.dist / "base"
-        return self.dist / self._region().id
 
     @property
     def label(self) -> str:
-        if self.base_pack is not None:
-            return f"base-{self.base_pack.id}"
-        return self._region().id
+        return BASE_TARGET if self.region is None else self.region.id
 
-    def _region(self) -> Region:
-        if self.region is None:
-            raise ValueError("BuildContext needs a region or a base_pack")
-        return self.region
+    @property
+    def out_dir(self) -> Path:
+        return self.dist / self.label

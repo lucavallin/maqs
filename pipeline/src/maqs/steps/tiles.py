@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from maqs import tools
-from maqs.config import Bbox, Region
+from maqs.config import BasePack, Bbox, Region
 from maqs.context import BuildContext
 from maqs.validate import BASE_PACK_CAP, Expectation
 
@@ -89,19 +89,26 @@ class TerrainStep(_VersatilesStep):
 
 
 class BasePackStep(_VersatilesStep):
-    name = "base"
+    """One base pack; every configured pack is one step of the single `base` target."""
+
     suffix = "basemap"
 
+    def __init__(self, pack: BasePack) -> None:
+        self.pack = pack
+        self.name = f"base-{pack.id}"
+
+    def outputs(self, ctx: BuildContext) -> list[Path]:
+        return [ctx.out_dir / f"{self.name}-{self.suffix}.pmtiles"]
+
     def argv(self, ctx: BuildContext) -> list[str]:
-        assert ctx.base_pack is not None
-        bbox = ctx.config.base_pack_bbox(ctx.base_pack)
+        bbox = ctx.config.base_pack_bbox(self.pack)
         return [
             str(tools.find_tool("versatiles")),
             "convert",
             "--bbox",
             format_bbox(bbox),
             "--max-zoom",
-            str(ctx.base_pack.max_zoom),
+            str(self.pack.max_zoom),
             "--compress",
             "gzip",
             OSM_SOURCE,
@@ -109,10 +116,7 @@ class BasePackStep(_VersatilesStep):
         ]
 
     def expectation(self, ctx: BuildContext) -> Expectation:
-        assert ctx.base_pack is not None
-        return Expectation(
-            0, ctx.base_pack.max_zoom, frozenset({"mvt", "mlt"}), size_cap=BASE_PACK_CAP
-        )
+        return Expectation(0, self.pack.max_zoom, frozenset({"mvt", "mlt"}), size_cap=BASE_PACK_CAP)
 
 
 TILE_STEPS: dict[str, type[_VersatilesStep]] = {"basemap": BasemapStep, "terrain": TerrainStep}
