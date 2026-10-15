@@ -100,7 +100,7 @@ CREATE TABLE trails (
   network TEXT, operator TEXT, osmc_symbol TEXT, from_name TEXT, to_name TEXT, roundtrip INTEGER, survey_date TEXT, website TEXT,
   length_m REAL NOT NULL, ascent_m REAL, descent_m REAL,
   min_lon REAL, min_lat REAL, max_lon REAL, max_lat REAL,
-  geometry TEXT NOT NULL,            -- polyline6 legs joined by '|'
+  geometry TEXT NOT NULL,            -- polyline6 legs joined by ';' ('|' is a polyline character)
   geometry_status TEXT NOT NULL,     -- ordered | gaps | incomplete
   secondary_of INTEGER REFERENCES trails(id)
 );
