@@ -3,7 +3,7 @@ name = "maqs"
 version = "0.1.0"
 description = "Builds the maqs map data packs: tile extracts, data layers, validation and reports."
 requires-python = ">=3.12"
-dependencies = ["click>=8.1", "pyyaml>=6.0"]
+dependencies = ["click>=8.1", "pyyaml>=6.0", "osmium>=4.3", "pillow>=12.0"]
 
 [project.scripts]
 maqs = "maqs.cli:main"
