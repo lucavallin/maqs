@@ -18,6 +18,7 @@ def info(name="test-basemap.pmtiles"):
         "gzip",
         "© OSM",
         "2026-06-07T23:59:58Z",
+        "https://download.versatiles.org/osm-landcover.versatiles",
         {"k": "v"},
     )
 
@@ -43,6 +44,7 @@ def test_report_shape():
     assert out["file"] == "test-basemap.pmtiles" and out["sha256"] == "ab" * 32
     assert out["tiles"] == 26
     assert out["attribution"] == "© OSM" and out["source_data_date"] == "2026-06-07T23:59:58Z"
+    assert out["source"] == "https://download.versatiles.org/osm-landcover.versatiles"
     assert "metadata" not in out
     assert report["steps"][1]["error"] == "boom"
     assert report["validation"] == {"ok": False, "failures": ["terrain: boom"]}

@@ -34,7 +34,7 @@ Every run writes `dist/<region>/build-report.json`, also when a step fails. `--r
 | `built_at` | ISO 8601 UTC, `YYYY-MM-DDTHH:MM:SSZ` |
 | `tools` | tool name → version found (`dev` for the Homebrew `pmtiles` build) |
 | `steps[]` | `name`, `status` (`built`, `skipped` or `failed`), `seconds`, `command` (argv; empty when skipped), `outputs[]`, and `error` when failed |
-| `steps[].outputs[]` | `file`, `bytes`, `sha256`, `tile_type`, `min_zoom`, `max_zoom`, `tiles`, `compression`, `attribution`, `source_data_date` (both null when the archive metadata has no value) |
+| `steps[].outputs[]` | `file`, `bytes`, `sha256`, `tile_type`, `min_zoom`, `max_zoom`, `tiles`, `compression`, `attribution`, `source_data_date` (both null when the archive metadata has no value), and `source`: the archive the output was cut from (`https://download.versatiles.org/osm-landcover.versatiles` for basemap and base packs, `https://download.versatiles.org/elevation.versatiles` for terrain, `https://download.mapterhorn.com` for terrain-hd, which reads several archives there) |
 | `validation` | `ok`, and `failures`: a list of `<step>: <message>` |
 
 Compatibility rule: readers ignore unknown fields. A new `report_version` means a field changed meaning or was removed.
@@ -46,10 +46,11 @@ Every output, including the outputs of a step skipped because they already exist
 - smaller than 1.9 GiB (`1.9 × 2^30` bytes);
 - a readable PMTiles v3 header, and every section (root directory, metadata, leaf directories, tile data) ends within the file, so a tail-truncated archive is rejected;
 - tile compression gzip or none, internal compression gzip or none;
-- metadata that parses as a JSON object; gzip-compressed metadata may inflate to at most 8 MiB, and uncompressed metadata is bounded by the file size;
+- metadata that parses as a JSON object; the stored metadata is at most 8 MiB and ends within the file, and gzip-compressed metadata may inflate to at most 8 MiB;
 - the zoom range exactly as the layer specifies;
-- the tile type the layer allows: MVT or MLT for the basemap and base packs, WebP or PNG for the terrain layers;
+- the tile type the layer allows: MVT for the basemap and base packs, WebP or PNG for the terrain layers. MLT is rejected: the VersaTiles archive the basemap is cut from holds MVT, and whether MapLibre Native iOS 6.31.0 renders MLT is unverified;
 - at least one tile;
+- clustered (the header's `clustered` flag set), as the archives `versatiles convert`, `pmtiles extract` and `pmtiles merge` write are;
 - its SHA-256 recorded.
 
 Base packs must also be under 15 MB (15,000,000 bytes). For every `fixture: true` region (today `test`) the build prints a warning when its basemap plus terrain exceed 5,000,000 bytes. A failed check fails the step, and the build exits non-zero.

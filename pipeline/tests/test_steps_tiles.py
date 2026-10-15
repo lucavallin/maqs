@@ -64,7 +64,8 @@ def test_basemap_argv_and_outputs(veneto, versatiles_bin):
         str(veneto.dist / "veneto" / "veneto-basemap.pmtiles"),
     ]
     e = step.expectation(veneto)
-    assert (e.min_zoom, e.max_zoom) == (0, 14) and "mvt" in e.tile_types
+    assert (e.min_zoom, e.max_zoom) == (0, 14) and e.tile_types == frozenset({"mvt"})
+    assert e.source == tiles.OSM_SOURCE
 
 
 def test_terrain_argv_and_outputs(veneto, versatiles_bin):
@@ -84,6 +85,7 @@ def test_terrain_argv_and_outputs(veneto, versatiles_bin):
     ]
     e = step.expectation(veneto)
     assert (e.min_zoom, e.max_zoom) == (0, 12) and e.tile_types == frozenset({"webp", "png"})
+    assert e.source == tiles.ELEVATION_SOURCE
 
 
 def test_a_region_with_bbox_border_0_gets_no_border_flag(fixture_region, versatiles_bin):
@@ -129,6 +131,7 @@ def test_base_pack_argv_outputs_and_cap(cfg, tmp_path, versatiles_bin):
     ]
     e = step.expectation(ctx)
     assert (e.min_zoom, e.max_zoom) == (0, 10) and e.size_cap == 15_000_000
+    assert e.tile_types == frozenset({"mvt"}) and e.source == tiles.OSM_SOURCE
 
 
 def test_build_runs_the_argv(veneto, versatiles_bin, monkeypatch):

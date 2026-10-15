@@ -24,6 +24,8 @@ class Expectation:
     max_zoom: int
     tile_types: frozenset[str]
     size_cap: int = SIZE_CAP
+    # The archive the output was cut from, copied into the report as provenance.
+    source: str | None = None
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,7 @@ class OutputInfo:
     compression: str
     attribution: str | None
     source_data_date: str | None
+    source: str | None
     metadata: dict
 
 
@@ -82,6 +85,8 @@ def validate_output(path: Path, expect: Expectation) -> OutputInfo:
         )
     if header.addressed_tiles == 0:
         failures.append("zero tiles")
+    if not header.clustered:
+        failures.append("not clustered")
     if failures:
         raise ValidationError(f"{path.name}: " + "; ".join(failures))
     return OutputInfo(
@@ -95,5 +100,6 @@ def validate_output(path: Path, expect: Expectation) -> OutputInfo:
         compression=header.tile_compression,
         attribution=metadata.get("attribution"),
         source_data_date=metadata.get("planetiler:osm:osmosisreplicationtime"),
+        source=expect.source,
         metadata=metadata,
     )

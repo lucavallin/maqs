@@ -6,7 +6,7 @@ from maqs import validate
 from maqs.validate import Expectation, ValidationError, sha256, validate_output
 from tests.helpers import write_pmtiles
 
-BASEMAP = Expectation(min_zoom=0, max_zoom=14, tile_types=frozenset({"mvt", "mlt"}))
+BASEMAP = Expectation(min_zoom=0, max_zoom=14, tile_types=frozenset({"mvt"}), source="https://x")
 TERRAIN = Expectation(min_zoom=0, max_zoom=12, tile_types=frozenset({"webp", "png"}))
 
 
@@ -30,6 +30,27 @@ def test_valid_basemap_passes_and_reports(tmp_path):
     assert info.file == "x-basemap.pmtiles" and info.tiles == 1 and info.compression == "gzip"
     assert info.attribution == "© OSM" and info.source_data_date == "2026-06-07T23:59:58Z"
     assert info.sha256 == sha256(p) and info.bytes == p.stat().st_size
+    assert info.source == "https://x"
+
+
+def test_source_defaults_to_none(tmp_path):
+    p = write_pmtiles(tmp_path / "t.pmtiles", tile_type=4, max_zoom=12, tile_compression=1)
+    assert validate_output(p, TERRAIN).source is None
+
+
+def test_rejects_an_unclustered_archive(tmp_path):
+    p = write_pmtiles(tmp_path / "b.pmtiles", max_zoom=14)
+    data = bytearray(p.read_bytes())
+    data[96] = 0  # clustered byte
+    p.write_bytes(bytes(data))
+    with pytest.raises(ValidationError, match="not clustered"):
+        validate_output(p, BASEMAP)
+
+
+def test_rejects_mlt_where_only_mvt_is_allowed(tmp_path):
+    p = write_pmtiles(tmp_path / "b.pmtiles", tile_type=6, max_zoom=14)
+    with pytest.raises(ValidationError, match=r"tile type mlt, expected one of \['mvt'\]"):
+        validate_output(p, BASEMAP)
 
 
 def test_rejects_brotli(tmp_path):

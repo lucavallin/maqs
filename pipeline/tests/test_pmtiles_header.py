@@ -52,6 +52,14 @@ def test_rejects_metadata_beyond_eof(tmp_path):
         read_metadata(p, h)
 
 
+def test_rejects_a_metadata_length_over_the_cap_before_reading(tmp_path):
+    # the file is tiny, so a check run after the bounds check would report "truncated" instead
+    p = write_pmtiles(tmp_path / "a.pmtiles")
+    h = dataclasses.replace(read_header(p), metadata_length=MAX_METADATA_BYTES + 1)
+    with pytest.raises(PMTilesError, match=f"metadata length {MAX_METADATA_BYTES + 1} exceeds"):
+        read_metadata(p, h)
+
+
 def test_rejects_truncated_tile_data(tmp_path):
     p = write_pmtiles(tmp_path / "a.pmtiles")
     p.write_bytes(p.read_bytes()[:-5])

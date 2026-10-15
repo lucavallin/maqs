@@ -63,7 +63,7 @@ class BasemapStep(_VersatilesStep):
         ]
 
     def expectation(self, ctx: BuildContext) -> Expectation:
-        return Expectation(0, BASEMAP_MAX_ZOOM, frozenset({"mvt", "mlt"}))
+        return Expectation(0, BASEMAP_MAX_ZOOM, frozenset({"mvt"}), source=OSM_SOURCE)
 
 
 class TerrainStep(_VersatilesStep):
@@ -85,7 +85,7 @@ class TerrainStep(_VersatilesStep):
         ]
 
     def expectation(self, ctx: BuildContext) -> Expectation:
-        return Expectation(0, TERRAIN_MAX_ZOOM, frozenset({"webp", "png"}))
+        return Expectation(0, TERRAIN_MAX_ZOOM, frozenset({"webp", "png"}), source=ELEVATION_SOURCE)
 
 
 class BasePackStep(_VersatilesStep):
@@ -116,7 +116,9 @@ class BasePackStep(_VersatilesStep):
         ]
 
     def expectation(self, ctx: BuildContext) -> Expectation:
-        return Expectation(0, self.pack.max_zoom, frozenset({"mvt", "mlt"}), size_cap=BASE_PACK_CAP)
+        return Expectation(
+            0, self.pack.max_zoom, frozenset({"mvt"}), size_cap=BASE_PACK_CAP, source=OSM_SOURCE
+        )
 
 
 TILE_STEPS: dict[str, type[_VersatilesStep]] = {"basemap": BasemapStep, "terrain": TerrainStep}

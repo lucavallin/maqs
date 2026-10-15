@@ -6,6 +6,7 @@ from click.testing import CliRunner
 
 from maqs import cli, tools
 from maqs.cli import main
+from maqs.steps import tiles
 from maqs.tools import ToolStatus
 from tests.helpers import write_pmtiles
 
@@ -160,6 +161,8 @@ def test_build_runs_steps_and_writes_report(monkeypatch, tmp_path):
     assert [s["name"] for s in report["steps"]] == ["basemap", "terrain"]
     assert report["validation"]["ok"] is True
     assert report["tools"] == tools.PINS
+    sources = [s["outputs"][0]["source"] for s in report["steps"]]
+    assert sources == [tiles.OSM_SOURCE, tiles.ELEVATION_SOURCE]
     assert (tmp_path / "test" / "test-basemap.pmtiles").exists()
     second = build("--region", "test", "--dist", str(tmp_path))
     assert second.exit_code == 0 and "skipped" in second.output

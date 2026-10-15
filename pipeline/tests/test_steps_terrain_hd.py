@@ -5,7 +5,13 @@ import pytest
 from maqs import tools
 from maqs.config import load_config
 from maqs.context import BuildContext
-from maqs.steps.terrain_hd import TerrainHDStep, archive_url, parse_dry_run_tiles, z6_tiles
+from maqs.steps.terrain_hd import (
+    MAPTERHORN_BASE,
+    TerrainHDStep,
+    archive_url,
+    parse_dry_run_tiles,
+    z6_tiles,
+)
 from maqs.tools import ToolError
 
 REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
@@ -50,7 +56,7 @@ def test_outputs_and_expectation(ctx):
     step = TerrainHDStep()
     assert step.outputs(ctx) == [ctx.dist / "veneto" / "veneto-terrain-hd.pmtiles"]
     e = step.expectation(ctx)
-    assert (e.min_zoom, e.max_zoom) == (13, 13)
+    assert (e.min_zoom, e.max_zoom) == (13, 13) and e.source == MAPTERHORN_BASE
 
 
 def test_build_extracts_non_empty_archives_and_merges(ctx, monkeypatch):

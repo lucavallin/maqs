@@ -61,7 +61,9 @@ class TerrainHDStep:
         return ctx.region.hd_max_zoom or ctx.config.hd_max_zoom
 
     def expectation(self, ctx: BuildContext) -> Expectation:
-        return Expectation(HD_MIN_ZOOM, self.max_zoom(ctx), frozenset({"webp", "png"}))
+        return Expectation(
+            HD_MIN_ZOOM, self.max_zoom(ctx), frozenset({"webp", "png"}), source=MAPTERHORN_BASE
+        )
 
     def _extract_argv(
         self, url: str, part: Path, bbox: Bbox, max_zoom: int, dry_run: bool

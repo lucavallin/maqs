@@ -83,7 +83,12 @@ def read_header(path: Path) -> Header:
 
 
 def read_metadata(path: Path, header: Header) -> dict:
-    # Bound the read by the file size so a hostile length cannot force a huge allocation.
+    # Bound the read by the cap and the file size so a hostile length cannot force a huge
+    # allocation.
+    if header.metadata_length > MAX_METADATA_BYTES:
+        raise PMTilesError(
+            f"{path}: metadata length {header.metadata_length} exceeds {MAX_METADATA_BYTES} bytes"
+        )
     if header.metadata_offset + header.metadata_length > path.stat().st_size:
         raise PMTilesError(f"{path}: truncated metadata")
     with path.open("rb") as f:
