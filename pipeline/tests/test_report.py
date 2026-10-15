@@ -1,0 +1,60 @@
+import json
+from datetime import UTC, datetime
+
+from maqs.report import REPORT_VERSION, build_report, report_path, write_report
+from maqs.steps.base import StepResult
+from maqs.validate import OutputInfo
+
+
+def info(name="test-basemap.pmtiles"):
+    return OutputInfo(
+        name,
+        10,
+        "ab" * 32,
+        "mvt",
+        0,
+        14,
+        26,
+        "gzip",
+        "© OSM",
+        "2026-06-07T23:59:58Z",
+        {"k": "v"},
+    )
+
+
+def test_report_shape():
+    results = [
+        StepResult("basemap", "built", 7.7, ["versatiles", "convert"], [info()]),
+        StepResult("terrain", "failed", 1.0, [], [], error="boom"),
+    ]
+    report = build_report(
+        "test",
+        results,
+        {"versatiles": "5.0.0", "pmtiles": "dev"},
+        built_at=datetime(2026, 10, 8, 14, 2, 11, tzinfo=UTC),
+    )
+    assert report["report_version"] == REPORT_VERSION and report["region"] == "test"
+    assert report["built_at"] == "2026-10-08T14:02:11Z"
+    assert report["tools"] == {"versatiles": "5.0.0", "pmtiles": "dev"}
+    basemap = report["steps"][0]
+    assert basemap["status"] == "built" and basemap["seconds"] == 7.7
+    assert basemap["command"] == ["versatiles", "convert"]
+    out = basemap["outputs"][0]
+    assert out["file"] == "test-basemap.pmtiles" and out["sha256"] == "ab" * 32
+    assert out["tiles"] == 26
+    assert out["attribution"] == "© OSM" and out["source_data_date"] == "2026-06-07T23:59:58Z"
+    assert "metadata" not in out
+    assert report["steps"][1]["error"] == "boom"
+    assert report["validation"] == {"ok": False, "failures": ["terrain: boom"]}
+
+
+def test_report_ok_when_nothing_failed():
+    report = build_report("x", [StepResult("basemap", "skipped", 0.0, [], [info()])], {})
+    assert report["validation"] == {"ok": True, "failures": []}
+
+
+def test_write_report_is_json_and_atomic(tmp_path):
+    path = report_path(tmp_path)
+    write_report(path, {"a": 1})
+    assert json.loads(path.read_text()) == {"a": 1}
+    assert not (tmp_path / "build-report.json.tmp").exists()
