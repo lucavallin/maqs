@@ -1,0 +1,156 @@
+import json
+from pathlib import Path
+
+from click.testing import CliRunner
+
+from maqs import cli, tools
+from maqs.cli import main
+from maqs.tools import ToolStatus
+from tests.helpers import write_pmtiles
+
+REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
+
+
+def ok_tools(monkeypatch):
+    statuses = [ToolStatus(n, v, v, Path(f"/fake/{n}"), True, "ok") for n, v in tools.PINS.items()]
+    monkeypatch.setattr(cli, "check_tools", lambda: statuses)
+
+
+def build(*args: str):
+    return CliRunner().invoke(main, ["--config", str(REAL), "build", *args])
+
+
+def test_regions_lists_ids_extracts_and_base_packs(monkeypatch):
+    result = CliRunner().invoke(main, ["--config", str(REAL), "regions"])
+    assert result.exit_code == 0
+    for s in (
+        "test",
+        "triveneto",
+        "veneto",
+        "europe/italy/nord-est",
+        "base-triveneto",
+        "10.3818,44.7923,13.9187,47.0921",
+    ):
+        assert s in result.output
+
+
+def test_check_tools_exit_codes(monkeypatch):
+    ok_tools(monkeypatch)
+    assert CliRunner().invoke(main, ["check-tools"]).exit_code == 0
+    bad = [
+        ToolStatus("versatiles", "5.0.0", "4.9.0", Path("/x"), False, "found 4.9.0, pinned 5.0.0")
+    ]
+    monkeypatch.setattr(cli, "check_tools", lambda: bad)
+    result = CliRunner().invoke(main, ["check-tools"])
+    assert result.exit_code == 1 and "4.9.0" in result.output
+
+
+def test_build_refuses_unknown_region(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    result = build("--region", "nope", "--dist", str(tmp_path))
+    assert result.exit_code == 2
+    assert "unknown region 'nope'" in result.output and "veneto" in result.output
+
+
+def test_build_refuses_a_base_pack_id_as_region(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    result = build("--region", "base-triveneto", "--dist", str(tmp_path))
+    assert result.exit_code == 2 and "--region base" in result.output
+
+
+def test_build_refuses_unknown_layer(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    result = build("--region", "test", "--layers", "lava", "--dist", str(tmp_path))
+    assert result.exit_code == 2 and "unknown layer 'lava'" in result.output
+
+
+def test_build_refuses_an_empty_layer_list(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    result = build("--region", "test", "--layers", " , ", "--dist", str(tmp_path))
+    assert result.exit_code == 2 and "no layers" in result.output
+    assert not (tmp_path / "test").exists()
+
+
+def test_build_base_refuses_a_config_without_base_packs(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    no_packs = tmp_path / "regions.yaml"
+    no_packs.write_text(
+        "schema_version: 1\n"
+        "regions:\n"
+        "  - { id: solo, name: { it: Solo, en: Solo }, bbox: [12.2, 46.0, 12.3, 46.1] }\n"
+    )
+    result = CliRunner().invoke(
+        main, ["--config", str(no_packs), "build", "--region", "base", "--dist", str(tmp_path)]
+    )
+    assert result.exit_code == 2 and "no base_packs" in result.output
+
+
+def test_missing_config_file_is_a_usage_error(tmp_path):
+    result = CliRunner().invoke(main, ["--config", str(tmp_path / "absent.yaml"), "regions"])
+    assert result.exit_code == 2
+
+
+def test_build_stops_on_tool_mismatch(monkeypatch, tmp_path):
+    bad = [
+        ToolStatus("versatiles", "5.0.0", "4.9.0", Path("/x"), False, "found 4.9.0, pinned 5.0.0")
+    ]
+    monkeypatch.setattr(cli, "check_tools", lambda: bad)
+    result = build("--region", "test", "--dist", str(tmp_path))
+    assert result.exit_code == 1 and "pinned 5.0.0" in result.output
+
+
+def test_build_runs_steps_and_writes_report(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
+
+    def fake_run(argv, **kw):
+        argv = [str(a) for a in argv]
+        out = Path(argv[-1])
+        out.parent.mkdir(parents=True, exist_ok=True)
+        if "elevation.versatiles" in argv[-2]:
+            write_pmtiles(out, tile_type=4, max_zoom=12, tile_compression=1)
+        else:
+            write_pmtiles(out, tile_type=1, max_zoom=14, metadata={"attribution": "© OSM"})
+        return None
+
+    monkeypatch.setattr(tools, "run", fake_run)
+    result = build("--region", "test", "--dist", str(tmp_path))
+    assert result.exit_code == 0, result.output
+    report = json.loads((tmp_path / "test" / "build-report.json").read_text())
+    assert [s["name"] for s in report["steps"]] == ["basemap", "terrain"]
+    assert report["validation"]["ok"] is True
+    assert report["tools"] == tools.PINS
+    assert (tmp_path / "test" / "test-basemap.pmtiles").exists()
+    second = build("--region", "test", "--dist", str(tmp_path))
+    assert second.exit_code == 0 and "skipped" in second.output
+
+
+def test_build_exit_1_when_a_step_fails(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
+
+    def fake_run(argv, **kw):
+        raise tools.ToolError([str(a) for a in argv], 1, "network down")
+
+    monkeypatch.setattr(tools, "run", fake_run)
+    result = build("--region", "test", "--dist", str(tmp_path))
+    assert result.exit_code == 1 and "network down" in result.output
+    report = json.loads((tmp_path / "test" / "build-report.json").read_text())
+    assert report["validation"]["ok"] is False
+
+
+def test_build_base_packs(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
+
+    def fake_run(argv, **kw):
+        out = Path(str(argv[-1]))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        write_pmtiles(out, tile_type=1, max_zoom=10)
+        return None
+
+    monkeypatch.setattr(tools, "run", fake_run)
+    result = build("--region", "base", "--dist", str(tmp_path))
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "base" / "base-triveneto-basemap.pmtiles").exists()
+    assert (tmp_path / "base" / "build-report.json").exists()
