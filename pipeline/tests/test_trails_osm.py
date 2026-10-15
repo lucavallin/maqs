@@ -35,6 +35,13 @@ def test_assemble_orders_and_reverses_ways():
     assert anomalies[0].id == "way/11"
 
 
+def test_assemble_orients_by_member_order_when_first_way_is_stored_backwards():
+    ways = {10: way(10, [3, 2, 1]), 11: way(11, [3, 4]), 12: way(12, [4, 5])}
+    legs, status, anomalies = assemble([(10, ""), (11, ""), (12, "")], ways)
+    assert status == "ordered" and legs == [[P[1], P[2], P[3], P[4], P[5]]]
+    assert [(a.kind, a.id) for a in anomalies] == [("reversed", "way/10")]
+
+
 def test_assemble_prepends_when_a_way_joins_the_start():
     ways = {10: way(10, [3, 4, 5]), 11: way(11, [1, 2, 3])}
     legs, status, _ = assemble([(10, ""), (11, "")], ways)
@@ -144,6 +151,8 @@ def hiking_pbf(tmp_path):
         101: ([("w", 20, ""), ("w", 99, "")], {"type": "route", "route": "hiking", "ref": "502"}),
         # no scale on the relation: difficulty comes from the ways
         102: ([("w", 10, ""), ("w", 11, "")], {"type": "route", "route": "hiking", "name": "No"}),
+        # superroute: only relation members
+        103: ([("r", 100, "")], {"type": "route", "route": "hiking", "name": "Super"}),
         200: ([("w", 30, "")], {"type": "route", "route": "bicycle", "ref": "B1"}),  # ignored
     }
     return write_osm(tmp_path / "hiking.osm.pbf", nodes, ways, relations)
@@ -152,7 +161,7 @@ def hiking_pbf(tmp_path):
 def test_read_osm_trails_maps_tags_and_geometry(hiking_pbf):
     source_date = "2026-10-06T20:21:06Z"
     records = {r.osm_id: r for r in read_osm_trails(hiking_pbf, source_date=source_date)}
-    assert set(records) == {100, 101, 102}
+    assert set(records) == {100, 101, 102, 103}
     r = records[100]
     identity = (r.source, r.source_id, r.source_licence, r.source_date, r.osm_type)
     assert identity == ("osm", "relation/100", OSM_LICENCE, source_date, "relation")
@@ -176,6 +185,8 @@ def test_read_osm_trails_maps_tags_and_geometry(hiking_pbf):
     assert r.legs == [[P[1], P[2], P[3], P[4], P[5]]]
     assert r.length_m == pytest.approx(1353, abs=20)
     assert r.bbox == (12.25, 46.1, 12.26, 46.11)
+    assert records[103].geometry_status == "incomplete" and records[103].legs == []
+    assert {a.kind for a in records[103].anomalies} == {"relation_member", "no_geometry"}
     assert records[101].geometry_status == "incomplete"
     assert records[101].legs == [[P[6], P[7]]]
     assert any(a.kind == "missing_member" and a.id == "way/99" for a in records[101].anomalies)

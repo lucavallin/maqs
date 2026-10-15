@@ -109,6 +109,16 @@ def assemble(
         first_id = unused.pop(0)
         first = ways[first_id]
         nodes, coords, wids = list(first.nodes), list(first.coords), [first_id]
+        others = [ways[w] for w in unused]
+        # A first way stored against the route direction meets the next way start to start;
+        # flip it so the whole leg follows member order and the flag lands on the right way.
+        if (
+            not any(nodes[-1] in (w.nodes[0], w.nodes[-1]) for w in others)
+            and any(w.nodes[0] == nodes[0] for w in others)
+            and not any(w.nodes[-1] == nodes[0] for w in others)
+        ):
+            nodes, coords = nodes[::-1], coords[::-1]
+            anomalies.append(Anomaly("reversed", f"way/{first_id}", reversed_message))
         extended = True
         while extended:
             extended = False
@@ -140,7 +150,7 @@ def assemble(
         gap = haversine_m(legs[i - 1][-1], legs[i][0])
         message = f"gap of {gap:.0f} m before this way"
         anomalies.append(Anomaly("gap", f"way/{leg_ways[i][0]}", message))
-    status = "incomplete" if missing else ("gaps" if len(legs) > 1 else "ordered")
+    status = "incomplete" if missing or not legs else ("gaps" if len(legs) > 1 else "ordered")
     return legs, status, anomalies
 
 
@@ -152,12 +162,13 @@ def _yes_no(value: str | None) -> int | None:
 
 def read_osm_trails(hiking_pbf: Path, *, source_date: str | None) -> list[TrailRecord]:
     """One TrailRecord per route=hiking relation in the PBF, ordered by relation id."""
-    relations: dict[int, tuple[dict[str, str], list[tuple[int, str]]]] = {}
+    relations: dict[int, tuple[dict[str, str], list[tuple[int, str]], int]] = {}
     hiking = osmium.filter.TagFilter(("route", "hiking"))
     for rel in osmium.FileProcessor(str(hiking_pbf), osmium.osm.RELATION).with_filter(hiking):
         members = [(m.ref, m.role) for m in rel.members if m.type in ("w", "way")]
-        relations[rel.id] = (dict(rel.tags), members)
-    way_ids = {wid for _, members in relations.values() for wid, _ in members}
+        relation_members = sum(1 for m in rel.members if m.type in ("r", "relation"))
+        relations[rel.id] = (dict(rel.tags), members, relation_members)
+    way_ids = {wid for _, members, _ in relations.values() for wid, _ in members}
     ways: dict[int, WayGeom] = {}
     if way_ids:
         way_filter = osmium.filter.IdFilter(way_ids).enable_for(osmium.osm.WAY)
@@ -173,8 +184,14 @@ def read_osm_trails(hiking_pbf: Path, *, source_date: str | None) -> list[TrailR
                 )
     records: list[TrailRecord] = []
     for rid in sorted(relations):
-        tags, members = relations[rid]
+        tags, members, relation_members = relations[rid]
         legs, status, anomalies = assemble(members, ways)
+        if relation_members:
+            message = f"{relation_members} relation members ignored (superroute)"
+            anomalies.append(Anomaly("relation_member", f"relation/{rid}", message))
+        if not legs:
+            message = "relation has no way members in the extract"
+            anomalies.append(Anomaly("no_geometry", f"relation/{rid}", message))
         way_sacs = [
             ways[wid].tags["sac_scale"]
             for wid, _ in members
