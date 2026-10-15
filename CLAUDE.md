@@ -108,7 +108,7 @@ pipeline/bootstrap.sh                                      # install pinned CLIs
 uv run maqs build --region test                            # end-to-end in < 5 min; the pipeline's "done" bar
 uv run maqs build --region veneto --layers basemap,terrain # one real region, a subset of layers
 uv run pytest                                              # pipeline unit tests (from pipeline/)
-uv run pytest --run-network                                # plus the live test-region build (CI runs it)
+uv run pytest --run-network                                # plus the live test-region build (not run in CI; the smoke job builds the same region)
 uv run ruff check . && uv run ruff format --check .        # pipeline lint/format
 
 # Data release (the workflow does this; run by hand only to debug)
@@ -224,13 +224,13 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **GitHub Release assets are capped at 2 GiB**; we enforce 1.9 GiB. A region that exceeds it needs a split or a lower max zoom — decided by ADR, never by raising the limit.
 - **No Git LFS, no generated data in git.** `dist/` and `.cache/` are gitignored; a `.pmtiles` or `.sqlite` in a commit is a mistake to revert, not to keep.
 - **The GitHub REST API is 60 requests/hour unauthenticated.** One app checking for updates via the API would exhaust it across a few users. Clients never call `api.github.com`.
-- **Online and offline terrain are the same VersaTiles tiles** (terrarium, WebP, z0–12). A provider that serves Mapbox Terrain-RGB or PNG at other zooms is not a drop-in; the sampler has one decode path by design. z12 is ~27 m per pixel at our latitude; higher zooms exist only in Mapterhorn's regional archives and would exceed the asset limit for a whole region.
+- **Online and offline terrain are the same VersaTiles tiles** (terrarium, WebP, z0–12). A provider that serves Mapbox Terrain-RGB or PNG at other zooms is not a drop-in; the sampler has one decode path by design. z12 is ~13 m per pixel at 46° N (512 px tiles); higher zooms exist only in Mapterhorn's regional archives and would exceed the asset limit for a whole region.
 - **FTS5 and R*Tree on Apple's system SQLite** were verified by a compiled probe on macOS and the iOS simulator (ADR 0001); `SQLITE_OMIT_LOAD_EXTENSION` is set, so no loadable extensions, ever.
 - **Hiking relations are often broken** (gaps, reversed ways, roles). The build flags them in `build-report.json` and keeps going; a pipeline that fails on bad OSM data never ships a month.
 - **`versatiles convert --bbox` on a remote `.versatiles` file is a range-request extract.** If a step is downloading the whole planet file, something is wrong — stop it.
-- **The one-tile `--bbox-border` ring costs ~15 MB at z0–11 whatever the bbox** (a 200 m bbox still came to 17.4 MB), so the `test` fixture sets `bbox_border: 0` in `regions.yaml` to stay under 5 MB; real regions keep the default of 1 (ADR 0009).
+- **The one-tile `--bbox-border` ring costs at least ~15 MB at z0–11, however small the bbox** (a 200 m bbox still came to 17.4 MB), so the `test` fixture sets `bbox_border: 0` in `regions.yaml` to stay under 5 MB; real regions keep the default of 1 (ADR 0009).
 - **macOS CI runners are slow and scarce.** `swift.yml` must not run on data-only or docs-only changes; use `paths` filters. Diagnose locally, batch fixes, never re-run CI casually.
-- **Free disk space on `ubuntu-latest` is small** relative to a Geofabrik PBF plus extracts plus tiles. The workflow frees space up front and the matrix job must not download the PBF per region (shared artifact or cache).
+- **Free disk space on the Ubuntu runner is small** relative to a Geofabrik PBF plus extracts plus tiles. The workflow frees space up front and the matrix job must not download the PBF per region (shared artifact or cache).
 - **`swift test` on macOS does not exercise the iOS Simulator leg**; availability differences (`Network.framework`, background `URLSession` behaviour) only show there. Run the simulator leg before declaring Phase 4 work done.
 - **Swift Testing prints a fake XCTest summary** ("Executed 0 tests"); read `Test run with N tests`. Grep xcodebuild output for `": error:"`, not `error`.
 - **Ubuntu's apt ships old osmium-tool (1.16) and tippecanoe (2.49).** `bootstrap.sh` fetches or builds current versions on Linux; Homebrew is current on macOS.

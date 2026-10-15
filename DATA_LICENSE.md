@@ -1,6 +1,6 @@
 # Data licence and attribution
 
-The data maqs publishes is derived from the sources below. Anyone who redistributes or displays it must carry these notices. The Swift package's attribution view shows the ones for the active sources.
+The data maqs publishes is derived from the sources below. Anyone who redistributes or displays it must carry these notices. The Swift package's attribution view (Phase 4) will show the ones for the active sources.
 
 The strings below were checked against the live sources on 2026-10-15: the VersaTiles TileJSON files for the `osm` and `elevation` tilesets, the VersaTiles tileset documentation, and Mapterhorn's `attribution.json`.
 
@@ -30,7 +30,7 @@ The terrain tiles are the [Mapterhorn](https://mapterhorn.com) build, served by 
 <a href="https://mapterhorn.com/attribution">© Mapterhorn</a>
 ```
 
-Mapterhorn combines national and regional open elevation models and credits all of them on that page; the same list is machine-readable at https://download.mapterhorn.com/attribution.json. These are the ones covering the bounding boxes of the launch regions (Veneto, Friuli-Venezia Giulia, Trentino-Alto Adige), named as in that file:
+Mapterhorn combines national and regional open elevation models and credits all of them on that page; the same list is machine-readable at https://download.mapterhorn.com/attribution.json. That page and that file are the authoritative, complete list, and apps should link to the page. `attribution.json` records no extent for its sources, so the table below is not a coverage check: its rows were selected by matching each producer's territory against the bounding boxes of the launch regions (Veneto, Friuli-Venezia Giulia, Trentino-Alto Adige), and they are named as in that file:
 
 | Source | Producer | Licence |
 |---|---|---|

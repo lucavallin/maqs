@@ -235,7 +235,7 @@ OSM tagging in South Tyrol (live Overpass, IT-BZ): 4,239 `route=hiking` relation
 
 ## 0007 — A bundled low-zoom base pack
 
-**Date:** 2026-10-07 · **Status:** proposed (owner asked whether it is possible; numbers below)
+**Date:** 2026-10-07 · **Status:** proposed (owner asked whether it is possible; numbers below); output named `base-<pack>-basemap.pmtiles` by 0009
 
 **Context.** Apps should show *something* offline before any region pack is downloaded. Measured from the same VersaTiles file the real packs use, gzip, over the bbox of all three regions:
 
@@ -274,18 +274,18 @@ OSM tagging in South Tyrol (live Overpass, IT-BZ): 4,239 `route=hiking` relation
 
 **Date:** 2026-10-15 · **Status:** accepted
 
-**Context.** The owner needs Veneto, Trentino-Alto Adige and Friuli-Venezia Giulia together and will not use anything smaller than a region (owner rule, 2026-10-08). Tile extracts are cut by bbox, and the three regional bboxes overlap heavily (Veneto's already contains most of the other two), so three separate packs cost about 1 GB where one costs about 720 MB. The Swift tests need realistic fixtures, but nothing generated may be committed, and the `test` region's basemap plus terrain should stay under about 5 MB.
+**Context.** The owner needs Veneto, Trentino-Alto Adige and Friuli-Venezia Giulia together and will not use anything smaller than a region (owner rule, 2026-10-08). Tile extracts are cut by bbox, and the three regional bboxes overlap heavily (Veneto's already contains most of the other two), so three separate packs would cost an estimated 1 GB where the one combined pack measured about 720 MB (only Veneto and Triveneto were measured). The Swift tests need realistic fixtures, but nothing generated may be committed, and the `test` region's basemap plus terrain should stay under about 5 MB.
 
 **Decisions.**
 1. A region is the smallest unit a pack is cut at; there are no sub-region packs. `test` is `fixture: true`: built for CI and tests, never listed to apps, never released, never in a base pack.
 2. `triveneto` is a first-class region with the union bbox (10.3818,44.7923,13.9187,47.0921). Measured on 2026-10-08: basemap 431 MB (z0–14, gzip, border 1, 48 s), terrain 291 MB (z0–12, 21 s). The single regions stay for users who want less.
-3. Each region sets its own tile border with `bbox_border` in `regions.yaml` (default 1); the basemap and terrain steps pass `--bbox-border` only when it is above 0. Base packs never have a border. The one-tile ring costs about 15 MB at z0–11 whatever the bbox: with a border the `test` bbox came to 18,919,607 bytes, and even a 200 m bbox to 17.4 MB. So `test` sets `bbox_border: 0`; real regions keep 1.
+3. Each region sets its own tile border with `bbox_border` in `regions.yaml` (default 1); the basemap and terrain steps pass `--bbox-border` only when it is above 0. Base packs never have a border. The one-tile ring costs at least about 15 MB at z0–11, however small the bbox: with a border the `test` bbox came to 18,919,607 bytes, and even a 200 m bbox to 17.4 MB. So `test` sets `bbox_border: 0`; real regions keep 1.
 4. The `test` bbox is 12.21,46.08,12.29,46.13, about 34 km² around Nevegal. Measured on 2026-10-15 without a border: basemap 1,617,480 bytes (40 tiles), terrain 1,496,730 bytes (14 tiles), 3,114,210 bytes together, under the 5 MB warning line. The local build takes 18.8 s.
 5. Fixtures are not committed. The `pipeline` workflow builds the test region on every push or pull request that touches the pipeline or its configuration and uploads `dist/test` as the `test-region-fixtures` artifact; the Swift workflow (Phase 4) will download it. Only tiny hand-made corrupt-input files live in git; the pipeline's own tests generate their archives in code.
 6. Regions can be anywhere in the world: each names its Geofabrik extract and an optional admin-relation clip. Base packs are named lists of regions, not "everything".
 
 **Other measurements (2026-10-15, versatiles 5.0.0, macOS).** ADR 0001's Phase 0 figures for Veneto (238 MB basemap, 105 MB terrain) were low. With border 1, Veneto measures basemap 273,130,150 bytes (20,296 tiles, 31.8 s) and terrain 163,675,404 bytes (1,664 tiles, 15.4 s). The border adds about 1,060 basemap and 330 terrain tiles, and VersaTiles' elevation tiles weigh about a quarter more per tile than the Mapterhorn extract Phase 0 measured: 133 MB against 105 MB for the same 1,331 tiles. The base pack `triveneto` (z0–10, no border) measures 13,165,829 bytes (186 tiles, 7.6 s), under ADR 0008's 15 MB target.
 
-**CONTRADICTS BRIEF (minor):** the brief's `test` region is "a few km²". At 34 km² the fixtures cover more than the three trails the Phase 0 probe bbox held.
+**CONTRADICTS BRIEF (minor):** the brief's `test` region is "a few km²". The 34 km² bbox is expected to hold more than the three trails the Phase 0 probe bbox held; the count will be known once the trails layer is built.
 
-**Consequences.** `config/regions.yaml` carries five entries; adding a region elsewhere is one more. ADR 0007's single `base-nordest` file becomes one `base-<pack>-basemap.pmtiles` per configured base pack, today `base-triveneto-basemap.pmtiles`. The release workflow (Phase 3) will skip fixture regions. The fixtures do not exercise the border; the step unit tests check the `--bbox-border` argument instead.
+**Consequences.** `config/regions.yaml` carries five entries; adding a region elsewhere is one more. ADR 0007's single `base-nordest` file becomes one `base-<pack>-basemap.pmtiles` per configured base pack, today `base-triveneto-basemap.pmtiles`. The release workflow (Phase 3) will skip fixture regions. The fixtures do not exercise the border; the step unit tests check the `--bbox-border` argument instead. ADR 0008's "~27 m per pixel" at z12 assumed 256 px tiles; the measured terrain archives are 512 px, so z12 is about 13 m per pixel at 46° N.

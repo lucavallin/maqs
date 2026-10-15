@@ -6,6 +6,8 @@ This document lists every file maqs publishes, with a version for each format. A
 
 Every tile output is a [PMTiles v3](https://github.com/protomaps/PMTiles/blob/main/spec/v3/spec.md) archive with `tile_compression` and `internal_compression` each gzip or none. The archives `versatiles` writes (basemap, terrain, base packs) are clustered, with gzip internal compression. MapLibre Native reads gzip or uncompressed tiles only and rejects brotli and zstd, so the pipeline recompresses VersaTiles' brotli basemap tiles to gzip.
 
+The tile archives carry no `layer_schema_version` yet. The per-layer version arrives with `manifest.json` in Phase 2.
+
 | File | Layer | Tile type | Zoom | Tile compression | Source and extent |
 |---|---|---|---|---|---|
 | `<region>-basemap.pmtiles` | basemap | MVT, Shortbread 1.0 (OSM plus ESA WorldCover landcover) | 0–14 | gzip | `download.versatiles.org/osm-landcover.versatiles`: the region's bbox plus a ring of `bbox_border` tiles at every zoom (default 1, 0 for `test`) |
@@ -15,7 +17,7 @@ Every tile output is a [PMTiles v3](https://github.com/protomaps/PMTiles/blob/ma
 
 Region outputs are written to `dist/<region>/`, base packs to `dist/base/`.
 
-Terrarium decoding: `elevation_m = (R * 256 + G + B / 256) - 32768`. At zoom 12 one pixel is about 27 m at 46° N.
+Terrarium decoding: `elevation_m = (R * 256 + G + B / 256) - 32768`. The tiles are 512 px, so at zoom 12 one pixel is about 13 m at 46° N (a z12 tile is about 6.8 km wide there).
 
 The archive metadata is a JSON object. Basemap archives carry `tile_schema: "shortbread@1.0"`, terrain archives `tile_schema: "dem/terrarium"` and `tile_size: 512`. Both carry the upstream `attribution` string. The basemap also carries `planetiler:osm:osmosisreplicationtime`, the date of the OSM data in the VersaTiles build, which the build report copies out as `source_data_date`. The terrain archive has no date key, so terrain's `source_data_date` is null. `versatiles probe` shows the metadata; the pipeline reads it with its own header reader (`pipeline/src/maqs/pmtiles_header.py`).
 
@@ -44,10 +46,10 @@ Every output, including the outputs of a step skipped because they already exist
 - smaller than 1.9 GiB (`1.9 × 2^30` bytes);
 - a readable PMTiles v3 header, and every section (root directory, metadata, leaf directories, tile data) ends within the file, so a tail-truncated archive is rejected;
 - tile compression gzip or none, internal compression gzip or none;
-- metadata that inflates to at most 8 MiB and parses as a JSON object;
+- metadata that parses as a JSON object; gzip-compressed metadata may inflate to at most 8 MiB, and uncompressed metadata is bounded by the file size;
 - the zoom range exactly as the layer specifies;
 - the tile type the layer allows: MVT or MLT for the basemap and base packs, WebP or PNG for the terrain layers;
 - at least one tile;
 - its SHA-256 recorded.
 
-Base packs must also be under 15 MB (15,000,000 bytes). For the `test` region the build prints a warning when basemap plus terrain exceed 5,000,000 bytes. A failed check fails the step, and the build exits non-zero.
+Base packs must also be under 15 MB (15,000,000 bytes). For every `fixture: true` region (today `test`) the build prints a warning when its basemap plus terrain exceed 5,000,000 bytes. A failed check fails the step, and the build exits non-zero.
