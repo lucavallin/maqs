@@ -58,7 +58,7 @@ Rules shared by all three:
   );
   ```
 
-- **Ids.** `id` is the row's position in write order, from 1. The R\*Tree tables use the same `id` and the FTS5 tables use it as `rowid`. OSM ids are stored as they are, with their type in a column (`osm_type`) or in the column name (`osm_way_id`, `start_node`), never folded into one number space.
+- **Ids.** `id` is the row's position in write order, from 1. The R\*Tree tables use the same `id` and the FTS5 tables use it as `rowid`. An `id`, and the overlay feature `id` that points at it, is valid only within one build: the same trail, place or segment can get another `id` in the next release. A reader that keeps a reference across releases stores the source key instead: `source` and `source_id` (or `osm_type` and `osm_id`) for a trail, `osm_type` and `osm_id` for a place, `osm_way_id` for a segment. OSM ids are stored as they are, with their type in a column (`osm_type`) or in the column name (`osm_way_id`, `start_node`), never folded into one number space.
 - **Text search.** FTS5 with `tokenize='unicode61 remove_diacritics 2'`, as external-content tables over the main table (`content='…', content_rowid='id'`). The index keeps no copy of the text: match in the FTS table, then read the row from the main table by `rowid`.
 - **Spatial search.** R\*Tree tables with columns `(id, min_lon, max_lon, min_lat, max_lat)` in WGS 84 degrees; a point is a box whose minimum equals its maximum.
 - **Units.** Lengths and distances are metres along the Earth's surface, summed haversine distances with a radius of 6,371,008.8 m; elevation is ignored.
@@ -158,7 +158,7 @@ A village, hamlet or isolated dwelling without a `name` tag is skipped (a `name:
 rank_score = 1000 × [wikidata present] + ele
 ```
 
-with `ele` taken as 0 when null and "wikidata present" meaning a non-empty `wikidata` tag. A 1,763 m peak with a `wikidata` tag scores 2763, the same peak without one 1763, an unnamed shelter with neither 0. Adding an input to the formula means changing this section and its ADR together ([ADR 0011](decisions.md)).
+with `ele` taken as 0 when null and "wikidata present" meaning a non-empty `wikidata` tag. A 1,763 m peak with a `wikidata` tag scores 2763, the same peak without one 1763, an unnamed shelter with neither 0. A place tagged below sea level (`ele` < 0) can score below 0. Adding an input to the formula means changing this section and its ADR together ([ADR 0011](decisions.md)).
 
 ### Curvature (`layer_schema_version` 1)
 
@@ -182,7 +182,7 @@ CREATE VIRTUAL TABLE segments_rtree USING rtree(id, min_lon, max_lon, min_lat, m
 CREATE VIRTUAL TABLE corners_rtree USING rtree(id, min_lon, max_lon, min_lat, max_lat);
 ```
 
-**`segments`** has one row per OSM way whose `highway` is one of `curvature.highways` and whose `surface` is not one of `curvature.exclude_surfaces` (a way without `surface` is kept). Both lists are in `config/regions.yaml`. Rows follow the extract's way order. A way with fewer than two located nodes is skipped (`too_short` anomaly); a way with some unlocated nodes is kept and joined over them (`unlocated_nodes`). Two-node ways and straight ways are kept with score 0 and no corners, because they carry the adjacency a lookahead follows.
+**`segments`** has one row per OSM way whose `highway` is one of `curvature.highways` and whose `surface` is not one of `curvature.exclude_surfaces` (a way without `surface` is kept). Both lists are in `config/regions.yaml`. Rows follow the extract's way order. A way with fewer than two located nodes is skipped (`too_short` anomaly); a way with some unlocated nodes is kept and joined over them (`unlocated_nodes`). Two-node ways and straight ways are kept with score 0 and no corners, because they carry the adjacency a lookahead follows. A closed way, such as a roundabout drawn as one ring, is scored like any other way: its vertices all turn the same way, so it becomes a tight corner (a 20 m ring scores as one corner of radius 20 m); its first and last vertex, the same node, have no radius. Nothing marks a roundabout, and `oneway` is not inferred from `junction=roundabout`.
 
 | Column | Meaning |
 |---|---|
