@@ -13,11 +13,12 @@ permissions:
 
 concurrency:
   group: pipeline-${{ github.ref }}
-  cancel-in-progress: true
+  # Only PR runs cancel each other; a run on main always finishes and uploads its artifact.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   unit:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults: { run: { working-directory: pipeline } }
     steps:
       - uses: actions/checkout@v7
@@ -28,10 +29,12 @@ jobs:
       - run: uv run pytest -q
 
   smoke:
-    runs-on: ubuntu-latest
+    # Pins, cached binaries and runtime-library names verified on 24.04 only; moving images is deliberate: bump the runner, add the image to the cache key, re-bootstrap.
+    runs-on: ubuntu-24.04
     needs: unit
     timeout-minutes: 30
     env:
+      # Must match the pins in pipeline/bootstrap.sh and maqs.tools.PINS.
       TOOLS_KEY: versatiles-5.0.0-pmtiles-1.31.2-osmium-1.19.1-tippecanoe-2.79.0
     steps:
       - uses: actions/checkout@v7
