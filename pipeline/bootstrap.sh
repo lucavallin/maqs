@@ -20,10 +20,10 @@ have() { command -v "$1" >/dev/null 2>&1; }
 
 version_of() {
   case "$1" in
-    versatiles) versatiles --version 2>/dev/null | head -1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' ;;
+    versatiles) versatiles --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 ;;
     pmtiles)    pmtiles version 2>/dev/null | head -1 | sed -E 's/^pmtiles ([^,]+),.*/\1/' ;;
-    osmium)     osmium --version 2>/dev/null | head -1 | sed -E 's/.*([0-9]+\.[0-9]+\.[0-9]+).*/\1/' ;;
-    tippecanoe) tippecanoe --version 2>&1 | head -1 | sed -E 's/.*v?([0-9]+\.[0-9]+\.[0-9]+).*/\1/' ;;
+    osmium)     osmium --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 ;;
+    tippecanoe) tippecanoe --version 2>&1 | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 ;;
   esac
 }
 
@@ -60,12 +60,23 @@ install_ubuntu() {
   esac
 
   tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' EXIT
   if [ "$(version_of versatiles)" != "$VERSATILES_VERSION" ]; then
     curl -fsSL -o "$tmp/versatiles.deb" \
       "https://github.com/versatiles-org/versatiles-rs/releases/download/v${VERSATILES_VERSION}/versatiles-linux-gnu-${vt_arch}.deb"
     sudo dpkg -i "$tmp/versatiles.deb"
-    # The deb installs to /usr/bin; CI caches and looks in /usr/local/bin.
-    [ -e /usr/local/bin/versatiles ] || sudo ln -s /usr/bin/versatiles /usr/local/bin/versatiles
+  fi
+  # The deb installs to /usr/bin; CI caches and looks in /usr/local/bin. Replace a
+  # dangling link or a stale binary there; keep a working one at the pinned version.
+  if [ -x /usr/bin/versatiles ]; then
+    local_vt=/usr/local/bin/versatiles
+    if [ -L "$local_vt" ] || [ -e "$local_vt" ]; then
+      if [ ! -x "$local_vt" ] || [ "$("$local_vt" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" != "$VERSATILES_VERSION" ]; then
+        sudo ln -sf /usr/bin/versatiles "$local_vt"
+      fi
+    else
+      sudo ln -s /usr/bin/versatiles "$local_vt"
+    fi
   fi
   if [ "$(version_of pmtiles)" != "$PMTILES_VERSION" ]; then
     curl -fsSL -o "$tmp/pmtiles.tgz" \
@@ -86,7 +97,6 @@ install_ubuntu() {
     make -C "$tmp/tippecanoe" -j "$(nproc)" >/dev/null
     sudo make -C "$tmp/tippecanoe" install >/dev/null
   fi
-  rm -rf "$tmp"
 }
 
 case "$os" in
