@@ -6,7 +6,7 @@ The strings below were checked against the live sources on 2026-10-15: the Versa
 
 ## OpenStreetMap (basemap, trails, places, curvature)
 
-Map data © OpenStreetMap contributors, available under the [Open Database License (ODbL) 1.0](https://www.openstreetmap.org/copyright). Derived databases that maqs publishes, such as the planned SQLite layers, are ODbL as well.
+Map data © OpenStreetMap contributors, available under the [Open Database License (ODbL) 1.0](https://www.openstreetmap.org/copyright). Derived databases that maqs publishes, such as the trails, places and curvature SQLite files, are ODbL as well.
 
 Required display text: **© OpenStreetMap contributors**, linking to https://www.openstreetmap.org/copyright.
 

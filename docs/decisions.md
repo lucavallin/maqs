@@ -291,3 +291,102 @@ OSM tagging in South Tyrol (live Overpass, IT-BZ): 4,239 `route=hiking` relation
 **Consequences.** `config/regions.yaml` carries five entries; adding a region elsewhere is one more. ADR 0007's single `base-nordest` file becomes one `base-<pack>-basemap.pmtiles` per configured base pack, today `base-triveneto-basemap.pmtiles`. The release workflow (Phase 3) will skip fixture regions. The fixtures do not exercise the border; the step unit tests check the `--bbox-border` argument instead. ADR 0008's "~27 m per pixel" at z12 assumed 256 px tiles; the measured terrain archives are 512 px, so z12 is about 13 m per pixel at 46° N.
 
 **Verification of `terrain-hd` (2026-10-15, macOS, Homebrew `pmtiles` 1.31.2, which reports `dev`).** One live run on a scratch region with bbox 11.24,46.0,11.26,46.02, which straddles the zoom-6 boundary at 11.25° E, at `hd_max_zoom` 13. The step picked archives `6-33-22` and `6-34-22`. Each `--dry-run` printed `fetching 2 tiles, …`, the line the step parses. `pmtiles extract` accepted the argv as built (`--bbox=… --minzoom=13 --maxzoom=13`), and `pmtiles merge` joined the two parts. The output validated: WebP, tile compression none, zoom 13–13, 4 tiles, 412,663 bytes, clustered, attribution "© Mapterhorn". The step took 7.2 s, the whole command 8 s, and needed no code change. Two edge cases were probed by hand. A published archive with no tiles in the bbox prints `fetching 0 tiles` and exits 0, so the step skips it. An archive Mapterhorn does not publish answers HTTP 404: `pmtiles extract` exits 1 and the step fails instead of skipping it. The four archives under the launch regions (`6-33-22`, `6-33-23`, `6-34-22`, `6-34-23`) all answer 200, so that only matters for a region elsewhere. The Linux release binary was not run against Mapterhorn.
+
+---
+
+## 0010 — Geometry encoding and the Python libraries for the data layers
+
+**Date:** 2026-10-15 · **Status:** accepted
+
+**Context.** The brief asks for one compact geometry encoding for every layer, encoded polyline or float32 blobs, chosen by ADR. Size matters most for curvature: ADR 0008 wants the curvature file for the three launch regions under 30 MB so apps can bundle it. The Swift package decodes every geometry it reads on the device, with system frameworks only. The data layers also need two things the CLIs do not do: assembling hiking relations from their member ways (`osmium export` skips route relations, ADR 0001) and reading terrain tiles for ascent and descent.
+
+**Decision.**
+- Every line is a Google encoded polyline at precision 6, stored as TEXT; a trail's legs are joined by `;`. Points are plain `lon`/`lat` REAL columns. `docs/data-format.md` specifies the format.
+- Two Python libraries become runtime dependencies of the pipeline, pinned in `uv.lock`. pyosmium (`osmium` 4.3.1, BSD-2-Clause) reads the OSM cuts with node locations for all three layers. Pillow (12.3.0, MIT-CMU) decodes the WebP terrain tiles. Both publish Python 3.12 wheels for macOS (arm64, x86_64) and manylinux (x86_64, aarch64), so CI installs them without a compiler, and both are maintained (the pinned releases are from 2026-04-02 and 2026-07-01). pyosmium brings `requests` and its four dependencies (`certifi`, `charset-normalizer`, `idna`, `urllib3`); Pillow brings none. Neither reaches the Swift package.
+- The pipeline reads PMTiles tiles itself (`pmtiles_reader.py`, next to the header reader) and uses no GIS library: osmium does the spatial cut.
+
+**Rejected.**
+- float32 blobs: every vertex costs 8 bytes. A polyline6 vertex costs one character per five bits of each zigzagged delta, so at 46° N a vertex less than 1.2 km from the previous one takes at most 6 characters; only the first vertex of a line takes more (11 for the example in `data-format.md`). The text also stays readable in the `sqlite3` shell.
+- `|` between trail legs: it is a polyline character (the example point encodes as `_av|vA_xtjV`), so it cannot separate polylines. `;` is outside the alphabet.
+- `pmtiles tile` as a subprocess for every terrain tile: one process per tile, where a small bounds-checked reader runs in-process and is unit-tested.
+- shapely: nothing needs it. osmium cuts by polygon, and the geometry the layers use (distances, circles, resampling) is a few functions in `geometry.py`.
+
+**Consequences.** `MaqsData` decodes polyline6 and splits trail geometry on `;`; the worked example in `data-format.md` is ready-made test data. The Swift products link nothing new. The pipeline goes from two direct runtime dependencies (`click`, `pyyaml`) to four. ADR 0008's curvature size result is in ADR 0011.
+
+---
+
+## 0011 — Data-layer formulas, thresholds and the first measurements
+
+**Date:** 2026-10-15 · **Status:** accepted (formulas and thresholds); the curvature size against ADR 0008 is open for the owner
+
+**Context.** The data layers need numbers the brief leaves open: how finely to sample a trail for ascent, how much terrain noise to ignore, how to rank places, when two road vertices count as one, what a corner is. ADR 0008 sets a 30 MB target for the bundled curvature file. The first builds of the real regions were also the first check of the cuts and counts against Phase 0.
+
+**Decision.** `docs/data-format.md` has the normative text of every formula; this records the constants and the reasons.
+
+- Hiking cut: trails read a per-region `osmium extract -s smart -S types=route` of the `route=hiking` filter of the whole Geofabrik extract. It keeps every relation with a member in the region, with all its members. That is how the brief's "relations from the uncut file" works per region: a relation that crosses the region's border stays whole. Relations with members outside the Geofabrik extract itself (5.1 % of Veneto's in nord-est, ADR 0001) still show as `incomplete`.
+- Ascent and descent: a trail is sampled every 25 m, about two pixels of z12 terrain at 46° N, with a 5 m hysteresis so that small elevation differences between neighbouring samples do not add up. Only samples over the region's terrain archive count. A trail partly outside it keeps the value over the covered part, with a `terrain_gap` anomaly, and is null only when nothing is covered. The row itself does not say the value is partial; the build report does. The alternative, null on any gap, would blank every relation that leaves the region (the brief puts those at 5–10 %).
+- Places: `rank_score` = 1000 × [wikidata present] + ele. A `wikidata` tag weighs as much as 1,000 m of height: a notable village or hut ranks with the high peaks, and among peaks the height decides. In Phase 0, 41 % of Veneto's place nodes had `wikidata` and 32 % had `ele`, so both inputs carry signal. The brief asks for a simple formula, and this one has two inputs.
+- Curvature: vertices closer than 5 m are merged, from both ends of the way. Without the end pass, a way whose last node sits 2 m past the previous one and 1 m off the line, as junction nodes often do, scores a 58 m corner. The bands are those of `curvature`: weight 4, 3, 2, 1 under 30, 60, 100, 175 m. A corner is a run of same-direction vertices under 500 m, and its radius is the circle through entry, apex and exit (ADR 0008).
+- Score attribution: each vertex's band weight covers half of each adjacent segment, instead of the segment after it as in `curvature`. The per-segment rule made the score depend on the direction the way was drawn in: a hook-shaped test road scored 236.5 one way and 54.1 the other. On a two-way road the drawing direction means nothing.
+- Two-node and straight ways are kept with score 0 and no corners. They carry the node adjacency a lookahead follows across straight connectors (ADR 0008). Rejected: skipping ways with fewer than three nodes, which breaks that chain. `oneway` comes from the explicit tag only.
+- Difficulty: one 1–6 scale built on SAC's six grades, with CAI's grades placed against it (the table is in `data-format.md`). The relation's `cai_scale` wins, then its `sac_scale`, then the hardest `sac_scale` of its member ways, because South Tyrol grades ways, not relations (ADR 0006).
+- Trail merge: a lower-priority record becomes a secondary when its `ref` matches and more than half of it, resampled every 25 m, lies within 50 m of the winner (plus half the sample step, since points are compared with points). Records from one source are never merged with each other. Only OSM exists today, so every row is a primary.
+- The `expect` ranges in `config/regions.yaml` are the measured counts below times 0.6 to 2, rounded. Veneto keeps the trails and places ranges derived from Phase 0. The `test` region has no `expect` block; the network test asserts about 60–200 % of its counts instead.
+
+**Measurements (2026-10-15, macOS, the nord-est extract downloaded that day, 625,529,465 bytes).**
+
+The `test` region with all five layers took 64.5 s, which probably includes the extract download; a rerun with nothing to do took 0.8 s.
+
+| Step | Seconds | Outputs (bytes) | Rows |
+|---|---|---|---|
+| basemap | 10.9 | 1,617,480 (40 tiles) | |
+| terrain | 10.2 | 1,496,730 (14 tiles) | |
+| trails | 32.9 | SQLite 126,976; overlay 191,218 (442 tiles) | 10 trails |
+| places | 4.0 | SQLite 40,960; overlay 4,388 (23 tiles) | 22 places |
+| curvature | 5.7 | SQLite 176,128 | 136 segments, 623 corners |
+
+Of the 10 test trails, 7 are `ordered`, 2 `incomplete` and 1 `gaps`; 6 are graded by `cai_scale`, 3 by `sac_scale:ways`, 1 not at all. All 10 have an ascent. The longest, the 353.6 km Traumpfad München–Venedig, reports 303 m: only its samples over the test region's terrain count.
+
+The real regions were built with trails, places and curvature only. Without terrain in those runs, `ascent_m` is null throughout, with one `terrain_missing` anomaly per build.
+
+| Region | Trails (`expect`) | Places (`expect`) | Segments (`expect`) | Corners | Seconds: trails / places / curvature |
+|---|---|---|---|---|---|
+| veneto | 1,953 (1,500–3,000) | 13,400 (10,000–18,000) | 128,590 (75,000–250,000) | 227,742 | 19.9 / 14.5 / 18.8 |
+| triveneto | 8,686 (5,000–17,000) | 29,198 (17,000–58,000) | 221,044 (130,000–440,000) | 460,364 | 39.0 / 37.9 / 39.9 |
+| friuli-venezia-giulia | 1,267 (750–2,500) | 5,830 (3,500–11,500) | 47,015 (28,000–94,000) | 88,929 | 10.4 / 6.4 / 6.0 |
+| trentino-alto-adige | 5,786 (3,500–11,500) | 10,150 (6,000–20,000) | 45,600 (27,000–91,000) | 144,520 | 20.2 / 6.7 / 7.3 |
+
+| Region | trails.sqlite | trails.pmtiles | places.sqlite | places.pmtiles | curvature.sqlite |
+|---|---|---|---|---|---|
+| veneto | 5,099,520 | 6,712,772 | 1,998,848 | 1,452,413 | 58,818,560 |
+| triveneto | 18,939,904 | 22,451,583 | 4,648,960 | 3,399,942 | 111,792,128 |
+| friuli-venezia-giulia | 4,329,472 | 4,246,707 | 1,007,616 | 704,302 | 22,237,184 |
+| trentino-alto-adige | 11,309,056 | 13,993,920 | 1,699,840 | 1,285,656 | 30,420,992 |
+
+| Region | `geometry_status`: ordered / gaps / incomplete | `difficulty_scheme`: none / cai_scale / sac_scale / sac_scale:ways |
+|---|---|---|
+| veneto | 1,596 / 313 / 44 | 282 / 1,199 / 2 / 470 |
+| triveneto | 7,156 / 1,331 / 199 | 2,128 / 3,240 / 11 / 3,307 |
+| friuli-venezia-giulia | 1,103 / 82 / 82 | 186 / 761 / 0 / 320 |
+| trentino-alto-adige | 4,701 / 971 / 114 | 1,702 / 1,477 / 9 / 2,598 |
+
+Veneto matches Phase 0: 1,953 trails against 1,955 relations, 13,400 places against 13,408 nodes. Triveneto's 8,686 trails are fewer than the three regions' 9,006 because a relation that spans regions counts once. In Trentino-Alto Adige 2,598 of 5,786 trails (45 %) are graded from their ways' `sac_scale`, as ADR 0006 expected.
+
+The trails steps recorded 20,050 anomalies for Veneto, 72,857 for Triveneto, 16,687 for Friuli-Venezia Giulia, 43,392 for Trentino-Alto Adige and 1,427 for `test`. Those builds listed every reversed member way on its own, about 68,000 of Triveneto's total. The build now writes one `reversed` entry per relation and the full count per kind (`anomaly_kinds`); the real regions have not been rebuilt since, so their per-kind counts are still to be measured. The places steps recorded one `ele` anomaly each in Triveneto and Trentino-Alto Adige.
+
+The `test` build meets its 5-minute budget with a wide margin, in CI too; the CI timings are in `docs/architecture.md`.
+
+**Curvature size against ADR 0008.** `triveneto-curvature.sqlite` is 111,792,128 bytes (111.8 MB). Veneto, Friuli-Venezia Giulia and Trentino-Alto Adige together are 58,818,560 + 22,237,184 + 30,420,992 = 111,476,736 bytes (111.5 MB). The 30 MB target is missed by 3.7×. A per-region split does not help: the three files add up to the combined one within 0.3 %, and only Trentino-Alto Adige alone comes close (30.4 MB). As ADR 0008 asks, the target is not relaxed silently. The build report records every file's size; nothing enforces the target. The options, none of them chosen:
+
+- fewer highway classes (`curvature.highways` is configuration), for example without `unclassified` or the `_link` classes;
+- dropping zero-score segments, which also drops the adjacency a lookahead follows across straight connectors;
+- dropping the `corners_rtree` table; corners stay reachable through their segment and the `corners_segment` index;
+- moving the corners into a separate file;
+- simplifying the stored geometry after scoring, so corner distances no longer match the stored line exactly;
+- revising the target.
+
+How the bytes split between tables and indexes has not been measured. The decision is the owner's. Nothing in the release path depends on it: the target is about bundling the file inside an app.
+
+**CONTRADICTS BRIEF (minor):** brief item 6 asks for the per-way score summed "the way `curvature` does", so the numbers stay comparable. ADR 0008 already dropped comparability as a goal. The bands are the same, but the half-segment attribution gives different scores from `curvature`'s; item 6 should be amended.
+
+**Consequences.** The Swift package mirrors these formulas from `data-format.md` (ADR 0008). A release build must include terrain whenever it builds trails; the fixed step order runs terrain first. The per-kind anomaly counts and the curvature size decision are the open items.
