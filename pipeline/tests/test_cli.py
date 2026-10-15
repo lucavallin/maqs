@@ -5,8 +5,9 @@ import pytest
 from click.testing import CliRunner
 
 from maqs import cli, tools
-from maqs.cli import main
+from maqs.cli import DEFAULT_LAYERS, LAYER_ORDER, LAYER_STEPS, _parse_layers, main
 from maqs.steps import tiles
+from maqs.steps.base import StepResult
 from maqs.tools import ToolStatus
 from tests.helpers import write_pmtiles
 
@@ -79,7 +80,7 @@ def test_build_refuses_unknown_layer(monkeypatch, tmp_path):
 def test_build_refuses_an_empty_layer_list(monkeypatch, tmp_path):
     ok_tools(monkeypatch)
     result = build("--region", "test", "--layers", " , ", "--dist", str(tmp_path))
-    assert result.exit_code == 2 and "no layers" in result.output
+    assert result.exit_code == 2 and "--layers must name at least one layer" in result.output
     assert not (tmp_path / "test").exists()
 
 
@@ -136,7 +137,9 @@ def test_default_dist_and_cache_sit_under_the_repo_root_not_the_cwd(monkeypatch,
         return real_run_build(cfg, **kw)
 
     monkeypatch.setattr(cli, "run_build", recording_run_build)
-    result = CliRunner().invoke(main, ["--config", str(config), "build", "--region", "test"])
+    result = CliRunner().invoke(
+        main, ["--config", str(config), "build", "--region", "test", "--layers", "basemap,terrain"]
+    )
     assert result.exit_code == 0, result.output
     assert (repo / "dist" / "test" / "test-basemap.pmtiles").exists()
     assert (repo / "dist" / "test" / "build-report.json").exists()
@@ -155,7 +158,7 @@ def test_build_runs_steps_and_writes_report(monkeypatch, tmp_path):
     ok_tools(monkeypatch)
     monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
     monkeypatch.setattr(tools, "run", fake_run_writing_archives)
-    result = build("--region", "test", "--dist", str(tmp_path))
+    result = build("--region", "test", "--layers", "basemap,terrain", "--dist", str(tmp_path))
     assert result.exit_code == 0, result.output
     report = json.loads((tmp_path / "test" / "build-report.json").read_text())
     assert [s["name"] for s in report["steps"]] == ["basemap", "terrain"]
@@ -164,7 +167,7 @@ def test_build_runs_steps_and_writes_report(monkeypatch, tmp_path):
     sources = [s["outputs"][0]["source"] for s in report["steps"]]
     assert sources == [tiles.OSM_SOURCE, tiles.ELEVATION_SOURCE]
     assert (tmp_path / "test" / "test-basemap.pmtiles").exists()
-    second = build("--region", "test", "--dist", str(tmp_path))
+    second = build("--region", "test", "--layers", "basemap,terrain", "--dist", str(tmp_path))
     assert second.exit_code == 0 and "skipped" in second.output
 
 
@@ -173,7 +176,7 @@ def test_fixture_over_the_size_warning_names_both_levers(monkeypatch, tmp_path):
     monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
     monkeypatch.setattr(tools, "run", fake_run_writing_archives)
     monkeypatch.setattr(cli, "TEST_REGION_WARN", 0)
-    result = build("--region", "test", "--dist", str(tmp_path))
+    result = build("--region", "test", "--layers", "basemap,terrain", "--dist", str(tmp_path))
     assert result.exit_code == 0, result.output
     assert "warning: test basemap+terrain is" in result.output
     assert "shrink its bbox or set bbox_border: 0" in result.output
@@ -187,7 +190,7 @@ def test_build_exit_1_when_a_step_fails(monkeypatch, tmp_path):
         raise tools.ToolError([str(a) for a in argv], 1, "network down")
 
     monkeypatch.setattr(tools, "run", fake_run)
-    result = build("--region", "test", "--dist", str(tmp_path))
+    result = build("--region", "test", "--layers", "basemap,terrain", "--dist", str(tmp_path))
     assert result.exit_code == 1 and "network down" in result.output
     report = json.loads((tmp_path / "test" / "build-report.json").read_text())
     assert report["validation"]["ok"] is False
@@ -211,7 +214,7 @@ def test_build_all_reports_every_region_when_the_first_fails(monkeypatch, tmp_pa
         return fake_run_writing_archives(argv, **kw)
 
     monkeypatch.setattr(tools, "run", fake_run)
-    result = build("--region", "all", "--dist", str(tmp_path))
+    result = build("--region", "all", "--layers", "basemap,terrain", "--dist", str(tmp_path))
     assert result.exit_code == 1
     assert "build failed for: test (see build-report.json)" in result.output
     region_ids = ["test", "triveneto", "veneto", "friuli-venezia-giulia", "trentino-alto-adige"]
@@ -277,3 +280,32 @@ def test_build_base_puts_every_pack_in_one_report(monkeypatch, tmp_path):
     assert report["region"] == "base"
     assert [s["name"] for s in report["steps"]] == ["base-north", "base-south"]
     assert [s["outputs"][0]["max_zoom"] for s in report["steps"]] == [8, 9]
+
+
+def test_default_layers_include_the_data_layers_in_build_order():
+    assert DEFAULT_LAYERS == ("basemap", "terrain", "trails", "places", "curvature")
+    assert LAYER_ORDER == ("basemap", "terrain", "terrain-hd", "trails", "places", "curvature")
+    assert set(LAYER_STEPS) == set(LAYER_ORDER)
+    assert "basemap,terrain,trails,places,curvature" in (
+        CliRunner().invoke(main, ["build", "--help"]).output.replace("\n", "").replace(" ", "")
+    )
+
+
+def test_parse_layers_sorts_by_build_order_and_drops_duplicates():
+    assert _parse_layers(None) == list(DEFAULT_LAYERS)
+    assert _parse_layers("curvature,basemap,trails,basemap") == ["basemap", "trails", "curvature"]
+    assert _parse_layers("terrain-hd,terrain") == ["terrain", "terrain-hd"]
+
+
+def test_build_runs_the_default_layers_in_order_without_terrain_hd(monkeypatch, tmp_path):
+    ok_tools(monkeypatch)
+    ran: list[str] = []
+
+    def fake_run_step(step, ctx):
+        ran.append(step.name)
+        return StepResult(step.name, "built", 0.0)
+
+    monkeypatch.setattr(cli, "run_step", fake_run_step)
+    result = build("--region", "test", "--dist", str(tmp_path))
+    assert result.exit_code == 0, result.output
+    assert ran == ["basemap", "terrain", "trails", "places", "curvature"]

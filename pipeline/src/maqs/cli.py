@@ -3,22 +3,39 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from pathlib import Path
 
 import click
 
 from maqs.config import DEFAULT_CONFIG_PATH, Config, ConfigError, load_config
 from maqs.context import BASE_TARGET, BuildContext
+from maqs.curvature.step import CurvatureStep
+from maqs.places.step import PlacesStep
 from maqs.report import build_report, report_path, write_report
 from maqs.steps.base import Step, run_step
 from maqs.steps.terrain_hd import TerrainHDStep
 from maqs.steps.tiles import TILE_STEPS, BasePackStep
 from maqs.tools import check_tools
+from maqs.trails.step import TrailsStep
 from maqs.validate import TEST_REGION_WARN
 
-DEFAULT_LAYERS = ("basemap", "terrain")
-LAYER_STEPS: dict[str, Callable[[], Step]] = {**TILE_STEPS, "terrain-hd": TerrainHDStep}
+LAYER_ORDER: tuple[str, ...] = (
+    "basemap",
+    "terrain",
+    "terrain-hd",
+    "trails",
+    "places",
+    "curvature",
+)
+LAYER_STEPS: dict[str, type] = {
+    **TILE_STEPS,
+    "terrain-hd": TerrainHDStep,
+    "trails": TrailsStep,
+    "places": PlacesStep,
+    "curvature": CurvatureStep,
+}
+DEFAULT_LAYERS: tuple[str, ...] = ("basemap", "terrain", "trails", "places", "curvature")
 LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
 
 
@@ -130,14 +147,17 @@ def check_tools_command() -> None:
     _checked_tool_versions()
 
 
-def _parse_layers(raw: str) -> list[str]:
+def _parse_layers(raw: str | None) -> list[str]:
+    """The requested layers in build order, duplicates removed; None means the defaults."""
+    if raw is None:
+        return list(DEFAULT_LAYERS)
     layers = [s.strip() for s in raw.split(",") if s.strip()]
     if not layers:
-        raise click.UsageError(f"no layers given; valid: {', '.join(LAYER_STEPS)}")
+        raise click.UsageError("--layers must name at least one layer")
     for layer in layers:
         if layer not in LAYER_STEPS:
-            raise click.UsageError(f"unknown layer '{layer}'; valid: {', '.join(LAYER_STEPS)}")
-    return layers
+            raise click.UsageError(f"unknown layer '{layer}'; valid: {', '.join(LAYER_ORDER)}")
+    return [layer for layer in LAYER_ORDER if layer in layers]
 
 
 def _targets(
@@ -222,7 +242,10 @@ def run_build(
     "--layers",
     default=",".join(DEFAULT_LAYERS),
     show_default=True,
-    help="Comma-separated layer names.",
+    help=(
+        "Comma-separated layer names, built in this order: basemap, terrain, terrain-hd,"
+        " trails, places, curvature. terrain-hd is opt-in."
+    ),
 )
 @click.option("--force", is_flag=True, help="Rebuild even when outputs exist.")
 @click.option(
