@@ -1,0 +1,71 @@
+name: pipeline
+
+on:
+  push:
+    branches: [main]
+    paths: ["pipeline/**", "config/**", ".github/workflows/pipeline.yml"]
+  pull_request:
+    paths: ["pipeline/**", "config/**", ".github/workflows/pipeline.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: pipeline } }
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv sync --frozen
+      - run: uv run ruff check . && uv run ruff format --check .
+      - run: uv run pytest -q
+
+  smoke:
+    runs-on: ubuntu-latest
+    needs: unit
+    timeout-minutes: 30
+    env:
+      TOOLS_KEY: versatiles-5.0.0-pmtiles-1.31.2-osmium-1.19.1-tippecanoe-2.79.0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - name: Cache tool binaries
+        id: tools-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            /usr/local/bin/versatiles
+            /usr/local/bin/pmtiles
+            /usr/local/bin/osmium
+            /usr/local/bin/tippecanoe
+            /usr/local/bin/tile-join
+          key: tools-${{ runner.os }}-${{ runner.arch }}-${{ env.TOOLS_KEY }}
+      - name: Bootstrap tools
+        if: steps.tools-cache.outputs.cache-hit != 'true'
+        run: pipeline/bootstrap.sh
+      - name: Runtime libraries for cached binaries
+        if: steps.tools-cache.outputs.cache-hit == 'true'
+        run: sudo apt-get update -q && sudo apt-get install -y -q libboost-program-options1.83.0 liblz4-1 libexpat1 libbz2-1.0 libsqlite3-0
+      - run: pipeline/bootstrap.sh --check
+      - run: uv sync --frozen
+        working-directory: pipeline
+      - run: uv run maqs check-tools
+        working-directory: pipeline
+      - name: Build the test region
+        run: uv run maqs build --region test --dist "$GITHUB_WORKSPACE/dist"
+        working-directory: pipeline
+      - run: cat dist/test/build-report.json
+      - uses: actions/upload-artifact@v7
+        with:
+          name: test-region-fixtures
+          path: dist/test
+          retention-days: 7
+          if-no-files-found: error
