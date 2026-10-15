@@ -69,6 +69,23 @@ def test_rejects_truncated_file(tmp_path):
         validate_output(p, BASEMAP)
 
 
+def test_rejects_truncated_tile_data(tmp_path):
+    p = write_pmtiles(tmp_path / "b.pmtiles", max_zoom=14)
+    p.write_bytes(p.read_bytes()[:-5])
+    with pytest.raises(ValidationError, match="truncated"):
+        validate_output(p, BASEMAP)
+
+
+def test_internal_compression_failure_is_listed_with_others(tmp_path):
+    p = write_pmtiles(tmp_path / "b.pmtiles", max_zoom=12)
+    data = bytearray(p.read_bytes())
+    data[97] = 3  # internal compression byte -> brotli
+    p.write_bytes(bytes(data))
+    with pytest.raises(ValidationError) as exc:
+        validate_output(p, BASEMAP)
+    assert "internal compression brotli" in str(exc.value) and "zoom range" in str(exc.value)
+
+
 def test_size_cap_boundary(tmp_path):
     p = write_pmtiles(tmp_path / "b.pmtiles", max_zoom=14)
     size = p.stat().st_size

@@ -56,7 +56,6 @@ def validate_output(path: Path, expect: Expectation) -> OutputInfo:
         failures.append(f"{size} bytes exceeds the size cap of {expect.size_cap}")
     try:
         header = read_header(path)
-        metadata = read_metadata(path, header)
     except PMTilesError as exc:
         extra = "; " + "; ".join(failures) if failures else ""
         raise ValidationError(f"{path.name}: {exc}{extra}") from exc
@@ -64,8 +63,14 @@ def validate_output(path: Path, expect: Expectation) -> OutputInfo:
         failures.append(
             f"tile compression {header.tile_compression} (MapLibre reads gzip or none only)"
         )
+    metadata: dict = {}
     if header.internal_compression not in ALLOWED_COMPRESSION:
         failures.append(f"internal compression {header.internal_compression}")
+    else:
+        try:
+            metadata = read_metadata(path, header)
+        except PMTilesError as exc:
+            failures.append(str(exc))
     if (header.min_zoom, header.max_zoom) != (expect.min_zoom, expect.max_zoom):
         failures.append(
             f"zoom range {header.min_zoom}-{header.max_zoom}, "
