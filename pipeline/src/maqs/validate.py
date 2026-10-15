@@ -163,8 +163,10 @@ def validate_sqlite(path: Path, expect: SqliteExpectation) -> OutputInfo:
                 failures.append(
                     f"{table} has {rows[table]} rows, expected {wanted.min}..{wanted.max}"
                 )
-            elif wanted is None and rows[table] == 0:
+            elif rows[table] == 0:
                 log.warning("%s: %s has zero rows", path.name, table)
+    except sqlite3.DatabaseError as exc:
+        raise ValidationError(f"{path.name}: {exc}") from exc
     finally:
         conn.close()
     if failures:

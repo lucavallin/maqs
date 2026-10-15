@@ -1,3 +1,4 @@
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -171,6 +172,32 @@ def test_row_count_outside_expected_range_fails_and_keeps_the_file(ctx):
     assert result.status == "failed"
     assert "trails has 0 rows, expected 5..10" in result.error
     assert step.outputs(ctx)[0].exists()
+
+
+def test_malformed_sqlite_output_becomes_a_failed_result(ctx):
+    class BadMetadataStep(FakeStep):
+        def outputs(self, ctx):
+            return [ctx.out_dir / "test-trails.sqlite"]
+
+        def expectation(self, ctx, output):
+            return SqliteExpectation("trails", "test", TABLES["trails"], COUNT_TABLES["trails"])
+
+        def build(self, ctx):
+            write_sqlite(
+                self.outputs(ctx)[0],
+                "trails",
+                Metadata("trails", "test", "d", None),
+                lambda c: None,
+            )
+            conn = sqlite3.connect(self.outputs(ctx)[0])
+            conn.execute("DROP TABLE metadata")
+            conn.execute("CREATE TABLE metadata (layer TEXT)")
+            conn.commit()
+            conn.close()
+            return StepOutcome(["x"])
+
+    result = run_step(BadMetadataStep(), ctx)
+    assert result.status == "failed" and "no such column" in result.error
 
 
 def test_base_pack_context(tmp_path):

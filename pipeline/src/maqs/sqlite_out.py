@@ -128,7 +128,9 @@ def write_sqlite(
 
 
 def open_readonly(path: Path) -> sqlite3.Connection:
-    return sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    # as_uri() percent-encodes the path; a raw "file:{path}" would let `?`, `#` and `%` in a
+    # directory name redirect the open (and create a stray file).
+    return sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
 
 
 def table_names(conn: sqlite3.Connection) -> set[str]:

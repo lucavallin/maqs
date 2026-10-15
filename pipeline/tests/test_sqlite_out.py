@@ -131,3 +131,40 @@ def test_validate_sqlite_warns_but_passes_on_zero_rows_without_ranges(tmp_path, 
     with caplog.at_level("WARNING"):
         info = validate_output(path, expectation(region="x"))
     assert info.rows == {"trails": 0} and "zero rows" in caplog.text
+
+
+def test_validate_sqlite_warns_on_zero_rows_even_inside_a_configured_range(tmp_path, caplog):
+    path = tmp_path / "x-trails.sqlite"
+    write_sqlite(path, "trails", Metadata("trails", "x", "2026-10-15", None), lambda conn: None)
+    with caplog.at_level("WARNING"):
+        info = validate_output(
+            path, expectation(region="x", row_ranges={"trails": RowRange(0, 10)})
+        )
+    assert info.rows == {"trails": 0} and "zero rows" in caplog.text
+
+
+def test_validate_sqlite_turns_a_wrong_metadata_schema_into_a_validation_error(tmp_path):
+    path = tmp_path / "test-trails.sqlite"
+    write_sqlite(path, "trails", META, fill_one_trail)
+    conn = sqlite3.connect(path)
+    conn.execute("DROP TABLE metadata")
+    conn.execute("CREATE TABLE metadata (layer TEXT)")
+    conn.commit()
+    conn.close()
+    with pytest.raises(ValidationError, match="no such column"):
+        validate_output(path, expectation())
+
+
+@pytest.mark.parametrize("dirname", ["C#dir", "pct%20dir", "q?dir"])
+def test_open_readonly_handles_uri_special_characters_in_the_path(tmp_path, dirname):
+    directory = tmp_path / dirname
+    path = directory / "test-trails.sqlite"
+    write_sqlite(path, "trails", META, fill_one_trail)
+    before = sorted(p.name for p in tmp_path.iterdir())
+    conn = open_readonly(path)
+    assert table_names(conn) >= TABLES["trails"]
+    with pytest.raises(sqlite3.OperationalError):
+        conn.execute("DELETE FROM metadata")
+    conn.close()
+    assert sorted(p.name for p in tmp_path.iterdir()) == before
+    assert sorted(p.name for p in directory.iterdir()) == ["test-trails.sqlite"]
