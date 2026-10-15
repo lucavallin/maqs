@@ -157,6 +157,23 @@ def assemble(
     return legs, status, anomalies
 
 
+def _collapse_reversed(
+    anomalies: list[Anomaly], rid: int, members: Sequence[tuple[int, str]], ways: dict[int, WayGeom]
+) -> list[Anomaly]:
+    """Replace the per-way `reversed` anomalies with one entry for the relation.
+
+    A long route can reverse hundreds of ways; one line per relation keeps the build report's
+    capped anomaly list useful for the other kinds. A relation with no reversals gets no entry.
+    """
+    flipped = sum(1 for a in anomalies if a.kind == "reversed")
+    if not flipped:
+        return anomalies
+    used = len({wid for wid, _ in members if wid in ways and len(ways[wid].nodes) >= 2})
+    kept = [a for a in anomalies if a.kind != "reversed"]
+    kept.append(Anomaly("reversed", f"relation/{rid}", f"{flipped} of {used} member ways reversed"))
+    return kept
+
+
 def _yes_no(value: str | None) -> int | None:
     if value is None:
         return None
@@ -189,6 +206,7 @@ def read_osm_trails(hiking_pbf: Path, *, source_date: str | None) -> list[TrailR
     for rid in sorted(relations):
         tags, members, relation_members = relations[rid]
         legs, status, anomalies = assemble(members, ways)
+        anomalies = _collapse_reversed(anomalies, rid, members, ways)
         if relation_members:
             message = f"relation members ignored (superroute): {relation_members}"
             anomalies.append(Anomaly("relation_member", f"relation/{rid}", message))

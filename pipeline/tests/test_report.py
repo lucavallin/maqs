@@ -80,12 +80,20 @@ def test_report_carries_rows_and_anomalies():
     )
     anomalies = [Anomaly("gap", "relation/1", "gap of 12 m")]
     result = StepResult(
-        "trails", "built", 1.0, ["osmium"], [sqlite_info], anomalies=anomalies, anomaly_count=1
+        "trails",
+        "built",
+        1.0,
+        ["osmium"],
+        [sqlite_info],
+        anomalies=anomalies,
+        anomaly_count=1,
+        anomaly_kinds={"gap": 1},
     )
     step = build_report("test", [result], {})["steps"][0]
     assert step["outputs"][0]["rows"] == {"trails": 3} and step["outputs"][0]["tile_type"] is None
     assert step["anomalies"] == [{"kind": "gap", "id": "relation/1", "message": "gap of 12 m"}]
-    assert step["anomaly_count"] == 1
+    assert step["anomaly_count"] == 1 and step["anomaly_kinds"] == {"gap": 1}
     tile = build_report("test", [StepResult("basemap", "built", 1.0, [], [info()])], {})
     assert "rows" not in tile["steps"][0]["outputs"][0]
     assert tile["steps"][0]["anomalies"] == [] and tile["steps"][0]["anomaly_count"] == 0
+    assert tile["steps"][0]["anomaly_kinds"] == {}

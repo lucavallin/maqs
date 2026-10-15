@@ -209,3 +209,17 @@ def test_read_osm_trails_maps_tags_and_geometry(hiking_pbf):
         "alpine_hiking",
     )
     assert fallback.roundtrip is None and fallback.ref is None
+
+
+def test_read_osm_trails_reports_one_reversed_anomaly_per_relation(hiking_pbf):
+    records = {r.osm_id: r for r in read_osm_trails(hiking_pbf, source_date=None)}
+    reversed_by_relation = {
+        rid: [a for a in r.anomalies if a.kind == "reversed"] for rid, r in records.items()
+    }
+    assert reversed_by_relation[100] == [
+        Anomaly("reversed", "relation/100", "2 of 3 member ways reversed")
+    ]
+    assert reversed_by_relation[102] == [
+        Anomaly("reversed", "relation/102", "1 of 2 member ways reversed")
+    ]
+    assert reversed_by_relation[101] == [] and reversed_by_relation[103] == []

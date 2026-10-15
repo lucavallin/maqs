@@ -41,6 +41,7 @@ def build_report(
             "outputs": outputs,
             "anomalies": [asdict(a) for a in r.anomalies],
             "anomaly_count": r.anomaly_count,
+            "anomaly_kinds": r.anomaly_kinds,
         }
         if r.error:
             step["error"] = r.error

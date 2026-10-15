@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, Protocol
@@ -59,6 +60,12 @@ class StepResult:
     error: str | None = None
     anomalies: list[Anomaly] = field(default_factory=list)
     anomaly_count: int = 0
+    anomaly_kinds: dict[str, int] = field(default_factory=dict)
+
+
+def _kind_counts(anomalies: list[Anomaly]) -> dict[str, int]:
+    """Full per-kind totals, in kind order, so the report stays exact when the list is capped."""
+    return dict(sorted(Counter(a.kind for a in anomalies).items()))
 
 
 def _failed(
@@ -69,6 +76,7 @@ def _failed(
     error: str,
     anomalies: list[Anomaly] | None = None,
     anomaly_count: int = 0,
+    anomaly_kinds: dict[str, int] | None = None,
 ) -> StepResult:
     return StepResult(
         step.name,
@@ -79,6 +87,7 @@ def _failed(
         error,
         anomalies or [],
         anomaly_count,
+        anomaly_kinds or {},
     )
 
 
@@ -93,6 +102,7 @@ def run_step(step: Step, ctx: BuildContext) -> StepResult:
     command: list[str] = []
     anomalies: list[Anomaly] = []
     anomaly_count = 0
+    anomaly_kinds: dict[str, int] = {}
     status: Literal["built", "skipped"]
     if all(p.exists() for p in outputs) and not ctx.force:
         log.info("%s: skipped: outputs present", step.name)
@@ -108,6 +118,7 @@ def run_step(step: Step, ctx: BuildContext) -> StepResult:
         command = outcome.command
         anomalies = outcome.anomalies[:MAX_REPORTED_ANOMALIES]
         anomaly_count = len(outcome.anomalies)
+        anomaly_kinds = _kind_counts(outcome.anomalies)
         status = "built"
     infos: list[OutputInfo] = []
     for path in outputs:
@@ -116,7 +127,16 @@ def run_step(step: Step, ctx: BuildContext) -> StepResult:
         except (ValidationError, OSError) as exc:
             hint = " Rerun with --force to rebuild it." if status == "skipped" else ""
             log.error("%s: validation failed: %s", step.name, exc)
-            return _failed(step, started, command, infos, f"{exc}{hint}", anomalies, anomaly_count)
+            return _failed(
+                step,
+                started,
+                command,
+                infos,
+                f"{exc}{hint}",
+                anomalies,
+                anomaly_count,
+                anomaly_kinds,
+            )
     return StepResult(
         step.name,
         status,
@@ -125,4 +145,5 @@ def run_step(step: Step, ctx: BuildContext) -> StepResult:
         infos,
         anomalies=anomalies,
         anomaly_count=anomaly_count,
+        anomaly_kinds=anomaly_kinds,
     )

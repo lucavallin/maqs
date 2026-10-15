@@ -125,10 +125,20 @@ def test_anomalies_are_kept_and_capped(ctx):
     assert result.anomalies[0] == Anomaly("gap", "relation/0", "gap of 12 m")
 
 
+def test_anomaly_kinds_count_every_anomaly_not_just_the_capped_sample(ctx):
+    found = [Anomaly("reversed", f"relation/{i}", "x") for i in range(1100)]
+    found += [Anomaly("gap", f"relation/{i}", "y") for i in range(100)]
+    result = run_step(FakeStep(anomalies=found), ctx)
+    assert result.anomaly_count == 1200 and len(result.anomalies) == 1000
+    assert result.anomaly_kinds == {"gap": 100, "reversed": 1100}
+    assert list(result.anomaly_kinds) == ["gap", "reversed"]
+
+
 def test_failed_validation_keeps_the_anomalies(ctx):
     found = [Anomaly("gap", "relation/1", "gap of 12 m")]
     result = run_step(FakeStep(writes=False, anomalies=found), ctx)
     assert result.status == "failed" and result.anomalies == found and result.anomaly_count == 1
+    assert result.anomaly_kinds == {"gap": 1}
 
 
 def test_each_output_gets_its_own_expectation(ctx):
