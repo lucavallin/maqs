@@ -52,7 +52,7 @@ def trail_row(record: TrailRecord, trail_id: int, winner_id: int | None) -> tupl
         record.ascent_m,
         record.descent_m,
         *bbox,
-        "|".join(encode_polyline(leg) for leg in record.legs),
+        ";".join(encode_polyline(leg) for leg in record.legs),
         record.geometry_status,
         winner_id,
     )

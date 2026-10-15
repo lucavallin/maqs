@@ -291,7 +291,12 @@ def test_only_covered_legs_contribute_to_ascent(ctx, stubs, monkeypatch, tmp_pat
     assert result.status == "built", result.error
     conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
     assert conn.execute("SELECT ascent_m, descent_m FROM trails").fetchone() == expected
-    assert len(stubs["features"][0]["geometry"]["coordinates"]) == 2  # two legs
+    legs = stubs["features"][0]["geometry"]["coordinates"]
+    assert len(legs) == 2
+    stored = conn.execute("SELECT geometry FROM trails").fetchone()[0].split(";")
+    assert len(stored) == 2
+    for encoded, leg in zip(stored, legs, strict=True):
+        assert decode_polyline(encoded) == pytest.approx([tuple(c) for c in leg], abs=1e-6)
     assert [a.kind for a in result.anomalies if a.kind.startswith("terrain")] == ["terrain_gap"]
 
 

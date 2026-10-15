@@ -30,6 +30,7 @@ CREATE TABLE trails (
   survey_date TEXT, website TEXT,
   length_m REAL NOT NULL, ascent_m REAL, descent_m REAL,
   min_lon REAL, min_lat REAL, max_lon REAL, max_lat REAL,
+  -- geometry: one encoded polyline per leg, legs joined by ';' (outside the polyline alphabet)
   geometry TEXT NOT NULL, geometry_status TEXT NOT NULL,
   secondary_of INTEGER REFERENCES trails(id)
 );
