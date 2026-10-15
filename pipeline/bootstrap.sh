@@ -66,16 +66,14 @@ install_ubuntu() {
       "https://github.com/versatiles-org/versatiles-rs/releases/download/v${VERSATILES_VERSION}/versatiles-linux-gnu-${vt_arch}.deb"
     sudo dpkg -i "$tmp/versatiles.deb"
   fi
-  # The deb installs to /usr/bin; CI caches and looks in /usr/local/bin. Replace a
-  # dangling link or a stale binary there; keep a working one at the pinned version.
+  # The deb installs to /usr/bin; CI caches and looks in /usr/local/bin. Put a real copy
+  # there, not a link: the cache restores a link as a link, and its target is not cached.
+  # Replace a link, a missing or stale binary; keep a regular one at the pinned version.
   if [ -x /usr/bin/versatiles ]; then
     local_vt=/usr/local/bin/versatiles
-    if [ -L "$local_vt" ] || [ -e "$local_vt" ]; then
-      if [ ! -x "$local_vt" ] || [ "$("$local_vt" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" != "$VERSATILES_VERSION" ]; then
-        sudo ln -sf /usr/bin/versatiles "$local_vt"
-      fi
-    else
-      sudo ln -s /usr/bin/versatiles "$local_vt"
+    if [ -L "$local_vt" ] || [ ! -x "$local_vt" ] \
+      || [ "$("$local_vt" --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1)" != "$VERSATILES_VERSION" ]; then
+      sudo install -m 0755 /usr/bin/versatiles "$local_vt"
     fi
   fi
   if [ "$(version_of pmtiles)" != "$PMTILES_VERSION" ]; then
