@@ -52,6 +52,19 @@ jobs:
             /usr/local/bin/tippecanoe
             /usr/local/bin/tile-join
           key: tools-${{ runner.os }}-${{ runner.arch }}-${{ env.TOOLS_KEY }}
+      # The extract is the one config/regions.yaml gives the test region (europe/italy/nord-est);
+      # keying the cache on Geofabrik's published md5 re-downloads only when the file changes.
+      - name: Geofabrik extract checksum
+        id: geofabrik
+        run: |
+          md5=$(curl -fsSL -A "maqs-pipeline-ci (+https://github.com/lucavallin/maqs)" \
+            https://download.geofabrik.de/europe/italy/nord-est-latest.osm.pbf.md5 | cut -d' ' -f1)
+          echo "md5=$md5" >> "$GITHUB_OUTPUT"
+      - name: Cache the Geofabrik extract
+        uses: actions/cache@v6
+        with:
+          path: .cache/geofabrik
+          key: geofabrik-nord-est-${{ steps.geofabrik.outputs.md5 }}
       - name: Bootstrap tools
         if: steps.tools-cache.outputs.cache-hit != 'true'
         run: pipeline/bootstrap.sh
@@ -64,12 +77,13 @@ jobs:
       - run: uv run maqs check-tools
         working-directory: pipeline
       - name: Build the test region
-        run: uv run maqs build --region test --dist "$GITHUB_WORKSPACE/dist"
+        run: uv run maqs build --region test --dist "$GITHUB_WORKSPACE/dist" --cache "$GITHUB_WORKSPACE/.cache"
         working-directory: pipeline
       - run: cat dist/test/build-report.json
       - name: Assert the fixture budget (live network test)
-        # Builds the test region again into a temp dir and asserts gzip, zoom, tile type,
-        # tile count and the 5 MB budget, so a fixture regression fails CI instead of warning.
+        # Builds the test region again into a temp dir (reusing the repo-root .cache) and asserts
+        # all five layers' outputs and row-count ranges plus gzip, zoom, tile type, tile count and
+        # the 5 MB budget, so a fixture regression fails CI instead of warning.
         run: uv run pytest tests/test_integration_network.py --run-network -q
         working-directory: pipeline
       - uses: actions/upload-artifact@v7
