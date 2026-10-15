@@ -56,9 +56,11 @@ jobs:
       # keying the cache on Geofabrik's published md5 re-downloads only when the file changes.
       - name: Geofabrik extract checksum
         id: geofabrik
+        shell: bash
         run: |
           md5=$(curl -fsSL -A "maqs-pipeline-ci (+https://github.com/lucavallin/maqs)" \
             https://download.geofabrik.de/europe/italy/nord-est-latest.osm.pbf.md5 | cut -d' ' -f1)
+          [[ "$md5" =~ ^[0-9a-f]{32}$ ]] || { echo "bad md5: '$md5'" >&2; exit 1; }
           echo "md5=$md5" >> "$GITHUB_OUTPUT"
       - name: Cache the Geofabrik extract
         uses: actions/cache@v6
