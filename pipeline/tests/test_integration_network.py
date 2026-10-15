@@ -7,6 +7,7 @@ import pytest
 from click.testing import CliRunner
 
 from maqs.cli import main
+from maqs.sqlite_out import open_readonly
 
 REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
 # The repo's .cache/ (CI restores .cache/geofabrik), so the nord-est extract is downloaded once.
@@ -42,6 +43,16 @@ def test_test_region_builds_end_to_end(tmp_path):
     assert trails_overlay["tile_type"] == "mvt" and trails_overlay["min_zoom"] == 6
     # Ranges are ~60-200 % of the live counts (10 trails, 22 places, 136 segments, 623 corners).
     assert 6 <= trails_db["rows"]["trails"] <= 20
+    # Terrain is built first in the same run, so trails must have sampled it.
+    trails_kinds = by_name["trails"]["anomaly_kinds"]
+    assert not {"terrain_missing", "terrain_unreadable"} & set(trails_kinds), trails_kinds
+    conn = open_readonly(tmp_path / "test" / "test-trails.sqlite")
+    try:
+        query = "SELECT count(*) FROM trails WHERE ascent_m IS NOT NULL"
+        with_ascent = conn.execute(query).fetchone()[0]
+    finally:
+        conn.close()
+    assert with_ascent >= 8  # all 10 live trails had an ascent on 2026-10-15
     assert 15 <= by_name["places"]["outputs"][0]["rows"]["places"] <= 45
     curvature_rows = by_name["curvature"]["outputs"][0]["rows"]
     assert 80 <= curvature_rows["segments"] <= 280
