@@ -33,6 +33,10 @@ _VERSION_RE = re.compile(r"(\d+\.\d+\.\d+)")
 class ToolMissing(RuntimeError):
     """A pinned tool is not on PATH."""
 
+    def __init__(self, name: str) -> None:
+        self.tool = name
+        super().__init__(f"{name} not found on PATH")
+
 
 class ToolError(RuntimeError):
     """A tool exited non-zero. Carries the command and the tail of its stderr."""

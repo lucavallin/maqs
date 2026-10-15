@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from maqs import cli, tools
@@ -176,6 +177,36 @@ def test_build_exit_1_when_a_step_fails(monkeypatch, tmp_path):
     assert result.exit_code == 1 and "network down" in result.output
     report = json.loads((tmp_path / "test" / "build-report.json").read_text())
     assert report["validation"]["ok"] is False
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(lambda argv: tools.ToolError(argv, 1, "network down"), id="tool-error"),
+        pytest.param(lambda argv: tools.ToolMissing("versatiles"), id="tool-missing"),
+    ],
+)
+def test_build_all_reports_every_region_when_the_first_fails(monkeypatch, tmp_path, error):
+    ok_tools(monkeypatch)
+    monkeypatch.setattr(tools, "find_tool", lambda name: Path(f"/fake/{name}"))
+
+    def fake_run(argv, **kw):
+        argv = [str(a) for a in argv]
+        if Path(argv[-1]).parent.name == "test":
+            raise error(argv)
+        return fake_run_writing_archives(argv, **kw)
+
+    monkeypatch.setattr(tools, "run", fake_run)
+    result = build("--region", "all", "--dist", str(tmp_path))
+    assert result.exit_code == 1
+    assert "build failed for: test (see build-report.json)" in result.output
+    region_ids = ["test", "triveneto", "veneto", "friuli-venezia-giulia", "trentino-alto-adige"]
+    reports = {
+        rid: json.loads((tmp_path / rid / "build-report.json").read_text()) for rid in region_ids
+    }
+    assert reports["test"]["validation"]["ok"] is False
+    assert [s["status"] for s in reports["test"]["steps"]] == ["failed", "failed"]
+    assert all(reports[rid]["validation"]["ok"] for rid in region_ids[1:])
 
 
 def test_build_base_packs(monkeypatch, tmp_path):

@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from maqs.context import BuildContext
-from maqs.tools import ToolError
+from maqs.tools import ToolError, ToolMissing
 from maqs.validate import Expectation, OutputInfo, ValidationError, validate_output
 
 log = logging.getLogger("maqs.steps")
@@ -35,7 +35,18 @@ class StepResult:
     error: str | None = None
 
 
+def _failed(
+    step: Step, started: float, command: list[str], outputs: list[OutputInfo], error: str
+) -> StepResult:
+    return StepResult(step.name, "failed", time.monotonic() - started, command, outputs, error)
+
+
 def run_step(step: Step, ctx: BuildContext) -> StepResult:
+    """Build (unless skipped) and validate one step; expected failures become a failed result.
+
+    Tool, filesystem and validation failures are recorded so the build report is still written
+    and `--region all` moves on to the next region. Anything else is a bug and propagates.
+    """
     started = time.monotonic()
     outputs = step.outputs(ctx)
     command: list[str] = []
@@ -44,22 +55,21 @@ def run_step(step: Step, ctx: BuildContext) -> StepResult:
         log.info("%s: skipped: outputs present", step.name)
         status = "skipped"
     else:
-        ctx.out_dir.mkdir(parents=True, exist_ok=True)
         try:
+            ctx.out_dir.mkdir(parents=True, exist_ok=True)
             command = step.build(ctx)
-        except ToolError as exc:
+        except (ToolError, ToolMissing, OSError) as exc:
             log.error("%s: %s", step.name, exc)
-            elapsed = time.monotonic() - started
-            return StepResult(step.name, "failed", elapsed, list(exc.argv), [], str(exc))
+            argv = list(exc.argv) if isinstance(exc, ToolError) else []
+            return _failed(step, started, argv, [], str(exc))
         status = "built"
     infos: list[OutputInfo] = []
     expect = step.expectation(ctx)
     for path in outputs:
         try:
             infos.append(validate_output(path, expect))
-        except (ValidationError, FileNotFoundError) as exc:
+        except (ValidationError, OSError) as exc:
             hint = " Rerun with --force to rebuild it." if status == "skipped" else ""
             log.error("%s: validation failed: %s", step.name, exc)
-            elapsed = time.monotonic() - started
-            return StepResult(step.name, "failed", elapsed, command, infos, f"{exc}{hint}")
+            return _failed(step, started, command, infos, f"{exc}{hint}")
     return StepResult(step.name, status, time.monotonic() - started, command, infos)
