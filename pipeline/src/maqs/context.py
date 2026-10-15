@@ -28,3 +28,9 @@ class BuildContext:
     @property
     def out_dir(self) -> Path:
         return self.dist / self.label
+
+    def require_region(self) -> Region:
+        """The region of a region-scoped step; the base-pack target has none."""
+        if self.region is None:
+            raise ValueError("this step needs a region")
+        return self.region
