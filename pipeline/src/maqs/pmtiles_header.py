@@ -97,7 +97,12 @@ def read_metadata(path: Path, header: Header) -> dict:
     if len(raw) < header.metadata_length:
         raise PMTilesError(f"{path}: truncated metadata")
     if header.internal_compression == "gzip":
-        raw = _gunzip_bounded(path, raw)
+        try:
+            raw = inflate_gzip(raw, MAX_METADATA_BYTES)
+        except InflateLimitError as exc:
+            raise PMTilesError(f"{path}: metadata exceeds {MAX_METADATA_BYTES} bytes") from exc
+        except PMTilesError as exc:
+            raise PMTilesError(f"{path}: metadata is not valid gzip") from exc
     elif header.internal_compression != "none":
         raise PMTilesError(
             f"{path}: unsupported internal compression {header.internal_compression}"
@@ -111,15 +116,19 @@ def read_metadata(path: Path, header: Header) -> dict:
     return metadata
 
 
-def _gunzip_bounded(path: Path, raw: bytes) -> bytes:
-    """Decompress gzip metadata, refusing output beyond MAX_METADATA_BYTES (gzip bombs)."""
+class InflateLimitError(PMTilesError):
+    """Gzip output reached the caller's cap."""
+
+
+def inflate_gzip(data: bytes, max_bytes: int) -> bytes:
+    """Decompress gzip, refusing output beyond max_bytes (gzip bombs)."""
     decompressor = zlib.decompressobj(wbits=31)
     try:
-        out = decompressor.decompress(raw, MAX_METADATA_BYTES + 1)
+        out = decompressor.decompress(data, max_bytes + 1)
     except zlib.error as exc:
-        raise PMTilesError(f"{path}: metadata is not valid gzip") from exc
-    if len(out) > MAX_METADATA_BYTES or decompressor.unconsumed_tail:
-        raise PMTilesError(f"{path}: metadata exceeds {MAX_METADATA_BYTES} bytes")
+        raise PMTilesError("invalid gzip data") from exc
+    if len(out) > max_bytes or decompressor.unconsumed_tail:
+        raise InflateLimitError(f"inflated data exceeds {max_bytes} bytes")
     if not decompressor.eof:
-        raise PMTilesError(f"{path}: metadata is not valid gzip")
+        raise PMTilesError("invalid gzip data")
     return out

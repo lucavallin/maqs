@@ -38,11 +38,12 @@ def write_pmtiles(
     internal_compression: int = 2,
     metadata: dict | None = None,
     tile: bytes = b"\x1a\x00",
+    tile_id: int = 0,
     bbox: tuple[float, float, float, float] = (12.21, 46.08, 12.29, 46.13),
 ) -> Path:
     tile_blob = _compress(tile, tile_compression) if tile_compression != 1 else tile
-    # one entry: tile id 0, run length 1, length, offset encoded as offset+1
-    directory = _varint(1) + _varint(0) + _varint(1) + _varint(len(tile_blob)) + _varint(1)
+    # one entry: tile id, run length 1, length, offset encoded as offset+1
+    directory = _varint(1) + _varint(tile_id) + _varint(1) + _varint(len(tile_blob)) + _varint(1)
     root = _compress(directory, internal_compression)
     meta = _compress(json.dumps(metadata or {}).encode(), internal_compression)
     root_offset = 127
