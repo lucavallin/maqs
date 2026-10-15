@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Geometry encoding everywhere: Google encoded polyline, **precision 6**, TEXT; legs joined by `|`. Points are `lon`/`lat` REAL columns.
+- Geometry encoding everywhere: Google encoded polyline, **precision 6**, TEXT; legs joined by `;` (the pipe `|` is a valid polyline character, chars 63–126, so it cannot separate legs). Points are `lon`/`lat` REAL columns.
 - Sources: `https://download.geofabrik.de/<extract>-latest.osm.pbf` plus `.md5` sidecar, downloaded once per distinct extract per run with an identifying User-Agent, verified against the md5, reused when present (`--force` never re-downloads).
 - Cuts: hiking relations via `osmium tags-filter <extract> r/route=hiking`, then `osmium extract --polygon <clip.poly> -s smart -S types=route`; places and roads from `osmium extract --polygon <clip.poly> -s complete_ways`; regions without `clip` use `--bbox lon_min,lat_min,lon_max,lat_max`. `.poly` files are Osmosis format, one section per outer ring, `!`-prefixed sections for inner rings.
 - Every CLI call goes through `maqs.tools.run`; no `shell=True`; unit tests never touch the network, the real extract, or the real binaries (pyosmium and tippecanoe calls are stubbed or run on generated fixtures only; pyosmium itself runs in tests on fixtures written with `osmium.SimpleWriter`, nodes before ways before relations).
@@ -2757,7 +2757,7 @@ def trail_row(record: TrailRecord, trail_id: int, winner_id: int | None) -> tupl
         record.survey_date, record.website,
         record.length_m, record.ascent_m, record.descent_m,
         *bbox,
-        "|".join(encode_polyline(leg) for leg in record.legs), record.geometry_status, winner_id,
+        ";".join(encode_polyline(leg) for leg in record.legs), record.geometry_status, winner_id,
     )
 
 
@@ -3866,7 +3866,7 @@ Expected: green. Record the cold-run duration (download + bootstrap on a cache m
 
 Replace the opening paragraph's "The SQLite layers … will be added here" sentence with the current state, then add these sections after "Tile archives", in this order, writing every value from the code and Task 12's measurements (no estimates):
 
-1. **Geometry encoding** — Google encoded polyline, precision 6, TEXT; legs joined by `|`; points as `lon`/`lat` columns; a worked example (one coordinate pair and its encoding); link to ADR 0010.
+1. **Geometry encoding** — Google encoded polyline, precision 6, TEXT; legs joined by `;` (never `|`, which is inside the polyline alphabet); points as `lon`/`lat` columns; a worked example (one coordinate pair and its encoding); link to ADR 0010.
 2. **Overlay tiles** — `<region>-trails.pmtiles` (layer `trails`, z6–14, properties `id`, `ref`, `name`, `difficulty`, `network`, `osmc_symbol`; LineString or MultiLineString per primary trail) and `<region>-places.pmtiles` (layer `places`, z8–14, `id`, `kind`, `name`, `ele`, `rank_score`; Point). gzip MVT written by tippecanoe. The `id` property equals the SQLite row id.
 3. **SQLite layers** — the common rules (metadata row, FTS5 tokenizer, R*Tree in degrees, read-only consumers, written atomically), then one subsection per layer with its `layer_schema_version` (1), the DDL from `sqlite_out.py` verbatim, column meanings, and the compatibility rule (additive columns keep the version; a rename, removal or meaning change bumps it).
    - Trails: `geometry_status` values; `secondary_of`; `difficulty` 1–6 with the CAI and SAC tables; `ascent_m`/`descent_m` method (25 m resampling, 5 m hysteresis, null without terrain); provenance columns.
