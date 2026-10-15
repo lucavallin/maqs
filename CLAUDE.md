@@ -108,7 +108,7 @@ pipeline/bootstrap.sh                                      # install pinned CLIs
 uv run maqs build --region test                            # end-to-end in < 5 min; the pipeline's "done" bar
 uv run maqs build --region veneto --layers basemap,terrain # one real region, a subset of layers
 uv run pytest                                              # pipeline unit tests (from pipeline/)
-uv run pytest --run-network                                # plus the live test-region build (not run in CI; the smoke job builds the same region)
+uv run pytest --run-network                                # plus the live test-region build (CI's smoke job runs it)
 uv run ruff check . && uv run ruff format --check .        # pipeline lint/format
 
 # Data release (the workflow does this; run by hand only to debug)

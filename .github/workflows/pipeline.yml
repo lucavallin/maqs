@@ -19,6 +19,7 @@ concurrency:
 jobs:
   unit:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     defaults: { run: { working-directory: pipeline } }
     steps:
       - uses: actions/checkout@v7
@@ -66,6 +67,11 @@ jobs:
         run: uv run maqs build --region test --dist "$GITHUB_WORKSPACE/dist"
         working-directory: pipeline
       - run: cat dist/test/build-report.json
+      - name: Assert the fixture budget (live network test)
+        # Builds the test region again into a temp dir and asserts gzip, zoom, tile type,
+        # tile count and the 5 MB budget, so a fixture regression fails CI instead of warning.
+        run: uv run pytest tests/test_integration_network.py --run-network -q
+        working-directory: pipeline
       - uses: actions/upload-artifact@v7
         with:
           name: test-region-fixtures

@@ -21,8 +21,8 @@ A thin Python orchestrator around pinned CLIs. One map provider, VersaTiles, sup
 
 `.github/workflows/pipeline.yml` runs on pushes to `main` and on pull requests, in both cases only when they touch `pipeline/`, `config/` or the workflow file, and on manual dispatch. Both jobs run on `ubuntu-24.04`, not `ubuntu-latest`: the tool pins, the cached binaries and the Boost 1.83 runtime package were verified on that image, so moving to another one is a deliberate change.
 
-- `unit`: `ruff check`, `ruff format --check` and `pytest`, without the external tools.
-- `smoke`: restores the tool binaries from a cache keyed by the pins, or runs `pipeline/bootstrap.sh` on a miss; runs `maqs check-tools`; builds the `test` region against the live archives; prints the report; uploads `dist/test` as the `test-region-fixtures` artifact (three files, about 3.1 MB, kept 7 days). The Swift tests (Phase 4) will download that artifact instead of committing binaries.
+- `unit`: `ruff check`, `ruff format --check` and `pytest`, without the external tools; time-boxed to 10 minutes.
+- `smoke`: restores the tool binaries from a cache keyed by the pins, or runs `pipeline/bootstrap.sh` on a miss; runs `maqs check-tools`; builds the `test` region against the live archives; prints the report; runs the live network test (`pytest tests/test_integration_network.py --run-network`), which builds the region again into a temporary directory and fails the job unless the basemap is gzip, z0–14 and more than 20 tiles, the terrain is WebP z0–12, and the two together stay under 5,000,000 bytes; uploads `dist/test` as the `test-region-fixtures` artifact (three files, about 3.1 MB, kept 7 days). The Swift tests (Phase 4) will download that artifact instead of committing binaries.
 
 A cold run (cache miss, bootstrap about 2 min) takes about 3 min 15 s; a warm run takes about 1 min 20 s.
 
