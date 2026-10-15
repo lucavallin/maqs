@@ -63,7 +63,7 @@ Pipeline: Python managed with `uv` in `pipeline/`, entry point `uv run maqs buil
 | Environment | Purpose | Shared? | Reach it via |
 |---|---|---|---|
 | local (macOS) | package build/tests, `test`-region pipeline runs, the demo app | no | `swift build` / `swift test`, `uv run maqs build --region test`, Xcode for the demo |
-| CI `ubuntu-latest` | the data pipeline per region | no (ephemeral) | `build-maps.yml` |
+| CI `ubuntu-24.04` | the data pipeline per region | no (ephemeral) | `pipeline.yml` (today: lint, tests, `test`-region smoke build), `build-maps.yml` (Phase 3) |
 | CI `macos-latest` | package build + tests, iOS Simulator and macOS | no (ephemeral) | `swift.yml` |
 | GitHub Releases `data-YYYY-MM` | **the production data endpoint**: every installed app fetches `releases/latest/download/manifest.json` from here | **yes — public, consumed by shipped apps** | `gh release` from the workflow only; never hand-upload |
 | `main` | **also production**: clients fetch `config/sources.json` from `main` at runtime | **yes** | push |
@@ -86,13 +86,13 @@ config/sources.json        # online providers, priority order — fetched by cli
 config/regions.yaml        # region id, names (it/en), bbox — adding a region is one entry here
 config/schemas/            # JSON Schemas for manifest.json and sources.json; CI validates against them
 pipeline/                  # Python (uv) orchestrator + per-layer steps; bootstrap.sh installs pinned CLIs
-.github/workflows/         # build-maps.yml (data) and swift.yml (package)
+.github/workflows/         # pipeline.yml (pipeline lint, tests and test-region smoke build), build-maps.yml (data) and swift.yml (package)
 .cache/                    # downloaded inputs (gitignored, idempotent reuse)
 dist/<region>/             # build outputs (gitignored; Releases only, never git)
 ```
 
 ### Commands
-Everything below is the contract from the brief. Until the matching phase lands, the command does not exist; do not fake it.
+The pipeline commands are real as of Phase 1; the Swift commands land in Phase 4 and do not exist yet.
 ```
 # Swift package — the "done" bar for Swift changes (build + all module tests)
 swift build
@@ -108,6 +108,7 @@ pipeline/bootstrap.sh                                      # install pinned CLIs
 uv run maqs build --region test                            # end-to-end in < 5 min; the pipeline's "done" bar
 uv run maqs build --region veneto --layers basemap,terrain # one real region, a subset of layers
 uv run pytest                                              # pipeline unit tests (from pipeline/)
+uv run pytest --run-network                                # plus the live test-region build (CI runs it)
 uv run ruff check . && uv run ruff format --check .        # pipeline lint/format
 
 # Data release (the workflow does this; run by hand only to debug)
@@ -227,6 +228,7 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **FTS5 and R*Tree on Apple's system SQLite** were verified by a compiled probe on macOS and the iOS simulator (ADR 0001); `SQLITE_OMIT_LOAD_EXTENSION` is set, so no loadable extensions, ever.
 - **Hiking relations are often broken** (gaps, reversed ways, roles). The build flags them in `build-report.json` and keeps going; a pipeline that fails on bad OSM data never ships a month.
 - **`versatiles convert --bbox` on a remote `.versatiles` file is a range-request extract.** If a step is downloading the whole planet file, something is wrong — stop it.
+- **The one-tile `--bbox-border` ring costs ~15 MB at z0–11 whatever the bbox** (a 200 m bbox still came to 17.4 MB), so the `test` fixture sets `bbox_border: 0` in `regions.yaml` to stay under 5 MB; real regions keep the default of 1 (ADR 0009).
 - **macOS CI runners are slow and scarce.** `swift.yml` must not run on data-only or docs-only changes; use `paths` filters. Diagnose locally, batch fixes, never re-run CI casually.
 - **Free disk space on `ubuntu-latest` is small** relative to a Geofabrik PBF plus extracts plus tiles. The workflow frees space up front and the matrix job must not download the PBF per region (shared artifact or cache).
 - **`swift test` on macOS does not exercise the iOS Simulator leg**; availability differences (`Network.framework`, background `URLSession` behaviour) only show there. Run the simulator leg before declaring Phase 4 work done.
@@ -563,7 +565,7 @@ Everything below is maqs-specific engineering law. It has the same force as §14
 #### Pipeline rules
 1. **Reuse, don't build — unless the tool is dormant.** `versatiles`, `osmium`, `tippecanoe` do the heavy lifting; Python orchestrates, validates, and computes what no maintained tool provides (trail assembly and merge, `rank_score`, ascent/descent, curvature and corners, the manifest). Rendering tiles ourselves is out of scope.
 2. **Idempotent and cached.** Every step checks its inputs in `.cache/` and its outputs in `dist/<region>/` before doing work; a re-run with nothing changed does nothing.
-3. **Pinned and reproducible.** Every CLI version is pinned in `pipeline/bootstrap.sh` and works on macOS and `ubuntu-latest`; `uv.lock` is committed.
+3. **Pinned and reproducible.** Every CLI version is pinned in `pipeline/bootstrap.sh` and works on macOS and `ubuntu-24.04`; `uv.lock` is committed.
 4. **Validate before publishing.** Size limit, row-count sanity against Phase 0 numbers, SHA-256, schema validation, `build-report.json` — all before `gh release`. A validation failure fails the job; a data anomaly is reported and the build continues.
 5. **Every SQLite output carries the `metadata` table** and uses FTS5/R*Tree per `docs/data-format.md`; every format change bumps `layer_schema_version` and documents the compatibility rule.
 6. **One region = one `regions.yaml` entry.** The matrix, the manifest, the release, and the docs all derive from it; adding a region touches nothing else.
