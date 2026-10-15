@@ -109,13 +109,16 @@ def assemble(
         first_id = unused.pop(0)
         first = ways[first_id]
         nodes, coords, wids = list(first.nodes), list(first.coords), [first_id]
-        others = [ways[w] for w in unused]
-        # A first way stored against the route direction meets the next way start to start;
-        # flip it so the whole leg follows member order and the flag lands on the right way.
+        nxt = ways[unused[0]] if unused else None
+        # The next member in member order decides the direction. If the first way's end does
+        # not touch it and it starts where the first way starts (without ending there), the
+        # first way is stored against the route: flip and flag it, so the leg follows member
+        # order and later ways (closing loops included) are not blamed.
         if (
-            not any(nodes[-1] in (w.nodes[0], w.nodes[-1]) for w in others)
-            and any(w.nodes[0] == nodes[0] for w in others)
-            and not any(w.nodes[-1] == nodes[0] for w in others)
+            nxt is not None
+            and nodes[-1] not in (nxt.nodes[0], nxt.nodes[-1])
+            and nxt.nodes[0] == nodes[0]
+            and nxt.nodes[-1] != nodes[0]
         ):
             nodes, coords = nodes[::-1], coords[::-1]
             anomalies.append(Anomaly("reversed", f"way/{first_id}", reversed_message))
@@ -187,7 +190,7 @@ def read_osm_trails(hiking_pbf: Path, *, source_date: str | None) -> list[TrailR
         tags, members, relation_members = relations[rid]
         legs, status, anomalies = assemble(members, ways)
         if relation_members:
-            message = f"{relation_members} relation members ignored (superroute)"
+            message = f"relation members ignored (superroute): {relation_members}"
             anomalies.append(Anomaly("relation_member", f"relation/{rid}", message))
         if not legs:
             message = "relation has no way members in the extract"

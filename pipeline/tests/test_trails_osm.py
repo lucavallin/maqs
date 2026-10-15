@@ -42,6 +42,15 @@ def test_assemble_orients_by_member_order_when_first_way_is_stored_backwards():
     assert [(a.kind, a.id) for a in anomalies] == [("reversed", "way/10")]
 
 
+@pytest.mark.parametrize("closing", [[5, 6, 1], [5, 6, 3]], ids=["loop", "lollipop"])
+def test_assemble_flips_a_backwards_first_way_on_loops_and_lollipops(closing):
+    ways = {10: way(10, [3, 2, 1]), 11: way(11, [3, 4, 5]), 12: way(12, closing)}
+    legs, status, anomalies = assemble([(10, ""), (11, ""), (12, "")], ways)
+    assert status == "ordered"
+    assert legs == [[P[n] for n in [1, 2, 3, 4, 5, 6, closing[-1]]]]
+    assert [(a.kind, a.id) for a in anomalies] == [("reversed", "way/10")]
+
+
 def test_assemble_prepends_when_a_way_joins_the_start():
     ways = {10: way(10, [3, 4, 5]), 11: way(11, [1, 2, 3])}
     legs, status, _ = assemble([(10, ""), (11, "")], ways)
@@ -186,7 +195,10 @@ def test_read_osm_trails_maps_tags_and_geometry(hiking_pbf):
     assert r.length_m == pytest.approx(1353, abs=20)
     assert r.bbox == (12.25, 46.1, 12.26, 46.11)
     assert records[103].geometry_status == "incomplete" and records[103].legs == []
-    assert {a.kind for a in records[103].anomalies} == {"relation_member", "no_geometry"}
+    assert sorted(records[103].anomalies, key=lambda a: a.kind) == [
+        Anomaly("no_geometry", "relation/103", "relation has no way members in the extract"),
+        Anomaly("relation_member", "relation/103", "relation members ignored (superroute): 1"),
+    ]
     assert records[101].geometry_status == "incomplete"
     assert records[101].legs == [[P[6], P[7]]]
     assert any(a.kind == "missing_member" and a.id == "way/99" for a in records[101].anomalies)
