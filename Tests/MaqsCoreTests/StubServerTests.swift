@@ -25,6 +25,19 @@ import MaqsTestSupport
         #expect((response as? HTTPURLResponse)?.statusCode == 404)
     }
 
+    @Test("a delayed response arrives, and no sooner than its delay")
+    func delayed() async throws {
+        let server = StubServer()
+        let url = URL(string: "https://example.test/late.json")!
+        server.route(url) { _ in StubResponse(status: 200, body: Data("late".utf8), delay: 0.3) }
+        let session = URLSession(configuration: server.configuration)
+        let clock = ContinuousClock()
+        let start = clock.now
+        let (data, _) = try await session.data(from: url)
+        #expect(clock.now - start >= .milliseconds(300))
+        #expect(String(decoding: data, as: UTF8.self) == "late")
+    }
+
     @Test("a download task lands the body in a file")
     func download() async throws {
         let server = StubServer()

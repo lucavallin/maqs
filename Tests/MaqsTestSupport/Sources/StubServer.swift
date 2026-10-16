@@ -8,8 +8,11 @@ public struct StubResponse: Sendable {
     public var body: Data
     /// When set, the request fails at the transport level with this error instead of getting a response.
     public var transportError: URLError.Code?
-    public init(status: Int = 200, headers: [String: String] = [:], body: Data = Data(), transportError: URLError.Code? = nil) {
-        self.status = status; self.headers = headers; self.body = body; self.transportError = transportError
+    /// Seconds to wait before the response (or the transport error) is delivered; a task cancelled meanwhile gets nothing.
+    public var delay: TimeInterval
+    public init(status: Int = 200, headers: [String: String] = [:], body: Data = Data(), transportError: URLError.Code? = nil,
+                delay: TimeInterval = 0) {
+        self.status = status; self.headers = headers; self.body = body; self.transportError = transportError; self.delay = delay
     }
 }
 
@@ -59,6 +62,14 @@ public final class StubServer: Sendable {
 
 final class StubURLProtocol: URLProtocol {
     private static let servers = Mutex<[String: StubServer]>([:])
+    /// Set by `stopLoading`, so a delayed response is not delivered to a cancelled task.
+    private let stopped = Mutex(false)
+    private let delayed = Mutex<Delayed?>(nil)
+
+    private struct Delayed {
+        let stub: StubResponse
+        let response: HTTPURLResponse
+    }
 
     static func register(_ server: StubServer) { servers.withLock { $0[server.id] = server } }
     static func unregister(_ id: String) { servers.withLock { $0[id] = nil } }
@@ -78,17 +89,34 @@ final class StubURLProtocol: URLProtocol {
             return
         }
         let stub = server.respond(to: request)
+        var headers = stub.headers
+        headers["Content-Length"] = String(stub.body.count)
+        let response = HTTPURLResponse(url: url, statusCode: stub.status, httpVersion: "HTTP/1.1", headerFields: headers)!
+        guard stub.delay > 0 else {
+            deliver(stub, response: response)
+            return
+        }
+        // A selector on the client thread's run loop, not a dispatch queue: a `@Sendable` closure cannot capture this
+        // non-Sendable `URLProtocol`, and URLProtocol expects its client to be called from the thread that started loading.
+        delayed.withLock { $0 = Delayed(stub: stub, response: response) }
+        perform(#selector(deliverDelayed), with: nil, afterDelay: stub.delay, inModes: [RunLoop.current.currentMode ?? .default])
+    }
+
+    @objc private func deliverDelayed() {
+        guard let delayed = delayed.withLock({ $0 }) else { return }
+        deliver(delayed.stub, response: delayed.response)
+    }
+
+    private func deliver(_ stub: StubResponse, response: HTTPURLResponse) {
+        guard !stopped.withLock({ $0 }) else { return }
         if let code = stub.transportError {
             client?.urlProtocol(self, didFailWithError: URLError(code))
             return
         }
-        var headers = stub.headers
-        headers["Content-Length"] = String(stub.body.count)
-        let response = HTTPURLResponse(url: url, statusCode: stub.status, httpVersion: "HTTP/1.1", headerFields: headers)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         if !stub.body.isEmpty { client?.urlProtocol(self, didLoad: stub.body) }
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    override func stopLoading() { stopped.withLock { $0 = true } }
 }
