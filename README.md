@@ -15,7 +15,7 @@ gh workflow run build-maps.yml                 # every region and the base packs
 gh workflow run build-maps.yml -f region=test  # one region (or base): builds it and uploads the dist-test artifact; publishes nothing
 ```
 
-A run in a month that already has a release replaces that release's files in place, the manifest last. It never touches an older release, and when it succeeds every file the new manifest names is there. A dispatch with `-f region=…` or `-f layers=…` only builds, and keeps its outputs as workflow artifacts for 7 days. [`docs/architecture.md`](docs/architecture.md#data-releases) explains the jobs, and ADR 0013 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
+A run in a month that already has a release deletes and re-uploads that release's files of the same name, the manifest last. It never touches an older release, and when it succeeds every file the new manifest names is there. Only a run on `main` publishes. A dispatch with `-f region=…` or `-f layers=…`, or one on another branch with `--ref`, only builds, and keeps its outputs as workflow artifacts for 7 days. [`docs/architecture.md`](docs/architecture.md#data-releases) explains the jobs, and ADR 0013 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
 
 ## Build a region locally
 
