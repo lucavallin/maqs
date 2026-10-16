@@ -92,6 +92,12 @@ struct Manifest: Decodable, Sendable, Equatable {
                     guard seenFiles.insert(entry.file).inserted else {
                         throw ManifestError.invalid("\(path).file: duplicate file name")
                     }
+                    guard entry.layerSchemaVersion >= 1 else {
+                        throw ManifestError.invalid("\(path).layer_schema_version: must be at least 1")
+                    }
+                    guard entry.sha256.wholeMatch(of: /[0-9a-f]{64}/) != nil else {
+                        throw ManifestError.invalid("\(path).sha256: not a lowercase hex SHA-256")
+                    }
                     guard (1...Self.maxBytes).contains(entry.bytes) else {
                         throw ManifestError.invalid("\(path).bytes: out of range")
                     }

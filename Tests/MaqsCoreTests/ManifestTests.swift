@@ -178,6 +178,24 @@ import MaqsTestSupport
         }
     }
 
+    @Test("a sha256 that is not 64 lowercase hex characters is invalid", arguments: [
+        "", "abc", String(repeating: "A", count: 64), String(repeating: "g", count: 64), String(repeating: "a", count: 65)
+    ])
+    func badSHA256(value: String) throws {
+        let data = try mutatingEntry("trails", 0) { $0["sha256"] = value }
+        #expect(throws: ManifestError.invalid("regions.[0].layers.trails.[0].sha256: not a lowercase hex SHA-256")) {
+            try Manifest.decode(data, manifestHost: host)
+        }
+    }
+
+    @Test("a layer_schema_version below 1 is invalid", arguments: [0, -1])
+    func badLayerSchemaVersion(version: Int) throws {
+        let data = try mutatingEntry("trails", 0) { $0["layer_schema_version"] = version }
+        #expect(throws: ManifestError.invalid("regions.[0].layers.trails.[0].layer_schema_version: must be at least 1")) {
+            try Manifest.decode(data, manifestHost: host)
+        }
+    }
+
     @Test("an attribution URL that is not https is invalid")
     func attributionURL() throws {
         let data = try Fixtures.manifestJSON { object in
