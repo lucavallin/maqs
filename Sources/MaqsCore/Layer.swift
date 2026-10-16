@@ -1,7 +1,7 @@
 /// A data layer of a region pack, as named in `manifest.json` and `docs/data-format.md`.
 ///
 /// Apps declare the layers they need in ``MaqsConfiguration/layers``; only those are listed in the catalog and downloaded.
-public enum Layer: String, Codable, Sendable, CaseIterable, Hashable {
+public enum Layer: String, Codable, Sendable, CaseIterable, Hashable, CodingKeyRepresentable {
     /// Shortbread vector tiles (PMTiles).
     case basemap
     /// Terrarium DEM tiles, zoom 0–12 (PMTiles).
