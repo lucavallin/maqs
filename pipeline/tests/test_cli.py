@@ -309,3 +309,41 @@ def test_build_runs_the_default_layers_in_order_without_terrain_hd(monkeypatch, 
     result = build("--region", "test", "--dist", str(tmp_path))
     assert result.exit_code == 0, result.output
     assert ran == ["basemap", "terrain", "trails", "places", "curvature"]
+
+
+def check_config(*args: str):
+    return CliRunner().invoke(main, ["--config", str(REAL), "check-config", *args])
+
+
+def test_check_config_passes_on_the_real_files():
+    result = check_config()
+    assert result.exit_code == 0, result.output
+    assert "ok: regions.yaml" in result.output and "ok: sources.json" in result.output
+
+
+def test_check_config_rejects_a_bad_sources_file(tmp_path):
+    cfg_dir = tmp_path / "config"
+    cfg_dir.mkdir()
+    (cfg_dir / "regions.yaml").write_text(REAL.read_text())
+    bad = json.loads((REAL.parent / "sources.json").read_text())
+    bad["layers"]["basemap"][0]["tiles"] = "http://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}"
+    (cfg_dir / "sources.json").write_text(json.dumps(bad))
+    result = CliRunner().invoke(main, ["--config", str(cfg_dir / "regions.yaml"), "check-config"])
+    assert result.exit_code == 2
+    assert "sources.json: /layers/basemap/0/tiles" in result.output
+
+
+def test_check_config_validates_a_manifest(tmp_path):
+    from tests.test_schemas import MANIFEST
+
+    good = tmp_path / "manifest.json"
+    good.write_text(json.dumps(MANIFEST))
+    assert check_config("--manifest", str(good)).exit_code == 0
+    bad_doc = json.loads(good.read_text())
+    bad_doc["regions"][0]["layers"]["trails"][0]["url"] = (
+        "https://github.com/lucavallin/maqs/releases/latest/download/veneto-trails.v1.sqlite"
+    )
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps(bad_doc))
+    result = check_config("--manifest", str(bad))
+    assert result.exit_code == 2 and "/regions/0/layers/trails/0/url" in result.output

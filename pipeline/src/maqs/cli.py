@@ -1,7 +1,8 @@
-"""Command-line entry point: build, regions, check-tools."""
+"""Command-line entry point: build, regions, check-tools, check-config, manifest."""
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Iterable
 from pathlib import Path
@@ -13,6 +14,7 @@ from maqs.context import BASE_TARGET, BuildContext
 from maqs.curvature.step import CurvatureStep
 from maqs.places.step import PlacesStep
 from maqs.report import build_report, report_path, write_report
+from maqs.schemas import SchemaError, validate
 from maqs.steps.base import Step, run_step
 from maqs.steps.terrain_hd import TerrainHDStep
 from maqs.steps.tiles import TILE_STEPS, BasePackStep
@@ -291,3 +293,34 @@ def build(
     if failed:
         raise click.ClickException(f"build failed for: {', '.join(failed)} (see build-report.json)")
     click.echo("ok")
+
+
+def _validate_json_file(path: Path, schema: str) -> None:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise click.UsageError(f"{path.name}: {exc}") from exc
+    try:
+        validate(doc, schema)
+    except SchemaError as exc:
+        raise click.UsageError(f"{path.name}: {exc.path}: {exc.message}") from exc
+    click.echo(f"ok: {path.name}")
+
+
+@main.command("check-config")
+@click.option(
+    "--manifest",
+    "manifest_file",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    default=None,
+    help="Also validate this manifest.json against config/schemas/manifest.schema.json.",
+)
+@click.pass_context
+def check_config(ctx: click.Context, manifest_file: Path | None) -> None:
+    """Validate regions.yaml, config/sources.json and, optionally, a manifest."""
+    config_path = _config_path(ctx)
+    _load(config_path)
+    click.echo(f"ok: {config_path.name}")
+    _validate_json_file(config_path.parent / "sources.json", "sources")
+    if manifest_file is not None:
+        _validate_json_file(manifest_file, "manifest")
