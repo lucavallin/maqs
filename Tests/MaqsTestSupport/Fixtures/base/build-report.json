@@ -1,0 +1,55 @@
+{
+  "report_version": 1,
+  "region": "base",
+  "built_at": "2026-10-16T18:32:28Z",
+  "tools": {
+    "versatiles": "5.0.0",
+    "pmtiles": "dev",
+    "osmium": "1.19.1",
+    "tippecanoe": "2.79.0"
+  },
+  "steps": [
+    {
+      "name": "base-triveneto",
+      "status": "built",
+      "seconds": 9.099,
+      "command": [
+        "/opt/homebrew/bin/versatiles",
+        "convert",
+        "--bbox",
+        "10.3818,44.7923,13.9187,47.0921",
+        "--max-zoom",
+        "10",
+        "--compress",
+        "gzip",
+        "https://download.versatiles.org/osm-landcover.versatiles",
+        "/Users/lucavallin/maqs/dist/base/base-triveneto-basemap.v1.pmtiles"
+      ],
+      "outputs": [
+        {
+          "file": "base-triveneto-basemap.v1.pmtiles",
+          "bytes": 13165829,
+          "sha256": "75430f171e1c1edc7a9678cb47becb02ecec94612335e19ccd319258b8dd0f91",
+          "tile_type": "mvt",
+          "min_zoom": 0,
+          "max_zoom": 10,
+          "tiles": 186,
+          "compression": "gzip",
+          "attribution": "<a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\">&copy; OpenStreetMap contributors</a> · <a href=\"http://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a> <a href=\"https://esa-worldcover.org/en/data-access\">ESA WorldCover 2021</a>",
+          "source_data_date": "2026-06-07T23:59:58Z",
+          "source": "https://download.versatiles.org/osm-landcover.versatiles",
+          "layer": "basemap",
+          "layer_schema_version": 1,
+          "data_date": "2026-10-16"
+        }
+      ],
+      "anomalies": [],
+      "anomaly_count": 0,
+      "anomaly_kinds": {}
+    }
+  ],
+  "validation": {
+    "ok": true,
+    "failures": []
+  }
+}

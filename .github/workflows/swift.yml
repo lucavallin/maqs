@@ -1,0 +1,80 @@
+name: swift
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - Package.swift
+      - Package.resolved
+      - "Sources/**"
+      - "Tests/**"
+      - scripts/update-fixtures.sh
+      - config/sources.json
+      - .github/workflows/swift.yml
+  pull_request:
+    paths:
+      - Package.swift
+      - Package.resolved
+      - "Sources/**"
+      - "Tests/**"
+      - scripts/update-fixtures.sh
+      - config/sources.json
+      - .github/workflows/swift.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: swift-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  guards:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - name: MapLibre is imported only under Sources/MaqsUI
+        run: |
+          if grep -rl --include='*.swift' -E '^\s*(@_exported\s+)?import\s+MapLibre' Sources Tests Examples 2>/dev/null | grep -v '^Sources/MaqsUI/'; then
+            echo 'import MapLibre outside Sources/MaqsUI' >&2; exit 1
+          fi
+      - name: Bundled sources.json matches config/sources.json
+        run: cmp config/sources.json Sources/MaqsCore/Resources/sources.json
+      - name: Fixtures stay under the cap
+        run: |
+          size_kb=$(du -sk Tests/MaqsTestSupport/Fixtures | cut -f1)
+          echo "fixtures: ${size_kb} KB"
+          test "$size_kb" -le 8192
+      - name: No binary data outside the fixtures
+        run: |
+          if git ls-files | grep -E '\.(pmtiles|sqlite|pbf)$' | grep -v '^Tests/MaqsTestSupport/Fixtures/'; then
+            echo 'generated data outside Tests/MaqsTestSupport/Fixtures' >&2; exit 1
+          fi
+
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - run: swift --version
+      - run: swift build
+      - run: swift test
+
+  ios-simulator:
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - name: Test on the iOS Simulator
+        run: |
+          set -o pipefail
+          xcodebuild -scheme Maqs-Package \
+            -destination 'platform=iOS Simulator,name=iPhone 17' \
+            -skipPackagePluginValidation test 2>&1 | tee xcodebuild.log | grep -E '": error:|Test run with|Test Suite|BUILD|TEST' || true
+          if grep -q '": error:' xcodebuild.log; then exit 1; fi
+          grep -q 'Test run with [0-9]* tests.* passed' xcodebuild.log

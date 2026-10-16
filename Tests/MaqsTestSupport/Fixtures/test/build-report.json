@@ -1,0 +1,4624 @@
+{
+  "report_version": 1,
+  "region": "test",
+  "built_at": "2026-10-16T18:32:18Z",
+  "tools": {
+    "versatiles": "5.0.0",
+    "pmtiles": "dev",
+    "osmium": "1.19.1",
+    "tippecanoe": "2.79.0"
+  },
+  "steps": [
+    {
+      "name": "basemap",
+      "status": "built",
+      "seconds": 12.855,
+      "command": [
+        "/opt/homebrew/bin/versatiles",
+        "convert",
+        "--bbox",
+        "12.21,46.08,12.29,46.13",
+        "--compress",
+        "gzip",
+        "https://download.versatiles.org/osm-landcover.versatiles",
+        "/Users/lucavallin/maqs/dist/test/test-basemap.v1.pmtiles"
+      ],
+      "outputs": [
+        {
+          "file": "test-basemap.v1.pmtiles",
+          "bytes": 1617480,
+          "sha256": "748b46de5a711f228bbd3afcbecf2c7713a386d60cc2417dd46cceef65bdb952",
+          "tile_type": "mvt",
+          "min_zoom": 0,
+          "max_zoom": 14,
+          "tiles": 40,
+          "compression": "gzip",
+          "attribution": "<a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\">&copy; OpenStreetMap contributors</a> · <a href=\"http://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a> <a href=\"https://esa-worldcover.org/en/data-access\">ESA WorldCover 2021</a>",
+          "source_data_date": "2026-06-07T23:59:58Z",
+          "source": "https://download.versatiles.org/osm-landcover.versatiles",
+          "layer": "basemap",
+          "layer_schema_version": 1,
+          "data_date": "2026-10-16"
+        }
+      ],
+      "anomalies": [],
+      "anomaly_count": 0,
+      "anomaly_kinds": {}
+    },
+    {
+      "name": "terrain",
+      "status": "built",
+      "seconds": 9.513,
+      "command": [
+        "/opt/homebrew/bin/versatiles",
+        "convert",
+        "--bbox",
+        "12.21,46.08,12.29,46.13",
+        "--max-zoom",
+        "12",
+        "https://download.versatiles.org/elevation.versatiles",
+        "/Users/lucavallin/maqs/dist/test/test-terrain.v1.pmtiles"
+      ],
+      "outputs": [
+        {
+          "file": "test-terrain.v1.pmtiles",
+          "bytes": 1496730,
+          "sha256": "e24d222d07bcd861eb9c66f73bc0e2c902f9f41b94d64cd9131c9105f062318d",
+          "tile_type": "webp",
+          "min_zoom": 0,
+          "max_zoom": 12,
+          "tiles": 14,
+          "compression": "none",
+          "attribution": "<a href=\"https://mapterhorn.com/attribution\">© Mapterhorn</a>",
+          "source_data_date": null,
+          "source": "https://download.versatiles.org/elevation.versatiles",
+          "layer": "terrain",
+          "layer_schema_version": 1,
+          "data_date": "2026-10-16"
+        }
+      ],
+      "anomalies": [],
+      "anomaly_count": 0,
+      "anomaly_kinds": {}
+    },
+    {
+      "name": "trails",
+      "status": "built",
+      "seconds": 1.294,
+      "command": [
+        "/opt/homebrew/bin/tippecanoe",
+        "-o",
+        "/Users/lucavallin/maqs/dist/test/test-trails.v1.pmtiles",
+        "-f",
+        "-q",
+        "-l",
+        "trails",
+        "-Z6",
+        "-z14",
+        "/Users/lucavallin/maqs/dist/test/test-trails.v1.geojsonseq"
+      ],
+      "outputs": [
+        {
+          "file": "test-trails.v1.sqlite",
+          "bytes": 126976,
+          "sha256": "e1356b0d03031dbcfa714401fa65b3afbf299b9ed3c461343a23efeeba0fd137",
+          "tile_type": null,
+          "min_zoom": null,
+          "max_zoom": null,
+          "tiles": null,
+          "compression": null,
+          "attribution": "© OpenStreetMap contributors (ODbL)",
+          "source_data_date": "2026-10-14T20:21:12Z",
+          "source": null,
+          "rows": {
+            "trails": 10
+          },
+          "layer": "trails",
+          "layer_schema_version": 1,
+          "data_date": "2026-10-16"
+        },
+        {
+          "file": "test-trails.v1.pmtiles",
+          "bytes": 190870,
+          "sha256": "bba7a1c34a09b7f2ef2644c45d87bb6c2556969302b43c4b9146671023d2fa8c",
+          "tile_type": "mvt",
+          "min_zoom": 6,
+          "max_zoom": 14,
+          "tiles": 442,
+          "compression": "gzip",
+          "attribution": null,
+          "source_data_date": null,
+          "source": null,
+          "layer": "trails",
+          "layer_schema_version": 1,
+          "data_date": "2026-10-16"
+        }
+      ],
+      "anomalies": [
+        {
+          "kind": "missing_member",
+          "id": "way/142773555",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/122461975",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/4818682",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/48773037",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/35035912",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/863394114",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/863383155",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/176214336",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1050728777",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/436996281",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/436996279",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/23462033",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1112447684",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/243282376",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1267864557",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/243282377",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/23457803",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/27240440",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/92413952",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/3819390",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/3811831",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1301627918",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/113611098",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/113611093",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/113611104",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/113611094",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/3810922",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175117253",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/113611106",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/113611102",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/4592754",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/27202893",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175117251",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1158124063",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175117245",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51519406",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175117268",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/27202902",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/27202903",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/163479483",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51525546",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/33487036",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51524131",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/33487037",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/33911300",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51537119",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/345286595",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51537124",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51537936",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51537122",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/125508822",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51536916",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51372976",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/33911090",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24632662",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/176511633",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/33911561",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/33911562",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51372978",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24632453",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51372979",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/33914250",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/263259664",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/262486713",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/181575382",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/263259662",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/247217514",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/35545859",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/22898464",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86259779",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/164752062",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/164752061",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/10968554",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/13513804",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/10965836",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/18953254",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/159276129",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86382545",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/10966337",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/169735303",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/169735300",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156450301",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156450273",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/417067999",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156450268",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/4933314",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1430639431",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156450257",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1155890421",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156450261",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/27415837",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/416451806",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/161748197",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/124263556",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/457058572",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86382071",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86382078",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/432319838",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/432319837",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156225694",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156225685",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156225693",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/159496287",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/161737149",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/698731677",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/161737150",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/161737148",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/181582916",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/181582917",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175108195",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/160577424",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/266612875",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/160576769",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/167706945",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175106606",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/160575287",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1391756049",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1391756047",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/160575286",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/34955740",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/164381516",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/172068551",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1436567037",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/164381505",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1199783930",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/849492585",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/849492584",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/126050708",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37747340",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175103548",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156366318",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156366321",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/156366320",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171381876",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/51377476",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171381874",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171381875",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171387298",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/258778722",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/167513261",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/167510253",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/456203904",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/90500735",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/169798384",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/169798385",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/90500725",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25645462",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/633930429",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/482734925",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/482734924",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/482736528",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/33305196",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175099453",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/84690359",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1420205443",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171367783",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/84690357",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/295653487",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/130732747",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/167800311",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/38036734",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/170424487",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/122648658",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/263538907",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/263538908",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37972452",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/170424488",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/5056972",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/5056969",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/170657527",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24642904",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/191099889",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/191099893",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/242910643",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/263538905",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/173301799",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/232518664",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171367827",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171367824",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175097283",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/263084277",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/22935666",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/595192046",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/595192047",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/595192043",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/22938488",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171367821",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/259418552",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/259418550",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/504598491",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/597057381",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/597057380",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32699605",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/928969014",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/928969013",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/526693480",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32761647",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32761648",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32761649",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32761650",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32761646",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/526693478",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/928969012",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175097282",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/871932273",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/28701665",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1309431251",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/28708918",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/28708919",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1002433218",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1002433219",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/28701664",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24976065",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175097284",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175097287",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32966722",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1560894967",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128329082",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/4298048",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1101875397",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1101875396",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128329014",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/4056383",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/537480512",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24062192",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24062193",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/7990464",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1554538579",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/378058705",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1554538576",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/628517770",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/4056505",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/537480511",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/168733312",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1555082357",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/503100106",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/135726037",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32958730",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/38590251",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/38590250",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175097293",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175097294",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/200344723",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/187819213",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175097288",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/28717259",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/240527106",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/200344728",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1198256958",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32048197",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/164543808",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175089186",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/27560531",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175085411",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/177431492",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/177621024",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/177431242",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/164543806",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32048213",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/9819961",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32048250",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/517791404",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24059367",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1271753022",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/173682303",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/54848696",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32973790",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24059548",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24658739",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32048397",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/189601612",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/34707804",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/189602561",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/314391664",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/314391665",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/314391666",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/314391667",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/34707803",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175084291",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1124813872",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37533755",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171555707",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171555708",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37533756",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37533757",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/163972888",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/40323170",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/168908278",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/163972890",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/94352918",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86335811",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175083201",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86335814",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1075427858",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/85253813",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175083197",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/861068930",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/861068928",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/861068929",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/106299478",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/861068942",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175083209",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175083208",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37576552",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/861068941",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175083217",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175083204",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86335807",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86335810",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/106299491",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/106299496",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/106299485",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37576554",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175082451",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175082450",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/299859572",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24658513",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/127193491",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/127193495",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24229630",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/32048604",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/34022804",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/137154697",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/820887184",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/108514923",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/701866517",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/701866515",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/68658008",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/68658013",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174930611",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/110312068",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/110312084",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174930610",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174930609",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1195016217",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1195016216",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/110312115",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25964221",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1225197692",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25964220",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25023454",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25963513",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25964349",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174930613",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174930612",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/26377217",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174930615",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1533915652",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/109170632",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25963840",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1414502302",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174929261",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304268474",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25963394",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25963393",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/975461591",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/975461590",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/975461589",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/975461588",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304808921",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25963392",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/26095811",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304810066",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304810065",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/110437222",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/62001978",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/62001982",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/41646556",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/41646555",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/41646554",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/41646557",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/41791852",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/41791851",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174929259",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/41791850",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1540816663",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1540816662",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304815617",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304815624",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304815625",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304815620",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304815623",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304815618",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304815621",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/10683467",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128610573",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816616",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816626",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816627",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816614",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816622",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816621",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816619",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816623",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816615",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816618",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816625",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816624",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816617",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816613",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816612",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1304816620",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/114599283",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/148050927",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1312836997",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24396346",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128610564",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/97571474",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/277204936",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/244125209",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39691493",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39691492",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/85400619",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/26308483",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/26308482",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/85400616",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24792231",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/20023893",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/93446257",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/93446255",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/157151616",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1047689801",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128610589",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128610572",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1331040773",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/42454081",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/93446250",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/42454080",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/23392402",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86338543",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/129703244",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/190394471",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/190394472",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/129703257",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/129880733",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/243848643",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/243848642",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128544568",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86338541",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/484619043",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/484619041",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/484619042",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/134065945",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/484619039",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/484619040",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/134065942",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/134063693",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86338545",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/716654571",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/200344726",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/398991930",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/398991928",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/398991929",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1236947426",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1236947425",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/184557613",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/23391458",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/129792617",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/398991931",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128610566",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86340309",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86340310",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/134134639",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/134148131",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/11405223",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/134212571",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/134212573",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/134212574",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/134212572",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/40776934",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1047492157",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1047492158",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/40776935",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/26970264",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/26970265",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/24751135",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37647900",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/134809678",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/114435655",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/114435661",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/137345021",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/114435662",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/110434850",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1103925240",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1103925241",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/129063968",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1001970658",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1001970659",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128610580",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128610576",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37417393",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37417394",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1518639873",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/137052694",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/450646055",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/450646057",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/385684128",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/200344719",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/138341481",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1518639871",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/42303551",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1518639874",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1518639875",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1518639876",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/42314120",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37455533",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/127326492",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/138639550",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37514711",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/26960350",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37514710",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/67602534",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/25621762",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37509649",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1322822643",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/981376413",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37511199",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37511200",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1555032452",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37512781",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/37512783",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/40827417",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/619115925",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/619115922",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/180360528",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/180360526",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/619115915",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/619115918",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/180360527",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/172918639",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/42312771",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1322507913",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/26934750",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/42165590",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/998221885",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/998221884",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/203027146",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/42165591",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/74784102",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/121659818",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/121659822",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/121659820",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/118856408",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39592602",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53538390",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/119196380",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53538391",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128963298",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1221502723",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1221502722",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/69881338",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/69253602",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/607671266",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/69253603",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/128963300",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/152508782",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/148973513",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175308970",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/65495681",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174942091",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53538394",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/666904400",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53538395",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53538393",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/40034833",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53538392",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/44646419",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/146622495",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/47488720",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/47488717",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/47488718",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/47488719",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1201567483",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174942084",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/26379645",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1186964474",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1324110125",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/26379620",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171530970",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/171530976",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174942089",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1494967537",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/43919752",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/174942602",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/539083457",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/69750437",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1425307273",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1425307275",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1411410821",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1425307270",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1455523878",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1425507639",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/149637293",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/784926823",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/784926818",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/784926821",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/784926820",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/149646988",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1565732387",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/771970787",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/73319118",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/771970785",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/149646990",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/73319134",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/73319136",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/396909936",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1322819152",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1324106933",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1344622496",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/55196473",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/988127321",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/452128001",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/988127322",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175260627",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/716708885",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/149683375",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1322451569",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1551565743",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1322451568",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/816734736",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/70876660",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175260628",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1349959882",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/35161315",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1349959885",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/35161316",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/223210704",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175278813",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86341759",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175278814",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86341755",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/94758830",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/94758836",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175262313",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1349959892",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175262315",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1349959895",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175262317",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1349959896",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1314201504",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1314201507",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1314201506",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1314201505",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/223369261",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/35160486",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/434823277",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/90300302",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1327822551",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/90300290",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/219990525",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/94758831",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/919109776",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53572565",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53572550",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1049151621",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175281490",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/58527621",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/308630632",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/94814201",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/94814217",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175283403",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/58527622",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53572552",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53572553",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/919109772",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/918652242",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/918652244",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/918652243",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/177883172",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53572554",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/56329410",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53679173",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/919109781",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/919109788",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/919109787",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/919109784",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/919109783",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/919109786",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1318204564",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/919109782",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/919109785",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/467775092",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/467775088",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175467484",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/467775095",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1163851153",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1163851154",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175467488",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53679184",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53679174",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/94758823",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1126054887",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/891489085",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1126054885",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/891489090",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/818684829",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53679180",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/142899953",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1104591338",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1126054879",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1126054880",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53679168",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53679171",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/54046787",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/830200867",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/830200868",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175299597",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/87081532",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1163940384",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175299598",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/369641349",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/369641347",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175299594",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/149419365",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1163943392",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/54046791",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/390192447",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/390192446",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/87082064",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/123759380",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/123759381",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/828024507",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1323589002",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1323589001",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39690499",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39690494",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39690491",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39690482",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39690483",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39690486",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39690485",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/40724948",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548085472",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548085473",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39690479",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/521595164",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/521595165",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39690480",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39685354",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39685356",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548072602",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548072601",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548072809",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548072808",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548072807",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548072806",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548072805",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548072804",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548072603",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073256",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073254",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073255",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073252",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073251",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073250",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073679",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073678",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073677",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073676",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073675",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39684887",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073682",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548082655",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548082654",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548082653",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548073683",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548082651",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548082650",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548082649",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548082652",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548082967",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548082968",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/39684888",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/40726537",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548082964",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548084222",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548084221",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/353026752",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548084220",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/353026751",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/1548084217",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/86341758",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/53572556",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/220026373",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175265055",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/434823276",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/434823265",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/123000043",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/175265079",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/217424732",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/123000042",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "missing_member",
+          "id": "way/122724731",
+          "message": "member way not in the extract"
+        },
+        {
+          "kind": "role",
+          "id": "way/621002392",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/307673597",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/894041570",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/102833601",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/894035540",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/890749708",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/86174734",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/891070203",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/891070204",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/301849741",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/301849740",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/86174749",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/497735184",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/81895110",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/81895128",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/83714808",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/82768681",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/894025071",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/893991591",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/82768744",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/175450192",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/33756521",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/82768595",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/379175472",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/379175474",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/82768549",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/85900186",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/54738589",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/255394626",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/1009831517",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/1009831516",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/175585345",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/971990196",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/971990194",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/43117187",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/971990197",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/54871744",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/447102260",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/512320642",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/971990198",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/43117188",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/971990199",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/971990200",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/38378150",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/88741169",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/447102258",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/37865162",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/1205171779",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/1205171777",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/38378152",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/1010205084",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/38378267",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/369516312",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/369516324",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/38379161",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "role",
+          "id": "way/992623216",
+          "message": "member role 'alternative' kept in the main geometry"
+        },
+        {
+          "kind": "gap",
+          "id": "way/1531722954",
+          "message": "gap of 38 m before this way"
+        },
+        {
+          "kind": "gap",
+          "id": "way/300717198",
+          "message": "gap of 169 m before this way"
+        },
+        {
+          "kind": "gap",
+          "id": "way/1219477908",
+          "message": "gap of 4 m before this way"
+        },
+        {
+          "kind": "gap",
+          "id": "way/24995087",
+          "message": "gap of 7 m before this way"
+        },
+        {
+          "kind": "gap",
+          "id": "way/483272030",
+          "message": "gap of 6 m before this way"
+        },
+        {
+          "kind": "gap",
+          "id": "way/1286839236",
+          "message": "gap of 13 m before this way"
+        },
+        {
+          "kind": "gap",
+          "id": "way/621002392",
+          "message": "gap of 170008 m before this way"
+        },
+        {
+          "kind": "gap",
+          "id": "way/497735184",
+          "message": "gap of 3757 m before this way"
+        },
+        {
+          "kind": "gap",
+          "id": "way/54738589",
+          "message": "gap of 48897 m before this way"
+        },
+        {
+          "kind": "gap",
+          "id": "way/175585345",
+          "message": "gap of 4496 m before this way"
+        },
+        {
+          "kind": "gap",
+          "id": "way/992623216",
+          "message": "gap of 19799 m before this way"
+        },
+        {
+          "kind": "reversed",
+          "id": "relation/1736379",
+          "message": "449 of 1019 member ways reversed"
+        },
+        {
+          "kind": "terrain_gap",
+          "id": "relation/1736379",
+          "message": "13787 elevation samples had no terrain tile"
+        },
+        {
+          "kind": "relation_member",
+          "id": "relation/5944160",
+          "message": "relation members ignored (superroute): 31"
+        },
+        {
+          "kind": "no_geometry",
+          "id": "relation/5944160",
+          "message": "relation has no way members in the extract"
+        },
+        {
+          "kind": "reversed",
+          "id": "relation/14549476",
+          "message": "3 of 4 member ways reversed"
+        },
+        {
+          "kind": "terrain_gap",
+          "id": "relation/14549476",
+          "message": "6 elevation samples had no terrain tile"
+        },
+        {
+          "kind": "gap",
+          "id": "way/1254627091",
+          "message": "gap of 1439 m before this way"
+        },
+        {
+          "kind": "reversed",
+          "id": "relation/14549477",
+          "message": "2 of 6 member ways reversed"
+        },
+        {
+          "kind": "reversed",
+          "id": "relation/14549478",
+          "message": "2 of 3 member ways reversed"
+        },
+        {
+          "kind": "reversed",
+          "id": "relation/14563614",
+          "message": "4 of 6 member ways reversed"
+        },
+        {
+          "kind": "terrain_gap",
+          "id": "relation/14563614",
+          "message": "202 elevation samples had no terrain tile"
+        },
+        {
+          "kind": "reversed",
+          "id": "relation/14563615",
+          "message": "3 of 11 member ways reversed"
+        },
+        {
+          "kind": "terrain_gap",
+          "id": "relation/14563615",
+          "message": "132 elevation samples had no terrain tile"
+        },
+        {
+          "kind": "reversed",
+          "id": "relation/18161246",
+          "message": "31 of 70 member ways reversed"
+        },
+        {
+          "kind": "terrain_gap",
+          "id": "relation/18161246",
+          "message": "385 elevation samples had no terrain tile"
+        },
+        {
+          "kind": "reversed",
+          "id": "relation/18161263",
+          "message": "32 of 58 member ways reversed"
+        },
+        {
+          "kind": "terrain_gap",
+          "id": "relation/18161263",
+          "message": "39 elevation samples had no terrain tile"
+        }
+      ],
+      "anomaly_count": 876,
+      "anomaly_kinds": {
+        "gap": 12,
+        "missing_member": 792,
+        "no_geometry": 1,
+        "relation_member": 1,
+        "reversed": 8,
+        "role": 56,
+        "terrain_gap": 6
+      }
+    },
+    {
+      "name": "places",
+      "status": "built",
+      "seconds": 0.239,
+      "command": [
+        "/opt/homebrew/bin/tippecanoe",
+        "-o",
+        "/Users/lucavallin/maqs/dist/test/test-places.v1.pmtiles",
+        "-f",
+        "-q",
+        "-l",
+        "places",
+        "-Z8",
+        "-z14",
+        "-r1",
+        "/Users/lucavallin/maqs/dist/test/test-places.v1.geojsonseq"
+      ],
+      "outputs": [
+        {
+          "file": "test-places.v1.sqlite",
+          "bytes": 40960,
+          "sha256": "929e52e7dadd06427ec343668a4c0d7e821018831536bbbc194d995696384d3e",
+          "tile_type": null,
+          "min_zoom": null,
+          "max_zoom": null,
+          "tiles": null,
+          "compression": null,
+          "attribution": "© OpenStreetMap contributors (ODbL)",
+          "source_data_date": "2026-10-14T20:21:12Z",
+          "source": null,
+          "rows": {
+            "places": 22
+          },
+          "layer": "places",
+          "layer_schema_version": 1,
+          "data_date": "2026-10-16"
+        },
+        {
+          "file": "test-places.v1.pmtiles",
+          "bytes": 7062,
+          "sha256": "cee1f025601631c2a1b360140d0ca5032d76c655e7edeae1c140450db7b50b40",
+          "tile_type": "mvt",
+          "min_zoom": 8,
+          "max_zoom": 14,
+          "tiles": 23,
+          "compression": "gzip",
+          "attribution": null,
+          "source_data_date": null,
+          "source": null,
+          "layer": "places",
+          "layer_schema_version": 1,
+          "data_date": "2026-10-16"
+        }
+      ],
+      "anomalies": [],
+      "anomaly_count": 0,
+      "anomaly_kinds": {}
+    },
+    {
+      "name": "curvature",
+      "status": "built",
+      "seconds": 0.058,
+      "command": [],
+      "outputs": [
+        {
+          "file": "test-curvature.v1.sqlite",
+          "bytes": 176128,
+          "sha256": "c7ccdfb20d4a3ccb6d55b3a1957f677767b8a4ac35d224d477d99afa8e3d0401",
+          "tile_type": null,
+          "min_zoom": null,
+          "max_zoom": null,
+          "tiles": null,
+          "compression": null,
+          "attribution": "© OpenStreetMap contributors (ODbL)",
+          "source_data_date": "2026-10-14T20:21:12Z",
+          "source": null,
+          "rows": {
+            "segments": 136,
+            "corners": 623
+          },
+          "layer": "curvature",
+          "layer_schema_version": 1,
+          "data_date": "2026-10-16"
+        }
+      ],
+      "anomalies": [],
+      "anomaly_count": 0,
+      "anomaly_kinds": {}
+    }
+  ],
+  "validation": {
+    "ok": true,
+    "failures": []
+  }
+}

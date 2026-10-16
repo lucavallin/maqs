@@ -1,0 +1,150 @@
+{
+  "manifest_version": 1,
+  "created_at": "2026-10-16T18:32:28Z",
+  "release": "data-ci",
+  "shortbread_version": "1.0",
+  "attribution": [
+    {
+      "text": "© OpenStreetMap contributors",
+      "licence": "ODbL 1.0",
+      "url": "https://www.openstreetmap.org/copyright",
+      "layers": [
+        "basemap",
+        "trails",
+        "places",
+        "curvature"
+      ]
+    },
+    {
+      "text": "CC BY 4.0 ESA WorldCover 2021",
+      "licence": "CC BY 4.0",
+      "url": "https://esa-worldcover.org/en/data-access",
+      "layers": [
+        "basemap"
+      ]
+    },
+    {
+      "text": "© Mapterhorn",
+      "licence": "multiple open licences, listed at url",
+      "url": "https://mapterhorn.com/attribution",
+      "layers": [
+        "terrain",
+        "terrain-hd"
+      ]
+    }
+  ],
+  "regions": [
+    {
+      "id": "test",
+      "name": {
+        "it": "Nevegal (test)",
+        "en": "Nevegal (test)"
+      },
+      "bbox": [
+        12.21,
+        46.08,
+        12.29,
+        46.13
+      ],
+      "layers": {
+        "basemap": [
+          {
+            "layer_schema_version": 1,
+            "file": "test-basemap.v1.pmtiles",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-basemap.v1.pmtiles",
+            "bytes": 1617480,
+            "sha256": "748b46de5a711f228bbd3afcbecf2c7713a386d60cc2417dd46cceef65bdb952",
+            "data_date": "2026-10-16",
+            "osm_timestamp": "2026-06-07T23:59:58Z"
+          }
+        ],
+        "terrain": [
+          {
+            "layer_schema_version": 1,
+            "file": "test-terrain.v1.pmtiles",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-terrain.v1.pmtiles",
+            "bytes": 1496730,
+            "sha256": "e24d222d07bcd861eb9c66f73bc0e2c902f9f41b94d64cd9131c9105f062318d",
+            "data_date": "2026-10-16",
+            "osm_timestamp": null
+          }
+        ],
+        "trails": [
+          {
+            "layer_schema_version": 1,
+            "file": "test-trails.v1.sqlite",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-trails.v1.sqlite",
+            "bytes": 126976,
+            "sha256": "e1356b0d03031dbcfa714401fa65b3afbf299b9ed3c461343a23efeeba0fd137",
+            "data_date": "2026-10-16",
+            "osm_timestamp": "2026-10-14T20:21:12Z"
+          },
+          {
+            "layer_schema_version": 1,
+            "file": "test-trails.v1.pmtiles",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-trails.v1.pmtiles",
+            "bytes": 190870,
+            "sha256": "bba7a1c34a09b7f2ef2644c45d87bb6c2556969302b43c4b9146671023d2fa8c",
+            "data_date": "2026-10-16",
+            "osm_timestamp": null,
+            "role": "overlay"
+          }
+        ],
+        "places": [
+          {
+            "layer_schema_version": 1,
+            "file": "test-places.v1.sqlite",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-places.v1.sqlite",
+            "bytes": 40960,
+            "sha256": "929e52e7dadd06427ec343668a4c0d7e821018831536bbbc194d995696384d3e",
+            "data_date": "2026-10-16",
+            "osm_timestamp": "2026-10-14T20:21:12Z"
+          },
+          {
+            "layer_schema_version": 1,
+            "file": "test-places.v1.pmtiles",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-places.v1.pmtiles",
+            "bytes": 7062,
+            "sha256": "cee1f025601631c2a1b360140d0ca5032d76c655e7edeae1c140450db7b50b40",
+            "data_date": "2026-10-16",
+            "osm_timestamp": null,
+            "role": "overlay"
+          }
+        ],
+        "curvature": [
+          {
+            "layer_schema_version": 1,
+            "file": "test-curvature.v1.sqlite",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-curvature.v1.sqlite",
+            "bytes": 176128,
+            "sha256": "c7ccdfb20d4a3ccb6d55b3a1957f677767b8a4ac35d224d477d99afa8e3d0401",
+            "data_date": "2026-10-16",
+            "osm_timestamp": "2026-10-14T20:21:12Z"
+          }
+        ]
+      }
+    }
+  ],
+  "base": [
+    {
+      "id": "triveneto",
+      "regions": [
+        "triveneto"
+      ],
+      "max_zoom": 10,
+      "layers": {
+        "basemap": [
+          {
+            "layer_schema_version": 1,
+            "file": "base-triveneto-basemap.v1.pmtiles",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/base-triveneto-basemap.v1.pmtiles",
+            "bytes": 13165829,
+            "sha256": "75430f171e1c1edc7a9678cb47becb02ecec94612335e19ccd319258b8dd0f91",
+            "data_date": "2026-10-16",
+            "osm_timestamp": "2026-06-07T23:59:58Z"
+          }
+        ]
+      }
+    }
+  ]
+}
