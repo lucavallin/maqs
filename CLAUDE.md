@@ -35,7 +35,7 @@ Do not build toward these, and do not add abstractions that only make sense if t
 | `test` region | ~35 km² around Nevegal, `fixture: true`: built for CI and the Swift tests only, never listed to apps or released. Builds end to end in under 5 minutes. Not a toy: it exercises every layer. |
 | Layer | One of `basemap`, `terrain`, `trails`, `places`, `curvature`. Apps declare which layers they need and only those are downloaded. Each layer has its own `layer_schema_version`. |
 | Region pack | The set of per-layer files for one region, listed in the manifest. Not a single archive. |
-| Basemap | Shortbread 1.0 vector tiles from VersaTiles, online from `tiles.versatiles.org/tiles/osm` and offline as `<region>-basemap.pmtiles` cut from `osm-landcover.versatiles` with `versatiles convert --bbox --compress gzip`. Same tiles both ways. |
+| Basemap | Shortbread 1.0 vector tiles from VersaTiles, online from `tiles.versatiles.org/tiles/osm` and offline as `<region>-basemap.v1.pmtiles` cut from `osm-landcover.versatiles` with `versatiles convert --bbox --compress gzip`. Same tiles both ways. |
 | Shortbread | The vector tile schema (shortbread-tiles.org). Pinned to **1.0**, what VersaTiles serves, and recorded in the manifest. |
 | Terrain | Terrarium-encoded DEM raster tiles (Mapterhorn's build, repackaged by VersaTiles): 512 px WebP, zoom 0–12, online from `tiles.versatiles.org/tiles/elevation`, offline cut from `elevation.versatiles`. **Same tiles online and offline** so the Swift sampler has one code path: elevation = (R × 256 + G + B / 256) − 32768. |
 | Trails | Normalised trail records produced by **source adapters** (OSM is the first; Alpenverein Südtirol and regional networks are planned) and merged per region by priority, with provenance columns and both the normalised difficulty and the original value. A trail whose geometry cannot be ordered is *flagged*, never dropped silently and never a build failure. |
@@ -86,7 +86,7 @@ config/sources.json        # online providers, priority order — fetched by cli
 config/regions.yaml        # region id, names (it/en), bbox — adding a region is one entry here
 config/schemas/            # JSON Schemas for manifest.json and sources.json; CI validates against them
 pipeline/                  # Python (uv) orchestrator + per-layer steps; bootstrap.sh installs pinned CLIs
-pipeline/src/maqs/         # cli, config, validate, report, tools; cache.py (downloads), geometry.py (polyline6, circles), sqlite_out.py, overlay.py, pmtiles_*.py
+pipeline/src/maqs/         # cli, config, validate, report, tools; cache.py (downloads), geometry.py (polyline6, circles), sqlite_out.py, overlay.py, pmtiles_*.py; layers.py (schema versions, output names), schemas.py (JSON Schema validation), manifest.py (manifest assembly)
 pipeline/src/maqs/steps/   # step runner and the tile layers
 pipeline/src/maqs/osm/     # Geofabrik download, osmium cuts, terrain sampling
 pipeline/src/maqs/trails/  # trail record, source adapters (sources/osm.py), merge, trails step
@@ -98,7 +98,7 @@ dist/<region>/             # build outputs (gitignored; Releases only, never git
 ```
 
 ### Commands
-The pipeline commands are real as of Phase 1; the Swift commands land in Phase 4 and do not exist yet.
+The pipeline commands are real; the Swift commands land in Phase 4 and do not exist yet.
 ```
 # Swift package — the "done" bar for Swift changes (build + all module tests)
 swift build
@@ -116,6 +116,9 @@ uv run maqs build --region veneto --layers basemap,terrain # one real region, a 
 uv run pytest                                              # pipeline unit tests (from pipeline/)
 uv run pytest --run-network                                # plus the live test-region build (CI's smoke job runs it); downloads the Geofabrik extract into .cache/ once
 uv run ruff check . && uv run ruff format --check .        # pipeline lint/format
+uv run maqs check-config [--manifest PATH]                 # regions.yaml, sources.json and a manifest against config/schemas/
+uv run maqs manifest --release data-YYYY-MM [--previous PATH] # dist/manifest.json from every non-fixture region and the base packs
+uv run maqs manifest --release data-ci --regions test      # CI-only manifest from the test and base builds; never published
 
 # Data release (the workflow does this; run by hand only to debug)
 gh release view --json tagName,assets                      # inspect the latest data release
@@ -222,7 +225,7 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 ### Things that will bite you
 - **Phase 0 is a stop.** The brief says verify, record, summarise, wait. Do not start Phase 1 because Phase 0 went well.
 - **"Decisions already made" are fixed, but their facts are not.** Every URL, license, version, size, and capability in the brief must be re-verified against the live source in Phase 0. If one is wrong, stop and report before building on it — do not quietly substitute.
-- **tiles.versatiles.org is a demo server.** No SLA, per-IP rate limit answered with 429 and no Retry-After, six-hour `Cache-Control`, no ETag (every revalidation is a full download), data refreshed roughly quarterly. Send an identifying User-Agent, never no-cache, back off on 429. The provider swap lives in `sources.json`, so an outage is a config change, not an app update.
+- **tiles.versatiles.org is a demo server.** No SLA, per-IP rate limit answered with 429 and no Retry-After, six-hour `Cache-Control`, a weak ETag that answers revalidation with 304 (ADR 0012; ADR 0001 found none), data refreshed roughly quarterly. Send an identifying User-Agent, never no-cache, back off on 429. The provider swap lives in `sources.json`, so an outage is a config change, not an app update.
 - **MapLibre reads PMTiles with gzip or no compression only.** VersaTiles writes brotli by default; every basemap extract passes `--compress gzip` or MapLibre throws "Compression method not supported".
 - **`osmium export` does not assemble route relations**, only multipolygons and boundaries; member ways come out with their own tags. Trail geometry is our pyosmium step. And 5–10 % of hiking relations cross region borders: cut them per region from the `route=hiking` filter of the uncut extract with `osmium extract -s smart -S types=route`, never from the `complete_ways` region PBF.
 - **pyosmium fixture writers must emit nodes, then ways, then relations, each by ascending id**, or osmium rejects the file. `pipeline/tests/osm_fixtures.py` does it; reuse it.
@@ -245,6 +248,10 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **Swift Testing prints a fake XCTest summary** ("Executed 0 tests"); read `Test run with N tests`. Grep xcodebuild output for `": error:"`, not `error`.
 - **Ubuntu's apt ships old osmium-tool (1.16) and tippecanoe (2.49).** `bootstrap.sh` fetches or builds current versions on Linux; Homebrew is current on macOS.
 - **GitHub picks "latest" by the tagged commit's date**, not the publish date. After re-uploading a month's assets, call `gh release edit <tag> --latest` explicitly.
+- **Every manifest `url` is tag-pinned; only `manifest.json` itself is fetched through `releases/latest/download/`.** A `latest` URL inside the manifest fails the schema. `data-ci` passes it, but only CI uses it and a `data-ci` manifest is never published.
+- **`maqs manifest --previous` does not count releases.** It carries every lower schema version the previous manifest lists, including entries that manifest carried itself, so ending the one-release window is the release workflow's job.
+- **Output files carry the schema version (`veneto-trails.v1.sqlite`).** A `dist/` from before 2026-10-16 is rebuilt, not reused; `maqs manifest` refuses its reports.
+- **JSON Schema `pattern` is ECMA-262, Python's `re` is not.** Spell digits `[0-9]` (Python's `\d` matches any Unicode digit) and validate through `maqs.schemas.validate`, which makes a final `$` match only at the end of the string.
 - **The package must never know the apps.** A "small convenience for the app" that leaks an app's name, style, or assumptions into `Sources/` is scope creep into a different repo.
 
 ### Git and CI
