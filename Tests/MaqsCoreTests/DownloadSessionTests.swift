@@ -255,17 +255,21 @@ import MaqsTestSupport
     @Test("a key is one path component", arguments: [
         ("a.bin", true), ("0123abcd-veneto-trails.v1.sqlite", true), ("..a", true),
         ("", false), (".", false), ("..", false), ("a/b", false), ("/a", false), ("../a", false),
+        ("a.bin.resume", false), ("a.resumed", true),
     ])
     func keyValidation(key: String, valid: Bool) {
         #expect((DownloadSession.Request.validKey(key) != nil) == valid)
     }
 
+    #if os(macOS)
+    // Exit tests are unavailable on the iOS Simulator; the rule itself is covered on every platform by keyValidation.
     @Test("a request with a key that is not one path component stops the program")
     func invalidKeyTraps() async {
         await #expect(processExitsWith: .failure) {
             _ = DownloadSession.Request(url: URL(string: "https://github.com/dl/x")!, key: "../x")
         }
     }
+    #endif
 
     // MARK: Hash and progress
 
