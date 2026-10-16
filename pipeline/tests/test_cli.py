@@ -534,3 +534,52 @@ def test_fetch_reports_a_download_failure(monkeypatch, tmp_path):
     monkeypatch.setattr(cli.extract, "fetch_extract", boom)
     result = fetch("--extract", "europe/italy/nord-est", "--cache", str(tmp_path))
     assert result.exit_code == 1 and "md5 mismatch" in result.output
+
+
+def test_release_check_passes_and_writes_notes(tmp_path):
+    from tests.test_release import write_assets
+    from tests.test_schemas import MANIFEST
+
+    doc = json.loads(json.dumps(MANIFEST))
+    write_assets(tmp_path / "dist", doc)
+    (tmp_path / "manifest.json").write_text(json.dumps(doc))
+    result = CliRunner().invoke(
+        main,
+        [
+            "--config",
+            str(REAL),
+            "release-check",
+            "--dist",
+            str(tmp_path / "dist"),
+            "--manifest",
+            str(tmp_path / "manifest.json"),
+            "--notes",
+            str(tmp_path / "notes.md"),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert "veneto-trails.v1.sqlite 1234" in result.output and "total " in result.output
+    assert (tmp_path / "notes.md").read_text().startswith("# Map data 2026-11")
+
+
+def test_release_check_fails_on_a_missing_asset(tmp_path):
+    from tests.test_release import write_assets
+    from tests.test_schemas import MANIFEST
+
+    doc = json.loads(json.dumps(MANIFEST))
+    write_assets(tmp_path / "dist", doc)
+    (tmp_path / "dist" / "base" / "base-triveneto-basemap.v1.pmtiles").unlink()
+    (tmp_path / "manifest.json").write_text(json.dumps(doc))
+    result = CliRunner().invoke(
+        main,
+        [
+            "--config",
+            str(REAL),
+            "release-check",
+            "--dist",
+            str(tmp_path / "dist"),
+            "--manifest",
+            str(tmp_path / "manifest.json"),
+        ],
+    )
+    assert result.exit_code == 1 and "base-triveneto-basemap.v1.pmtiles: missing" in result.output

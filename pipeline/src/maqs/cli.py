@@ -1,4 +1,5 @@
-"""Command-line entry point: build, regions, fetch, check-tools, check-config, manifest."""
+"""Command-line entry point: build, regions, fetch, check-tools, check-config, manifest,
+release-check."""
 
 from __future__ import annotations
 
@@ -16,6 +17,7 @@ from maqs.curvature.step import CurvatureStep
 from maqs.manifest import CI_RELEASE, ManifestError, build_manifest, write_manifest
 from maqs.osm import extract
 from maqs.places.step import PlacesStep
+from maqs.release import ReleaseError, carried_count, local_assets, release_notes
 from maqs.report import build_report, report_path, write_report
 from maqs.schemas import SchemaError, validate
 from maqs.steps.base import Step, run_step
@@ -456,3 +458,35 @@ def manifest(
         raise click.ClickException(str(exc)) from exc
     write_manifest(out, doc)
     click.echo(f"wrote {out} ({len(doc['regions'])} regions, {len(doc['base'])} base packs)")
+
+
+@main.command("release-check")
+@click.option(
+    "--dist", type=click.Path(path_type=Path, exists=True, file_okay=False), required=True
+)
+@click.option(
+    "--manifest",
+    "manifest_file",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    required=True,
+)
+@click.option(
+    "--notes", type=click.Path(path_type=Path), default=None, help="Write the release notes here."
+)
+def release_check(dist: Path, manifest_file: Path, notes: Path | None) -> None:
+    """Assert every asset the manifest names for its release is in dist with the right bytes."""
+    try:
+        doc = json.loads(manifest_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(f"{manifest_file}: {exc}") from exc
+    try:
+        validate(doc, "manifest")
+        assets = local_assets(doc, dist)
+    except (SchemaError, ReleaseError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    for asset in assets:
+        click.echo(f"{asset.file} {asset.bytes}")
+    click.echo(f"total {len(assets)} assets, {sum(a.bytes for a in assets)} bytes")
+    if notes is not None:
+        notes.write_text(release_notes(doc, carried_count(doc)), encoding="utf-8")
+        click.echo(f"wrote {notes}")
