@@ -6,8 +6,9 @@ from maqs.sqlite_out import SCHEMA_VERSION
 
 STANDARD_LAYERS: tuple[str, ...] = ("basemap", "terrain", "trails", "places", "curvature")
 
-# Tile layers: 1 = Shortbread 1.0 gzip MVT z0-14 (basemap), terrarium WebP 512 px z0-12 (terrain,
-# terrain-hd). A change in encoding, zoom range or schema bumps the number (docs/data-format.md).
+# Tile layers, version 1: basemap is Shortbread 1.0 gzip MVT z0-14; terrain is terrarium WebP 512 px
+# z0-12; terrain-hd is terrarium z13 to hd_max_zoom (regions.yaml), WebP or PNG as Mapterhorn stores
+# it. A change in encoding, zoom range or schema bumps the number (docs/data-format.md).
 TILE_SCHEMA_VERSION: dict[str, int] = {"basemap": 1, "terrain": 1, "terrain-hd": 1}
 
 LAYER_SCHEMA_VERSION: dict[str, int] = {**TILE_SCHEMA_VERSION, **SCHEMA_VERSION}
