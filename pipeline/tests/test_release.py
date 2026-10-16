@@ -1,10 +1,19 @@
 import copy
 import hashlib
+import re
 from pathlib import Path
 
 import pytest
 
-from maqs.release import Asset, ReleaseError, carried_count, local_assets, release_notes
+from maqs.release import (
+    Asset,
+    ReleaseError,
+    ReleaseStateError,
+    carried_count,
+    choose_previous,
+    local_assets,
+    release_notes,
+)
 from tests.test_schemas import MANIFEST
 
 
@@ -78,3 +87,142 @@ def test_release_notes_name_regions_layers_timestamps_and_carried(doc):
         "- veneto: basemap 2026-06-07T23:59:58Z, terrain n/a, trails 2026-10-31T20:21:00Z" in text
     )
     assert "base pack triveneto" in text and "2 entries carried from earlier releases" in text
+
+
+def rel(
+    tag: str,
+    *,
+    manifest: bool = True,
+    draft: bool = False,
+    prerelease: bool = False,
+    created: str | None = None,
+) -> dict:
+    """One release as `gh api repos/<owner>/<repo>/releases` returns it (the fields used)."""
+    assets = [{"name": "veneto-trails.v1.sqlite"}]
+    if manifest:
+        assets.append({"name": "manifest.json"})
+    month = tag.removeprefix("data-") if re.fullmatch(r"data-\d{4}-\d{2}", tag) else "2026-01"
+    return {
+        "tag_name": tag,
+        "draft": draft,
+        "prerelease": prerelease,
+        "created_at": created or f"{month}-01T03:00:00Z",
+        "assets": assets,
+    }
+
+
+THIS = "data-2026-11"
+
+
+@pytest.mark.parametrize(
+    ("releases", "expected", "warned"),
+    [
+        pytest.param([], None, [], id="no-releases"),
+        pytest.param(
+            [rel(THIS, manifest=False)],
+            None,
+            [f"{THIS} has no manifest.json"],
+            id="only-this-tag-without-manifest",
+        ),
+        pytest.param(
+            [rel(THIS, manifest=False), rel("data-2026-10")],
+            "data-2026-10",
+            [f"{THIS} has no manifest.json"],
+            id="this-tag-newest-without-manifest",
+        ),
+        pytest.param(
+            [rel(THIS, manifest=False), rel("data-2026-10", manifest=False), rel("data-2026-09")],
+            "data-2026-09",
+            [f"{THIS} has no manifest.json", "data-2026-10 has no manifest.json"],
+            id="older-orphan-without-manifest-is-skipped",
+        ),
+        pytest.param(
+            [rel("data-2026-09"), rel("data-2026-10"), rel("data-2026-08")],
+            "data-2026-10",
+            [],
+            id="ordered-by-tag-name-not-list-order",
+        ),
+        pytest.param(
+            [
+                rel("data-2026-12", manifest=False, draft=True),
+                rel("data-2026-10", draft=True),
+                rel("data-2026-09", prerelease=True),
+                rel("data-2026-08"),
+            ],
+            "data-2026-08",
+            [],
+            id="drafts-and-prereleases-ignored",
+        ),
+        pytest.param(
+            [rel("data-2026-10"), rel("data-2026-07-hotfix", manifest=False), rel("data-ci")],
+            "data-2026-10",
+            [],
+            id="non-monthly-tags-are-not-candidates",
+        ),
+        pytest.param(
+            [rel("v2.0.0", manifest=False, created="2026-10-20T09:00:00Z"), rel("data-2026-10")],
+            "data-2026-10",
+            ["clients would see a non-data release as latest"],
+            id="package-release-newest",
+        ),
+        pytest.param(
+            [rel("v2.0.0", manifest=False, created="2026-09-20T09:00:00Z"), rel("data-2026-10")],
+            "data-2026-10",
+            [],
+            id="older-package-release-is-fine",
+        ),
+    ],
+)
+def test_choose_previous(releases, expected, warned):
+    tag, warnings = choose_previous(releases, THIS)
+    assert tag == expected
+    assert len(warnings) == len(warned)
+    for text, warning in zip(warned, warnings, strict=True):
+        assert text in warning
+
+
+def test_choose_previous_warns_that_this_run_repairs_its_own_release():
+    _, warnings = choose_previous([rel(THIS, manifest=False), rel("data-2026-10")], THIS)
+    assert "this run" in warnings[0]
+
+
+def test_choose_previous_says_an_older_orphan_was_never_seen():
+    releases = [rel(THIS, manifest=False), rel("data-2026-10", manifest=False), rel("data-2026-09")]
+    _, warnings = choose_previous(releases, THIS)
+    assert "orphan" in warnings[1]
+
+
+@pytest.mark.parametrize(
+    ("release", "releases"),
+    [
+        pytest.param(THIS, [rel("data-2026-12", manifest=False), rel("data-2026-10")], id="later"),
+        pytest.param(
+            "data-2026-12", [rel(THIS, manifest=False), rel("data-2026-10")], id="earlier-month"
+        ),
+        pytest.param("data-2026-12", [rel(THIS, manifest=False)], id="no-manifest-anywhere"),
+    ],
+)
+def test_choose_previous_refuses_a_newest_release_without_manifest(release, releases):
+    newest = max(r["tag_name"] for r in releases)
+    with pytest.raises(ReleaseStateError) as exc:
+        choose_previous(releases, release)
+    message = str(exc.value)
+    assert f"latest data release {newest} has no manifest.json" in message
+    assert "re-run that month" in message
+    assert f"gh release delete {newest} --cleanup-tag" in message
+
+
+@pytest.mark.parametrize(
+    "releases",
+    [
+        pytest.param({"tag_name": THIS}, id="not-a-list"),
+        pytest.param(None, id="null"),
+        pytest.param(["data-2026-10"], id="not-an-object"),
+        pytest.param([{"tag_name": "data-2026-10", "draft": False}], id="missing-fields"),
+        pytest.param([{**rel("data-2026-10"), "assets": [{}]}], id="asset-without-name"),
+        pytest.param([{**rel("data-2026-10"), "assets": None}], id="assets-not-a-list"),
+    ],
+)
+def test_choose_previous_rejects_input_that_is_not_a_releases_list(releases):
+    with pytest.raises(ReleaseStateError, match="releases"):
+        choose_previous(releases, THIS)

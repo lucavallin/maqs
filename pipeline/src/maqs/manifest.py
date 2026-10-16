@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import logging
+import re
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -20,6 +21,7 @@ MANIFEST_VERSION = 1
 SHORTBREAD_VERSION = "1.0"
 REPO = "lucavallin/maqs"
 CI_RELEASE = "data-ci"
+RELEASE_TAG = re.compile(r"data-[0-9]{4}-(0[1-9]|1[0-2])")
 STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 VERSIONED_KEYS = frozenset({"layer", "layer_schema_version", "data_date"})
 OVERLAY_LAYERS = frozenset({"trails", "places"})

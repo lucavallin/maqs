@@ -11,6 +11,7 @@ from maqs.steps.base import StepResult
 from maqs.tools import ToolStatus
 from tests.helpers import write_pmtiles
 from tests.manifest_fixtures import base_report, region_report, write_dist
+from tests.test_release import rel
 
 REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
 
@@ -583,3 +584,52 @@ def test_release_check_fails_on_a_missing_asset(tmp_path):
         ],
     )
     assert result.exit_code == 1 and "base-triveneto-basemap.v1.pmtiles: missing" in result.output
+
+
+def previous_manifest(tmp_path, releases, release="data-2026-11"):
+    path = tmp_path / "releases.json"
+    path.write_text(json.dumps(releases))
+    return CliRunner().invoke(
+        main, ["previous-manifest", "--releases", str(path), "--release", release]
+    )
+
+
+def test_previous_manifest_prints_the_tag_to_carry_over_from(tmp_path):
+    result = previous_manifest(tmp_path, [rel("data-2026-09"), rel("data-2026-10")])
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "data-2026-10\n" and result.stderr == ""
+
+
+def test_previous_manifest_prints_none_without_a_published_manifest(tmp_path):
+    result = previous_manifest(tmp_path, [])
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "none\n"
+
+
+def test_previous_manifest_sends_warnings_to_stderr_as_workflow_commands(tmp_path):
+    result = previous_manifest(tmp_path, [rel("data-2026-11", manifest=False), rel("data-2026-10")])
+    assert result.exit_code == 0, result.output
+    assert result.stdout == "data-2026-10\n"
+    assert result.stderr.startswith("::warning::data-2026-11 has no manifest.json")
+
+
+def test_previous_manifest_exits_1_when_the_newest_release_has_no_manifest(tmp_path):
+    result = previous_manifest(tmp_path, [rel("data-2026-12", manifest=False), rel("data-2026-10")])
+    assert result.exit_code == 1 and result.stdout == ""
+    assert "gh release delete data-2026-12 --cleanup-tag" in result.stderr
+
+
+def test_previous_manifest_exits_1_on_unreadable_or_malformed_input(tmp_path):
+    broken = tmp_path / "broken.json"
+    broken.write_text("[not json")
+    result = CliRunner().invoke(
+        main, ["previous-manifest", "--releases", str(broken), "--release", "data-2026-11"]
+    )
+    assert result.exit_code == 1 and "broken.json" in result.output
+    assert previous_manifest(tmp_path, {"message": "Not Found"}).exit_code == 1
+
+
+@pytest.mark.parametrize("tag", ["data-ci", "latest", "data-2026-13"])
+def test_previous_manifest_refuses_a_release_that_is_not_a_month(tmp_path, tag):
+    result = previous_manifest(tmp_path, [], release=tag)
+    assert result.exit_code == 2 and "data-YYYY-MM" in result.output
