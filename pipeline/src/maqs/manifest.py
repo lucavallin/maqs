@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,6 +14,8 @@ from maqs.config import BasePack, Config, Region
 from maqs.layers import STANDARD_LAYERS
 from maqs.report import report_path
 from maqs.schemas import SchemaError, validate
+
+log = logging.getLogger("maqs.manifest")
 
 MANIFEST_VERSION = 1
 SHORTBREAD_VERSION = "1.0"
@@ -162,6 +165,11 @@ def _base_doc(pack: BasePack, entries: list[dict]) -> dict:
     }
 
 
+def _entry_count(manifest: dict) -> int:
+    docs = [*manifest["regions"], *manifest["base"]]
+    return sum(len(entries) for doc in docs for entries in doc["layers"].values())
+
+
 def url_tag(url: str) -> str:
     """The release tag an asset URL names: the path segment after `/releases/download/`."""
     return url.partition("/releases/download/")[2].partition("/")[0]
@@ -279,7 +287,10 @@ def build_manifest(
         "base": _base_docs(config, base, release),
     }
     if previous is not None:
+        built = _entry_count(manifest)
         manifest = carry_over(manifest, previous)
+        carried = _entry_count(manifest) - built
+        log.info("carried %d entries from %s", carried, previous["release"])
     validate(manifest, "manifest")
     _check_entry_urls(manifest)
     return manifest
