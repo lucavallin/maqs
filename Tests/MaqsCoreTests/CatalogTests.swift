@@ -145,4 +145,10 @@ import MaqsTestSupport
         #expect(!box.contains(longitude: 12.30, latitude: 46.10))
         #expect(BoundingBox([1, 2, 3]) == nil)
     }
+
+    @Test("an inverted bounding box contains nothing and does not trap")
+    func invertedBox() {
+        let box = BoundingBox(minLon: 12.29, minLat: 46.13, maxLon: 12.21, maxLat: 46.08)
+        #expect(!box.contains(longitude: 12.25, latitude: 46.10))
+    }
 }

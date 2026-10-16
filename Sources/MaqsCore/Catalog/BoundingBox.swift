@@ -20,8 +20,8 @@ public struct BoundingBox: Sendable, Hashable {
         self.init(minLon: array[0], minLat: array[1], maxLon: array[2], maxLat: array[3])
     }
 
-    /// Whether a point lies inside or on the edge.
+    /// Whether a point lies inside or on the edge. An inverted box contains nothing.
     public func contains(longitude: Double, latitude: Double) -> Bool {
-        (minLon...maxLon).contains(longitude) && (minLat...maxLat).contains(latitude)
+        longitude >= minLon && longitude <= maxLon && latitude >= minLat && latitude <= maxLat
     }
 }

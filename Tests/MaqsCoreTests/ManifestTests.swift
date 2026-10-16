@@ -170,6 +170,25 @@ import MaqsTestSupport
         }
     }
 
+    @Test("a region bbox that is not a valid bounding box is invalid", arguments: [
+        [12.21, 46.08, 12.29],
+        [12.21, 46.08, 12.29, 46.13, 1],
+        [12.29, 46.08, 12.21, 46.13],
+        [12.21, 46.13, 12.29, 46.08],
+        [12.21, 46.08, 181, 46.13],
+        [12.21, -91, 12.29, 46.13],
+    ])
+    func invalidBBox(box: [Double]) throws {
+        let data = try Fixtures.manifestJSON { object in
+            var regions = object["regions"] as! [[String: Any]]
+            regions[0]["bbox"] = box
+            object["regions"] = regions
+        }
+        #expect(throws: ManifestError.invalid("regions.[0].bbox: not a valid bounding box")) {
+            try Manifest.decode(data, manifestHost: host)
+        }
+    }
+
     @Test("bytes outside 1...2_040_109_465 are invalid", arguments: [-5, 0, 2_040_109_466])
     func bytesOutOfRange(bytes: Int) throws {
         let data = try mutatingEntry("trails", 0) { $0["bytes"] = bytes }

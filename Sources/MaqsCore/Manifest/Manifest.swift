@@ -77,6 +77,9 @@ struct Manifest: Decodable, Sendable, Equatable {
         for (index, pack) in base.enumerated() {
             try Self.checkID(pack.id, path: "base.[\(index)]", seen: &seenIDs)
         }
+        for (index, region) in regions.enumerated() where !Self.isValidBBox(region.bbox) {
+            throw ManifestError.invalid("regions.[\(index)].bbox: not a valid bounding box")
+        }
         // File names become paths in the shared downloads directory: same rules, and no name twice.
         var seenFiles = Set<String>()
         let host = manifestHost.lowercased()
@@ -110,6 +113,13 @@ struct Manifest: Decodable, Sendable, Equatable {
                 }
             }
         }
+    }
+
+    private static func isValidBBox(_ box: [Double]) -> Bool {
+        guard box.count == 4, box.allSatisfy(\.isFinite) else { return false }
+        return box[0] < box[2] && box[1] < box[3]
+            && (-180...180).contains(box[0]) && (-180...180).contains(box[2])
+            && (-90...90).contains(box[1]) && (-90...90).contains(box[3])
     }
 
     private static func checkID(_ id: String, path: String, seen: inout Set<String>) throws {
