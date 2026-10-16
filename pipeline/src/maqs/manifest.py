@@ -17,6 +17,7 @@ from maqs.schemas import validate
 MANIFEST_VERSION = 1
 SHORTBREAD_VERSION = "1.0"
 REPO = "lucavallin/maqs"
+VERSIONED_KEYS = frozenset({"layer", "layer_schema_version", "data_date"})
 OVERLAY_LAYERS = frozenset({"trails", "places"})
 
 # Display strings verbatim from DATA_LICENSE.md (a test keeps them in sync).
@@ -54,10 +55,20 @@ def read_report(dist: Path, label: str) -> dict:
     path = report_path(dist / label)
     if not path.exists():
         raise ManifestError(f"{label}: build-report.json not found")
-    report = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        report = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ManifestError(f"{label}: build-report.json: {exc}") from exc
     if not report.get("validation", {}).get("ok", False):
         failures = "; ".join(report.get("validation", {}).get("failures", [])) or "unknown"
         raise ManifestError(f"{label}: build failed: {failures}")
+    for step in report.get("steps", []):
+        for output in step.get("outputs", []):
+            if not output.keys() >= VERSIONED_KEYS:
+                raise ManifestError(
+                    f"{label}: build-report.json predates the versioned outputs; "
+                    "rebuild with --force"
+                )
     return report
 
 
@@ -117,6 +128,9 @@ def _base_docs(config: Config, dist: Path, release: str) -> list[dict]:
         step = by_step.get(f"base-{pack.id}")
         if step is None or step["status"] == "failed" or not step["outputs"]:
             raise ManifestError(f"base-{pack.id}: not built")
+        for output in step["outputs"]:
+            if output["layer"] != "basemap":
+                raise ManifestError(f"base-{pack.id}: unexpected layer {output['layer']}")
         entries = _sort_entries([entry_from_output(o, release) for o in step["outputs"]])
         docs.append(_base_doc(pack, entries))
     return docs
@@ -157,7 +171,10 @@ def build_manifest(
     previous: dict | None = None,
     now: datetime | None = None,
 ) -> dict:
-    stamp = (now or datetime.now(UTC)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    moment = now or datetime.now(UTC)
+    if moment.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    stamp = moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     regions = [
         _region_doc(config.region(rid), dist, release)
         for rid in config.region_ids(include_fixtures=include_fixtures)
@@ -167,7 +184,7 @@ def build_manifest(
         "created_at": stamp,
         "release": release,
         "shortbread_version": SHORTBREAD_VERSION,
-        "attribution": [dict(a) for a in ATTRIBUTION],
+        "attribution": copy.deepcopy(list(ATTRIBUTION)),
         "regions": regions,
         "base": _base_docs(config, dist, release),
     }

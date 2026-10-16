@@ -1,6 +1,7 @@
 # pipeline/tests/test_manifest.py
+import copy
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -149,6 +150,7 @@ def test_carry_over_keeps_only_lower_versions_of_known_layers(cfg, full_dist):
     previous = build_manifest(cfg, full_dist, "data-2026-11", now=NOW)
     # a region no longer configured
     previous["regions"].append({**previous["regions"][0], "id": "gone"})
+    snapshot_current, snapshot_previous = copy.deepcopy(current), copy.deepcopy(previous)
     merged = carry_over(current, previous)
     veneto = next(r for r in merged["regions"] if r["id"] == "veneto")
     versions = [e["layer_schema_version"] for e in veneto["layers"]["trails"]]
@@ -162,6 +164,8 @@ def test_carry_over_keeps_only_lower_versions_of_known_layers(cfg, full_dist):
     assert {r["id"] for r in merged["regions"]} == set(REGIONS)
     validate(merged, "manifest")
     assert current is not merged
+    assert current == snapshot_current
+    assert previous == snapshot_previous
     assert current["regions"][1]["layers"]["trails"][0]["layer_schema_version"] == 2
 
 
@@ -184,3 +188,119 @@ def test_attribution_strings_match_data_license():
     licence = (Path(__file__).resolve().parents[2] / "DATA_LICENSE.md").read_text(encoding="utf-8")
     for a in ATTRIBUTION:
         assert a["text"] in licence, a["text"]
+
+
+def _reports(**overrides):
+    reports = {r: region_report(r) for r in REGIONS}
+    reports["base"] = base_report(["triveneto"])
+    reports.update(overrides)
+    return reports
+
+
+def _trails_step(report):
+    return next(s for s in report["steps"] if s["name"] == "trails")
+
+
+def test_entries_are_sorted_sqlite_before_overlay_whatever_the_report_order(cfg, tmp_path):
+    report = region_report("veneto")
+    _trails_step(report)["outputs"].reverse()
+    dist = write_dist(tmp_path / "dist", _reports(veneto=report))
+    m = build_manifest(cfg, dist, "data-2026-11", now=NOW)
+    veneto = next(r for r in m["regions"] if r["id"] == "veneto")
+    assert [e["file"] for e in veneto["layers"]["trails"]] == [
+        "veneto-trails.v1.sqlite",
+        "veneto-trails.v1.pmtiles",
+    ]
+
+
+def _v2(entries):
+    out = copy.deepcopy(entries)
+    for e in out:
+        e["layer_schema_version"] = 2
+        e["file"] = e["file"].replace(".v1.", ".v2.")
+        e["url"] = e["url"].replace(".v1.", ".v2.")
+    return out
+
+
+def test_carry_over_orders_files_even_when_inputs_arrive_unsorted(cfg, full_dist):
+    current = build_manifest(cfg, full_dist, "data-2026-12", now=NOW)
+    previous = build_manifest(cfg, full_dist, "data-2026-11", now=NOW)
+    for manifest in (current, previous):
+        veneto = next(r for r in manifest["regions"] if r["id"] == "veneto")
+        veneto["layers"]["trails"].reverse()
+    veneto = next(r for r in current["regions"] if r["id"] == "veneto")
+    veneto["layers"]["trails"] = _v2(veneto["layers"]["trails"])
+    merged = carry_over(current, previous)
+    merged_veneto = next(r for r in merged["regions"] if r["id"] == "veneto")
+    assert [e["file"] for e in merged_veneto["layers"]["trails"]] == [
+        "veneto-trails.v2.sqlite",
+        "veneto-trails.v2.pmtiles",
+        "veneto-trails.v1.sqlite",
+        "veneto-trails.v1.pmtiles",
+    ]
+
+
+def test_carry_over_ignores_previous_entries_with_a_higher_version(cfg, full_dist):
+    current = build_manifest(cfg, full_dist, "data-2026-12", now=NOW)
+    previous = build_manifest(cfg, full_dist, "data-2026-11", now=NOW)
+    for r in previous["regions"]:
+        r["layers"]["trails"] = _v2(r["layers"]["trails"])
+    merged = carry_over(current, previous)
+    assert merged == current
+
+
+def test_carry_over_applies_to_base_packs(cfg, full_dist):
+    current = build_manifest(cfg, full_dist, "data-2026-12", now=NOW)
+    current["base"][0]["layers"]["basemap"] = _v2(current["base"][0]["layers"]["basemap"])
+    previous = build_manifest(cfg, full_dist, "data-2026-11", now=NOW)
+    merged = carry_over(current, previous)
+    assert [e["file"] for e in merged["base"][0]["layers"]["basemap"]] == [
+        "base-triveneto-basemap.v2.pmtiles",
+        "base-triveneto-basemap.v1.pmtiles",
+    ]
+    validate(merged, "manifest")
+
+
+def test_naive_now_is_rejected_and_aware_now_is_normalised_to_utc(cfg, full_dist):
+    with pytest.raises(ValueError, match="timezone-aware"):
+        build_manifest(cfg, full_dist, "data-2026-11", now=datetime(2026, 11, 1, 3, 0, 0))
+    plus_two = timezone(timedelta(hours=2))
+    m = build_manifest(
+        cfg, full_dist, "data-2026-11", now=datetime(2026, 11, 1, 5, 12, 44, tzinfo=plus_two)
+    )
+    assert m["created_at"] == "2026-11-01T03:12:44Z"
+
+
+def test_unversioned_report_output_asks_for_a_rebuild(cfg, tmp_path):
+    report = region_report("veneto")
+    del _trails_step(report)["outputs"][0]["layer_schema_version"]
+    dist = write_dist(tmp_path / "dist", _reports(veneto=report))
+    with pytest.raises(ManifestError, match="veneto: build-report.json predates the versioned"):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
+
+
+def test_truncated_report_is_a_manifest_error(cfg, tmp_path):
+    dist = write_dist(tmp_path / "dist", _reports())
+    (dist / "veneto" / "build-report.json").write_text('{"steps": [', encoding="utf-8")
+    with pytest.raises(ManifestError, match="veneto: build-report.json: "):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
+
+
+def test_base_pack_with_a_non_basemap_output_fails(cfg, tmp_path):
+    base = base_report(["triveneto"])
+    base["steps"][0]["outputs"][0]["layer"] = "terrain"
+    dist = write_dist(tmp_path / "dist", _reports(base=base))
+    with pytest.raises(ManifestError, match="base-triveneto: unexpected layer terrain"):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
+
+
+def test_base_pack_step_missing_from_the_report_fails(cfg, tmp_path):
+    dist = write_dist(tmp_path / "dist", _reports(base=base_report([])))
+    with pytest.raises(ManifestError, match="base-triveneto: not built"):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
+
+
+def test_manifest_attribution_does_not_alias_the_constant(cfg, full_dist):
+    m = build_manifest(cfg, full_dist, "data-2026-11", now=NOW)
+    m["attribution"][0]["layers"].append("mutated")
+    assert "mutated" not in ATTRIBUTION[0]["layers"]
