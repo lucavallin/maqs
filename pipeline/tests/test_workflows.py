@@ -21,19 +21,20 @@ def test_every_action_is_pinned(name):
     lines = (WORKFLOWS / name).read_text(encoding="utf-8").splitlines()
     for ref in uses:
         if ref.startswith("actions/"):
-            assert re.fullmatch(r"actions/[\w.-]+@v\d+", ref), ref
+            assert re.fullmatch(r"actions/[\w.-]+(/[\w.-]+)*@v\d+", ref), ref
         else:
             assert re.fullmatch(r"[\w.-]+/[\w.-]+@[0-9a-f]{40}", ref), ref
-            line = next(ln for ln in lines if ref in ln)
-            assert re.search(r"#\s*v\d", line), line
+            for line in (ln for ln in lines if ref in ln):
+                assert re.search(r"#\s*v\d", line), line
 
 
 def test_gh_token_is_scoped_to_the_steps_that_call_gh():
     doc = load("build-maps.yml")
+    assert "GH_TOKEN" not in doc.get("env", {})
     for job in doc["jobs"].values():
         assert "GH_TOKEN" not in job.get("env", {})
         for step in job["steps"]:
-            calls_gh = re.search(r"\bgh release\b", step.get("run", ""))
+            calls_gh = re.search(r"\bgh\s", step.get("run", ""))
             assert bool(calls_gh) == ("GH_TOKEN" in step.get("env", {})), step.get("name")
 
 
@@ -60,3 +61,14 @@ def test_build_maps_never_cancels_and_publishes_only_full_runs():
     assert "manifest.json --clobber" in run_text and "--latest" in run_text
     assert run_text.index("release-check") < run_text.index("gh release upload")
     assert run_text.rindex("dist/manifest.json --clobber") > run_text.index("gh release upload")
+    manifest_upload = run_text.index('gh release upload "$RELEASE" dist/manifest.json')
+    assert run_text.rindex("gh release upload") == manifest_upload
+    assert run_text.index('gh release edit "$RELEASE" --latest') > manifest_upload
+
+
+@pytest.mark.parametrize("name", ["pipeline.yml", "build-maps.yml"])
+def test_steps_with_pipes_run_under_bash_pipefail(name):
+    for job in load(name)["jobs"].values():
+        for step in job["steps"]:
+            if "|" in step.get("run", ""):
+                assert step.get("shell") == "bash", step.get("name") or step["run"]
