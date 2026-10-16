@@ -145,8 +145,21 @@ def _base_doc(pack: BasePack, entries: list[dict]) -> dict:
     }
 
 
+def url_tag(url: str) -> str:
+    """The release tag an asset URL names: the path segment after `/releases/download/`."""
+    return url.partition("/releases/download/")[2].partition("/")[0]
+
+
 def carry_over(current: dict, previous: dict) -> dict:
-    """Append the previous release's lower-version entries so old clients keep a file to read."""
+    """Append the previous release's lower-version entries so old clients keep a file to read.
+
+    An entry is carried only when its URL names `previous["release"]`, that is, when it was
+    built for the previous release. An entry the previous manifest had itself carried names an
+    older tag and is dropped, so the window ends after one release. A same-month re-run
+    (`previous["release"] == current["release"]`) keeps every lower entry. Carried entries are
+    copied unchanged; rewriting a URL's tag would keep the window open forever.
+    """
+    rerun = previous["release"] == current["release"]
     merged = copy.deepcopy(current)
     prev_regions = {r["id"]: r for r in previous.get("regions", [])}
     prev_base = {b["id"]: b for b in previous.get("base", [])}
@@ -157,7 +170,12 @@ def carry_over(current: dict, previous: dict) -> dict:
             continue
         for layer, entries in doc["layers"].items():
             floor = min(e["layer_schema_version"] for e in entries)
-            older = [e for e in prev["layers"].get(layer, []) if e["layer_schema_version"] < floor]
+            older = [
+                e
+                for e in prev["layers"].get(layer, [])
+                if e["layer_schema_version"] < floor
+                and (rerun or url_tag(e["url"]) == previous["release"])
+            ]
             doc["layers"][layer] = _sort_entries(entries + copy.deepcopy(older))
     return merged
 

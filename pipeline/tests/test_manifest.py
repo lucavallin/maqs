@@ -309,3 +309,70 @@ def test_manifest_attribution_does_not_alias_the_constant(cfg, full_dist):
     m = build_manifest(cfg, full_dist, "data-2026-11", now=NOW)
     m["attribution"][0]["layers"].append("mutated")
     assert "mutated" not in ATTRIBUTION[0]["layers"]
+
+
+def _at_version(entries, version):
+    out = copy.deepcopy(entries)
+    for e in out:
+        old, new = f".v{e['layer_schema_version']}.", f".v{version}."
+        e["layer_schema_version"] = version
+        e["file"] = e["file"].replace(old, new)
+        e["url"] = e["url"].replace(old, new)
+    return out
+
+
+def _release(cfg, dist, release, trails_version):
+    """A freshly built manifest whose trails are at `trails_version` in every region."""
+    m = build_manifest(cfg, dist, release, now=NOW)
+    for r in m["regions"]:
+        r["layers"]["trails"] = _at_version(r["layers"]["trails"], trails_version)
+    return m
+
+
+def _trails(manifest):
+    """(version, release tag in the url) of veneto's trails entries, in manifest order."""
+    veneto = next(r for r in manifest["regions"] if r["id"] == "veneto")
+    return [
+        (e["layer_schema_version"], e["url"].split("/")[-2]) for e in veneto["layers"]["trails"]
+    ]
+
+
+def test_carry_over_ends_the_window_after_one_release(cfg, full_dist):
+    october = _release(cfg, full_dist, "data-2026-10", 1)
+    november = carry_over(_release(cfg, full_dist, "data-2026-11", 2), october)
+    assert _trails(november) == [
+        (2, "data-2026-11"),
+        (2, "data-2026-11"),
+        (1, "data-2026-10"),
+        (1, "data-2026-10"),
+    ]
+    december = carry_over(_release(cfg, full_dist, "data-2026-12", 2), november)
+    assert _trails(december) == [(2, "data-2026-12"), (2, "data-2026-12")]
+    validate(december, "manifest")
+
+
+def test_a_same_month_rerun_keeps_the_entries_that_month_carried(cfg, full_dist):
+    october = _release(cfg, full_dist, "data-2026-10", 1)
+    november = carry_over(_release(cfg, full_dist, "data-2026-11", 2), october)
+    rerun = carry_over(_release(cfg, full_dist, "data-2026-11", 2), november)
+    assert _trails(rerun) == _trails(november)
+    assert rerun["regions"] == november["regions"]
+
+
+def test_a_double_bump_carries_only_the_previous_release_version(cfg, full_dist):
+    october = _release(cfg, full_dist, "data-2026-10", 1)
+    november = carry_over(_release(cfg, full_dist, "data-2026-11", 2), october)
+    december = carry_over(_release(cfg, full_dist, "data-2026-12", 3), november)
+    assert _trails(december) == [
+        (3, "data-2026-12"),
+        (3, "data-2026-12"),
+        (2, "data-2026-11"),
+        (2, "data-2026-11"),
+    ]
+
+
+def test_a_rollback_to_a_lower_version_carries_nothing(cfg, full_dist):
+    october = _release(cfg, full_dist, "data-2026-10", 1)
+    november = carry_over(_release(cfg, full_dist, "data-2026-11", 2), october)
+    december = _release(cfg, full_dist, "data-2026-12", 1)
+    assert carry_over(december, november) == december
