@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from maqs.config import Config, Region
@@ -11,15 +12,24 @@ from maqs.config import Config, Region
 BASE_TARGET = "base"
 
 
+def _today() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%d")
+
+
 @dataclass
 class BuildContext:
-    """One build target: a region, or, with `region` None, every base pack together."""
+    """One build target: a region, or, with `region` None, every base pack together.
+
+    `data_date` is the UTC date of the build run, read once when the context is made, so every
+    output of the run carries the same date even when the run crosses midnight.
+    """
 
     config: Config
     dist: Path
     cache: Path
     force: bool
     region: Region | None = None
+    data_date: str = field(default_factory=_today)
 
     @property
     def label(self) -> str:

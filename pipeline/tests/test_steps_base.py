@@ -1,4 +1,5 @@
 import sqlite3
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -217,11 +218,24 @@ def test_base_pack_context(tmp_path):
     assert ctx.out_dir == tmp_path / "base" and ctx.label == "base"
 
 
-def test_validated_outputs_carry_layer_version_and_build_date(ctx, monkeypatch):
-    from maqs.steps import base
-
-    monkeypatch.setattr(base, "_today", lambda: "2026-10-16")
+def test_validated_outputs_carry_layer_version_and_build_date(ctx):
+    ctx.data_date = "2026-10-16"
     result = run_step(FakeStep(), ctx)
     assert result.status == "built"
     info = result.outputs[0]
     assert (info.layer, info.layer_schema_version, info.data_date) == ("basemap", 1, "2026-10-16")
+
+
+def test_a_context_is_dated_once_when_it_is_made(tmp_path):
+    before = datetime.now(UTC).strftime("%Y-%m-%d")
+    ctx = BuildContext(config=load_config(REAL), dist=tmp_path, cache=tmp_path, force=False)
+    after = datetime.now(UTC).strftime("%Y-%m-%d")
+    assert ctx.data_date in {before, after}
+
+
+def test_every_output_of_a_run_carries_the_context_date_not_the_clock(ctx):
+    ctx.data_date = "2000-01-01"
+    built = run_step(FakeStep(), ctx)
+    skipped = run_step(FakeStep(), ctx)
+    assert (built.status, skipped.status) == ("built", "skipped")
+    assert [o.data_date for o in built.outputs + skipped.outputs] == ["2000-01-01", "2000-01-01"]
