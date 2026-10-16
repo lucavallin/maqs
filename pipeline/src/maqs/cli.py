@@ -1,11 +1,10 @@
 """Command-line entry point: build, regions, fetch, check-tools, check-config, manifest,
-release-check."""
+previous-manifest, release-check."""
 
 from __future__ import annotations
 
 import json
 import logging
-import re
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -14,10 +13,17 @@ import click
 from maqs.config import DEFAULT_CONFIG_PATH, Config, ConfigError, load_config
 from maqs.context import BASE_TARGET, BuildContext
 from maqs.curvature.step import CurvatureStep
-from maqs.manifest import CI_RELEASE, ManifestError, build_manifest, write_manifest
+from maqs.manifest import CI_RELEASE, RELEASE_TAG, ManifestError, build_manifest, write_manifest
 from maqs.osm import extract
 from maqs.places.step import PlacesStep
-from maqs.release import ReleaseError, carried_count, local_assets, release_notes
+from maqs.release import (
+    ReleaseError,
+    ReleaseStateError,
+    carried_count,
+    choose_previous,
+    local_assets,
+    release_notes,
+)
 from maqs.report import build_report, report_path, write_report
 from maqs.schemas import SchemaError, validate
 from maqs.steps.base import Step, run_step
@@ -43,7 +49,6 @@ LAYER_STEPS: dict[str, type] = {
     "curvature": CurvatureStep,
 }
 DEFAULT_LAYERS: tuple[str, ...] = ("basemap", "terrain", "trails", "places", "curvature")
-RELEASE_TAG = re.compile(r"data-[0-9]{4}-(0[1-9]|1[0-2])")
 LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
 
 
@@ -458,6 +463,36 @@ def manifest(
         raise click.ClickException(str(exc)) from exc
     write_manifest(out, doc)
     click.echo(f"wrote {out} ({len(doc['regions'])} regions, {len(doc['base'])} base packs)")
+
+
+@main.command("previous-manifest")
+@click.option(
+    "--releases",
+    "releases_file",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    required=True,
+    help="The JSON array of `gh api repos/<owner>/<repo>/releases --paginate | jq -s add`.",
+)
+@click.option("--release", required=True, help="This run's tag, data-YYYY-MM.")
+def previous_manifest(releases_file: Path, release: str) -> None:
+    """Print the data release whose manifest.json this run carries over from, or `none`.
+
+    Warnings go to stderr as GitHub Actions `::warning::` lines; a release state the owner
+    has to resolve exits 1.
+    """
+    if not RELEASE_TAG.fullmatch(release):
+        raise click.UsageError(f"--release must look like data-YYYY-MM, got '{release}'")
+    try:
+        releases = json.loads(releases_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(f"{releases_file}: {exc}") from exc
+    try:
+        tag, warnings = choose_previous(releases, release)
+    except ReleaseStateError as exc:
+        raise click.ClickException(str(exc)) from exc
+    for warning in warnings:
+        click.echo(f"::warning::{warning}", err=True)
+    click.echo(tag or "none")
 
 
 @main.command("release-check")

@@ -6,12 +6,19 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from maqs.manifest import url_tag
+from maqs.manifest import RELEASE_TAG, url_tag
 from maqs.validate import sha256
+
+MANIFEST_ASSET = "manifest.json"
+RELEASE_FIELDS = ("tag_name", "draft", "prerelease", "created_at", "assets")
 
 
 class ReleaseError(ValueError):
     """A file the manifest names for this release is missing or differs from the manifest."""
+
+
+class ReleaseStateError(ValueError):
+    """The published releases are in a state the workflow must not build on without the owner."""
 
 
 @dataclass(frozen=True)
@@ -78,3 +85,71 @@ def release_notes(manifest: dict, carried: int) -> str:
         "",
     ]
     return "\n".join(lines)
+
+
+def _check_releases(releases: object) -> list[dict]:
+    """The shape `gh api repos/<owner>/<repo>/releases` returns, for the fields read here."""
+    if not isinstance(releases, list):
+        raise ReleaseStateError("releases: expected a JSON array of releases")
+    for i, r in enumerate(releases):
+        if not isinstance(r, dict) or any(key not in r for key in RELEASE_FIELDS):
+            raise ReleaseStateError(f"releases[{i}]: needs {', '.join(RELEASE_FIELDS)}")
+        assets = r["assets"]
+        if not isinstance(assets, list) or not all(
+            isinstance(a, dict) and "name" in a for a in assets
+        ):
+            raise ReleaseStateError(f"releases[{i}]: every asset needs a name")
+    return releases
+
+
+def _has_manifest(release: dict) -> bool:
+    return any(a["name"] == MANIFEST_ASSET for a in release["assets"])
+
+
+def choose_previous(releases: object, release: str) -> tuple[str | None, list[str]]:
+    """The data release whose manifest.json this run carries over from, and warnings.
+
+    `releases` is the list the REST API returns. Candidates are the published (non-draft,
+    non-prerelease) `data-YYYY-MM` releases, newest tag first; the previous release is the
+    newest candidate with a `manifest.json` asset. A candidate newer than that one has no
+    manifest because a run failed before its last upload. When it is this run's own tag, this
+    run repairs it (a warning). When it is the newest candidate and another month, the
+    workflow stops (`ReleaseStateError`): carrying over from an older manifest would silently
+    end ADR 0012's window, so the owner re-runs that month or deletes the release. An older
+    one is an orphan clients never read (a warning).
+
+    The API payload does not say which release is marked latest. GitHub picks the newest
+    published release by `created_at` unless one is marked explicitly, so a release that is
+    newest by `created_at` and is not a data release gets a warning: clients would read
+    `releases/latest/download/manifest.json` from it and find nothing.
+    """
+    published = [r for r in _check_releases(releases) if not r["draft"] and not r["prerelease"]]
+    warnings: list[str] = []
+    if published:
+        newest_created = max(r["created_at"] for r in published)
+        for r in published:
+            if r["created_at"] == newest_created and not RELEASE_TAG.fullmatch(r["tag_name"]):
+                warnings.append(
+                    f"{r['tag_name']} is the newest release by created_at;"
+                    " clients would see a non-data release as latest"
+                )
+    candidates = sorted(
+        (r for r in published if RELEASE_TAG.fullmatch(r["tag_name"])),
+        key=lambda r: r["tag_name"],
+        reverse=True,
+    )
+    previous = next((r["tag_name"] for r in candidates if _has_manifest(r)), None)
+    for position, r in enumerate(candidates):
+        tag = r["tag_name"]
+        if tag == previous:
+            break
+        if tag == release:
+            warnings.append(f"{tag} has no manifest.json; this run repairs it")
+        elif position == 0:
+            raise ReleaseStateError(
+                f"latest data release {tag} has no manifest.json; re-run that month or have"
+                f" the owner remove it with `gh release delete {tag} --cleanup-tag`"
+            )
+        else:
+            warnings.append(f"{tag} has no manifest.json; skipped, an orphan clients never saw")
+    return previous, warnings
