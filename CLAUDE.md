@@ -249,7 +249,7 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **Ubuntu's apt ships old osmium-tool (1.16) and tippecanoe (2.49).** `bootstrap.sh` fetches or builds current versions on Linux; Homebrew is current on macOS.
 - **GitHub picks "latest" by the tagged commit's date**, not the publish date. After re-uploading a month's assets, call `gh release edit <tag> --latest` explicitly.
 - **Every manifest `url` is tag-pinned; only `manifest.json` itself is fetched through `releases/latest/download/`.** A `latest` URL inside the manifest fails the schema. `data-ci` passes it, but only CI uses it and a `data-ci` manifest is never published.
-- **`maqs manifest --previous` does not count releases.** It carries every lower schema version the previous manifest lists, including entries that manifest carried itself, so ending the one-release window is the release workflow's job.
+- **`maqs manifest --previous` carries only entries built for the previous release** (URL tag == its `release`), or every lower entry on a same-month re-run; a carried URL must keep its original tag or the window never closes.
 - **Output files carry the schema version (`veneto-trails.v1.sqlite`).** A `dist/` from before 2026-10-16 is rebuilt, not reused; `maqs manifest` refuses its reports.
 - **JSON Schema `pattern` is ECMA-262, Python's `re` is not.** Spell digits `[0-9]` (Python's `\d` matches any Unicode digit) and validate through `maqs.schemas.validate`, which makes a final `$` match only at the end of the string.
 - **The package must never know the apps.** A "small convenience for the app" that leaks an app's name, style, or assumptions into `Sources/` is scope creep into a different repo.
