@@ -9,6 +9,9 @@ from pathlib import Path
 from maqs.layers import output_name
 
 SHA = "0123456789abcdef" * 4
+# In the past: the CLI tests assemble manifests on the real clock, and a manifest is never
+# older than the reports it lists.
+BUILT_AT = "2026-10-01T03:00:00Z"
 
 
 def output(
@@ -28,7 +31,7 @@ def output(
         "source": None,
         "layer": layer,
         "layer_schema_version": 1,
-        "data_date": "2026-11-01",
+        "data_date": BUILT_AT[:10],
     }
 
 
@@ -66,7 +69,7 @@ def region_report(label: str, *, drop: str | None = None, fail: str | None = Non
     return {
         "report_version": 1,
         "region": label,
-        "built_at": "2026-11-01T03:00:00Z",
+        "built_at": BUILT_AT,
         "tools": {},
         "steps": steps,
         "validation": {"ok": not failures, "failures": failures},
@@ -81,7 +84,7 @@ def base_report(pack_ids: list[str]) -> dict:
     return {
         "report_version": 1,
         "region": "base",
-        "built_at": "2026-11-01T03:00:00Z",
+        "built_at": BUILT_AT,
         "tools": {},
         "steps": steps,
         "validation": {"ok": True, "failures": []},

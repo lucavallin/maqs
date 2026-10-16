@@ -52,7 +52,7 @@ def test_entry_from_output_maps_report_fields_and_marks_overlays():
         "url": asset_url("data-2026-11", "veneto-trails.v1.sqlite"),
         "bytes": 42,
         "sha256": "0123456789abcdef" * 4,
-        "data_date": "2026-11-01",
+        "data_date": "2026-10-01",
         "osm_timestamp": "2026-10-31T20:21:00Z",
     }
     overlay = entry_from_output(output("veneto", "trails", "pmtiles"), "data-2026-11")
@@ -458,4 +458,38 @@ def test_a_base_pack_output_named_for_another_pack_is_refused(cfg, tmp_path):
     with pytest.raises(
         ManifestError, match="base-triveneto: output base-dolomiti-basemap.v1.pmtiles does not"
     ):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
+
+
+def test_created_at_older_than_the_newest_report_fails(cfg, tmp_path):
+    late = region_report("veneto")
+    late["built_at"] = "2026-11-01T03:30:00Z"
+    dist = write_dist(tmp_path / "dist", _reports(veneto=late))
+    with pytest.raises(
+        ManifestError,
+        match="created_at 2026-11-01T03:12:44Z is older than veneto's build report",
+    ):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
+    at_the_same_second = datetime(2026, 11, 1, 3, 30, 0, tzinfo=UTC)
+    m = build_manifest(cfg, dist, "data-2026-11", now=at_the_same_second)
+    assert m["created_at"] == "2026-11-01T03:30:00Z"
+
+
+def test_created_at_older_than_the_base_report_fails(cfg, tmp_path):
+    base = base_report(["triveneto"])
+    base["built_at"] = "2026-11-02T00:00:00Z"
+    dist = write_dist(tmp_path / "dist", _reports(base=base))
+    with pytest.raises(ManifestError, match="older than base's build report"):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
+
+
+@pytest.mark.parametrize("built_at", [..., None, "2026-11-01 03:00:00"])
+def test_a_report_without_a_valid_built_at_fails(cfg, tmp_path, built_at):
+    report = region_report("veneto")
+    if built_at is ...:
+        del report["built_at"]
+    else:
+        report["built_at"] = built_at
+    dist = write_dist(tmp_path / "dist", _reports(veneto=report))
+    with pytest.raises(ManifestError, match="veneto: build-report.json has no valid built_at"):
         build_manifest(cfg, dist, "data-2026-11", now=NOW)
