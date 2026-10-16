@@ -88,10 +88,15 @@ def test_build_manifest_assembles_every_region_and_base_pack(cfg, full_dist):
     assert [a["text"] for a in m["attribution"]] == [a["text"] for a in ATTRIBUTION]
 
 
-def test_include_fixtures_adds_the_test_region(cfg, full_dist):
-    m = build_manifest(cfg, full_dist, "data-ci", include_fixtures=True, now=NOW)
-    assert m["regions"][0]["id"] == "test" and m["release"] == "data-ci"
-    validate(m, "manifest")
+def test_regions_option_selects_exactly_those_regions(cfg, full_dist):
+    only = build_manifest(cfg, full_dist, "data-ci", regions=["test"], now=NOW)
+    assert [r["id"] for r in only["regions"]] == ["test"] and only["release"] == "data-ci"
+    assert len(only["base"]) == 1
+    validate(only, "manifest")
+    both = build_manifest(cfg, full_dist, "data-ci", regions=["veneto", "test"], now=NOW)
+    assert [r["id"] for r in both["regions"]] == ["test", "veneto"]  # regions.yaml order
+    with pytest.raises(ManifestError, match="unknown region 'nope'"):
+        build_manifest(cfg, full_dist, "data-ci", regions=["nope"], now=NOW)
 
 
 def test_missing_region_report_fails_naming_it(cfg, tmp_path):
@@ -125,7 +130,7 @@ def test_missing_base_pack_fails_even_with_fixtures(cfg, tmp_path):
     reports["test"] = region_report("test")
     dist = write_dist(tmp_path / "dist", reports)
     with pytest.raises(ManifestError, match="base-triveneto"):
-        build_manifest(cfg, dist, "data-2026-11", include_fixtures=True, now=NOW)
+        build_manifest(cfg, dist, "data-2026-11", regions=["test"], now=NOW)
 
 
 def test_old_unversioned_files_are_not_picked_up(cfg, full_dist):

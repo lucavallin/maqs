@@ -334,7 +334,7 @@ def check_config(ctx: click.Context, manifest_file: Path | None) -> None:
 @click.option(
     "--release",
     required=True,
-    help="Release tag, data-YYYY-MM (data-ci with --include-fixtures).",
+    help="Release tag, data-YYYY-MM (data-ci with --regions).",
 )
 @click.option(
     "--dist",
@@ -354,7 +354,12 @@ def check_config(ctx: click.Context, manifest_file: Path | None) -> None:
     default=None,
     help="The latest published manifest; its lower schema versions are carried over.",
 )
-@click.option("--include-fixtures", is_flag=True, help="Include fixture regions (CI smoke only).")
+@click.option(
+    "--regions",
+    "region_list",
+    default=None,
+    help="Comma-separated region ids; required with data-ci, refused for a data-YYYY-MM release.",
+)
 @click.pass_context
 def manifest(
     ctx: click.Context,
@@ -362,15 +367,21 @@ def manifest(
     dist: Path | None,
     out: Path | None,
     previous: Path | None,
-    include_fixtures: bool,
+    region_list: str | None,
 ) -> None:
     """Assemble and validate manifest.json from every region's build report."""
     config_path = _config_path(ctx)
     cfg = _load(config_path)
-    if release == CI_RELEASE and not include_fixtures:
-        raise click.UsageError(f"--release {CI_RELEASE} is only valid with --include-fixtures")
-    if release != CI_RELEASE and not RELEASE_TAG.match(release):
+    if release == CI_RELEASE:
+        if region_list is None:
+            raise click.UsageError(f"--release {CI_RELEASE} requires --regions")
+    elif not RELEASE_TAG.match(release):
         raise click.UsageError(f"--release must look like data-YYYY-MM, got '{release}'")
+    elif region_list is not None:
+        raise click.UsageError("--regions is only valid with --release data-ci")
+    region_ids = [r.strip() for r in region_list.split(",") if r.strip()] if region_list else None
+    if region_list is not None and not region_ids:
+        raise click.UsageError("--regions must name at least one region")
     if dist is None:
         dist = _repo_root(config_path) / "dist"
     if out is None:
@@ -382,9 +393,7 @@ def manifest(
         except (OSError, ValueError) as exc:
             raise click.ClickException(f"--previous {previous}: {exc}") from exc
     try:
-        doc = build_manifest(
-            cfg, dist, release, include_fixtures=include_fixtures, previous=previous_doc
-        )
+        doc = build_manifest(cfg, dist, release, regions=region_ids, previous=previous_doc)
     except (ManifestError, SchemaError) as exc:
         raise click.ClickException(str(exc)) from exc
     write_manifest(out, doc)
