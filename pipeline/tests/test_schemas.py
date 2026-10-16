@@ -88,46 +88,7 @@ MANIFEST = {
     ],
 }
 
-_SOURCES_FILE = ROOT / "config" / "sources.json"
-SOURCES = (
-    json.loads(_SOURCES_FILE.read_text(encoding="utf-8"))
-    if _SOURCES_FILE.exists()
-    else {
-        "sources_version": 1,
-        "layers": {
-            "basemap": [
-                {
-                    "id": "versatiles-osm",
-                    "provider": "VersaTiles",
-                    "tiles": "https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}",
-                    "tilejson": "https://tiles.versatiles.org/tiles/osm/tiles.json",
-                    "schema": "shortbread-1.0",
-                    "format": "mvt",
-                    "min_zoom": 0,
-                    "max_zoom": 14,
-                    "attribution": [
-                        "© OpenStreetMap contributors",
-                        "CC BY 4.0 ESA WorldCover 2021",
-                    ],
-                }
-            ],
-            "terrain": [
-                {
-                    "id": "versatiles-elevation",
-                    "provider": "VersaTiles",
-                    "tiles": "https://tiles.versatiles.org/tiles/elevation/{z}/{x}/{y}",
-                    "tilejson": "https://tiles.versatiles.org/tiles/elevation/tiles.json",
-                    "schema": "terrarium",
-                    "format": "webp",
-                    "tile_size": 512,
-                    "min_zoom": 0,
-                    "max_zoom": 12,
-                    "attribution": ["© Mapterhorn"],
-                }
-            ],
-        },
-    }
-)
+SOURCES = json.loads((ROOT / "config" / "sources.json").read_text(encoding="utf-8"))
 
 
 def test_schema_files_exist_and_are_draft_2020_12():

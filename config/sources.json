@@ -1,0 +1,32 @@
+{
+  "sources_version": 1,
+  "layers": {
+    "basemap": [
+      {
+        "id": "versatiles-osm",
+        "provider": "VersaTiles",
+        "tiles": "https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}",
+        "tilejson": "https://tiles.versatiles.org/tiles/osm/tiles.json",
+        "schema": "shortbread-1.0",
+        "format": "mvt",
+        "min_zoom": 0,
+        "max_zoom": 14,
+        "attribution": ["© OpenStreetMap contributors", "CC BY 4.0 ESA WorldCover 2021"]
+      }
+    ],
+    "terrain": [
+      {
+        "id": "versatiles-elevation",
+        "provider": "VersaTiles",
+        "tiles": "https://tiles.versatiles.org/tiles/elevation/{z}/{x}/{y}",
+        "tilejson": "https://tiles.versatiles.org/tiles/elevation/tiles.json",
+        "schema": "terrarium",
+        "format": "webp",
+        "tile_size": 512,
+        "min_zoom": 0,
+        "max_zoom": 12,
+        "attribution": ["© Mapterhorn"]
+      }
+    ]
+  }
+}
