@@ -1,4 +1,3 @@
-# pipeline/tests/manifest_fixtures.py
 """Synthetic build reports for manifest tests: no files, no network."""
 
 from __future__ import annotations

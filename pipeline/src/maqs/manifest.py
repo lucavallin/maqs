@@ -1,4 +1,3 @@
-# pipeline/src/maqs/manifest.py
 """Assemble manifest.json from the per-region build reports (docs/data-format.md)."""
 
 from __future__ import annotations
