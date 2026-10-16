@@ -8,7 +8,7 @@
   "properties": {
     "manifest_version": { "const": 1 },
     "created_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
-    "release": { "type": "string", "pattern": "^data-([0-9]{4}-[0-9]{2}|ci)$" },
+    "release": { "type": "string", "pattern": "^data-([0-9]{4}-(0[1-9]|1[0-2])|ci)$" },
     "shortbread_version": { "const": "1.0" },
     "attribution": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/attribution" } },
     "regions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/region" } },
@@ -35,7 +35,7 @@
       "properties": {
         "layer_schema_version": { "type": "integer", "minimum": 1 },
         "file": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*-(basemap|terrain|terrain-hd|trails|places|curvature)\\.v[1-9][0-9]*\\.(pmtiles|sqlite)$" },
-        "url": { "type": "string", "pattern": "^https://github\\.com/lucavallin/maqs/releases/download/data-([0-9]{4}-[0-9]{2}|ci)/[a-z0-9.-]+\\.(pmtiles|sqlite)$" },
+        "url": { "type": "string", "pattern": "^https://github\\.com/lucavallin/maqs/releases/download/data-([0-9]{4}-(0[1-9]|1[0-2])|ci)/[a-z0-9]+(-[a-z0-9]+)*-(basemap|terrain|terrain-hd|trails|places|curvature)\\.v[1-9][0-9]*\\.(pmtiles|sqlite)$" },
         "bytes": { "type": "integer", "minimum": 1, "maximum": 2040109465 },
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "data_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
