@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/lucavallin/maqs/main/config/schemas/sources.schema.json",
+  "title": "maqs online tile sources",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sources_version", "layers"],
+  "properties": {
+    "sources_version": { "const": 1 },
+    "layers": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basemap", "terrain"],
+      "properties": {
+        "basemap": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/basemapSource" } },
+        "terrain": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/terrainSource" } }
+      }
+    }
+  },
+  "$defs": {
+    "common": {
+      "type": "object",
+      "required": ["id", "provider", "tiles", "tilejson", "schema", "format", "min_zoom", "max_zoom", "attribution"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
+        "provider": { "type": "string", "minLength": 1 },
+        "tiles": { "type": "string", "pattern": "^https://.*\\{z\\}.*\\{x\\}.*\\{y\\}" },
+        "tilejson": { "type": "string", "pattern": "^https://" },
+        "min_zoom": { "type": "integer", "minimum": 0, "maximum": 22 },
+        "max_zoom": { "type": "integer", "minimum": 0, "maximum": 22 },
+        "attribution": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "basemapSource": {
+      "allOf": [{ "$ref": "#/$defs/common" }],
+      "unevaluatedProperties": false,
+      "properties": {
+        "schema": { "const": "shortbread-1.0" },
+        "format": { "const": "mvt" }
+      }
+    },
+    "terrainSource": {
+      "allOf": [{ "$ref": "#/$defs/common" }],
+      "unevaluatedProperties": false,
+      "required": ["tile_size"],
+      "properties": {
+        "schema": { "const": "terrarium" },
+        "format": { "enum": ["webp", "png"] },
+        "tile_size": { "enum": [256, 512] }
+      }
+    }
+  }
+}
