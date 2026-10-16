@@ -6,7 +6,7 @@ Map data and a Swift package for native Apple apps: Shortbread basemap tiles, te
 
 ## Data
 
-Data releases will be GitHub Releases tagged `data-YYYY-MM`, one a month, each with every region's files and a `manifest.json`; none is published yet. Clients read `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json`, which lists each file with its size, its SHA-256 and a URL pinned to its release. The online tile sources are in [`config/sources.json`](config/sources.json), which clients read from `main`. A client picks the files it can read by the [compatibility rule](docs/data-format.md#compatibility-rule).
+Data releases will be GitHub Releases tagged `data-YYYY-MM`, one a month, each with every region's files and a `manifest.json`; none is published yet. Clients will read `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json`, which lists each file with its size, its SHA-256 and a URL pinned to its release. The online tile sources are in [`config/sources.json`](config/sources.json), which clients will read from `main`. A client picks the files it can read by the [compatibility rule](docs/data-format.md#compatibility-rule).
 
 ## Build a region locally
 
