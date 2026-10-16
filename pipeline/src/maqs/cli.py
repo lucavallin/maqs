@@ -1,4 +1,4 @@
-"""Command-line entry point: build, regions, check-tools, check-config, manifest."""
+"""Command-line entry point: build, regions, fetch, check-tools, check-config, manifest."""
 
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ from maqs.config import DEFAULT_CONFIG_PATH, Config, ConfigError, load_config
 from maqs.context import BASE_TARGET, BuildContext
 from maqs.curvature.step import CurvatureStep
 from maqs.manifest import CI_RELEASE, ManifestError, build_manifest, write_manifest
+from maqs.osm import extract
 from maqs.places.step import PlacesStep
 from maqs.report import build_report, report_path, write_report
 from maqs.schemas import SchemaError, validate
@@ -158,6 +159,36 @@ def regions(ctx: click.Context, as_json: bool) -> None:
             f" bbox={_join(cfg.base_pack_bbox(p))}"
         )
     click.echo(f"geofabrik extracts: {', '.join(cfg.geofabrik_extracts()) or '-'}")
+
+
+@main.command()
+@click.option(
+    "--extract",
+    "extract_id",
+    required=True,
+    help="Geofabrik extract, e.g. europe/italy/nord-est.",
+)
+@click.option(
+    "--cache",
+    type=click.Path(path_type=Path),
+    default=None,
+    show_default=".cache/ under the repo root",
+    help="Download cache; a given path is relative to the current directory.",
+)
+@click.pass_context
+def fetch(ctx: click.Context, extract_id: str, cache: Path | None) -> None:
+    """Download one Geofabrik extract into the cache (md5-verified); reuse it when present."""
+    config_path = _config_path(ctx)
+    known = _load(config_path).geofabrik_extracts()
+    if extract_id not in known:
+        raise click.UsageError(f"unknown extract '{extract_id}'; configured: {', '.join(known)}")
+    if cache is None:
+        cache = _repo_root(config_path) / ".cache"
+    try:
+        path = extract.fetch_extract(cache, extract_id)
+    except extract.FetchError as exc:
+        raise click.ClickException(str(exc)) from exc
+    click.echo(f"ok: {path} ({path.stat().st_size} bytes)")
 
 
 def _checked_tool_versions() -> dict[str, str | None]:

@@ -37,11 +37,12 @@ def _osmium() -> str:
     return str(tools.find_tool("osmium"))
 
 
-def geofabrik_pbf(ctx: BuildContext) -> Path:
-    extract = region_extract_id(ctx)
-    dest = ctx.cache / "geofabrik" / f"{extract_name(extract)}-latest.osm.pbf"
+def fetch_extract(cache: Path, extract: str) -> Path:
+    """Download `<extract>-latest.osm.pbf` into the cache, md5-verified; reuse when cached."""
+    dest = cache / "geofabrik" / f"{extract_name(extract)}-latest.osm.pbf"
     if dest.exists():
         return dest
+    dest.parent.mkdir(parents=True, exist_ok=True)
     url = f"{GEOFABRIK_BASE}/{extract}-latest.osm.pbf"
     md5_file = dest.with_suffix(dest.suffix + ".md5")
     download(f"{url}.md5", md5_file)
@@ -55,6 +56,10 @@ def geofabrik_pbf(ctx: BuildContext) -> Path:
         raise FetchError(f"md5 mismatch for {url}: expected {expected}, got {actual}")
     tmp.replace(dest)
     return dest
+
+
+def geofabrik_pbf(ctx: BuildContext) -> Path:
+    return fetch_extract(ctx.cache, region_extract_id(ctx))
 
 
 def _partial_path(dst: Path) -> Path:
