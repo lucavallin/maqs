@@ -6,8 +6,10 @@ public struct StubResponse: Sendable {
     public var status: Int
     public var headers: [String: String]
     public var body: Data
-    public init(status: Int = 200, headers: [String: String] = [:], body: Data = Data()) {
-        self.status = status; self.headers = headers; self.body = body
+    /// When set, the request fails at the transport level with this error instead of getting a response.
+    public var transportError: URLError.Code?
+    public init(status: Int = 200, headers: [String: String] = [:], body: Data = Data(), transportError: URLError.Code? = nil) {
+        self.status = status; self.headers = headers; self.body = body; self.transportError = transportError
     }
 }
 
@@ -76,6 +78,10 @@ final class StubURLProtocol: URLProtocol {
             return
         }
         let stub = server.respond(to: request)
+        if let code = stub.transportError {
+            client?.urlProtocol(self, didFailWithError: URLError(code))
+            return
+        }
         var headers = stub.headers
         headers["Content-Length"] = String(stub.body.count)
         let response = HTTPURLResponse(url: url, statusCode: stub.status, httpVersion: "HTTP/1.1", headerFields: headers)!

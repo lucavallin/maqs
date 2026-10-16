@@ -58,6 +58,7 @@ import MaqsTestSupport
         #expect(server.requests[1].value(forHTTPHeaderField: "If-None-Match") == "\"fixture-etag\"")
         #expect(second.fetchedAt == clock.now)
         #expect(second.manifest.release == "data-ci")
+        #expect(StorageLayout(root: tmp.url).manifest.read()?.meta.fetchedAt == clock.now)
     }
 
     @Test("a 429 is rateLimited and the cached manifest stays")
@@ -109,5 +110,43 @@ import MaqsTestSupport
         _ = try await client().load(policy: .always)
         #expect(server.requests[0].value(forHTTPHeaderField: "Cache-Control") == nil)
         #expect(server.requests[0].cachePolicy == .useProtocolCachePolicy)
+    }
+
+    @Test("a cache stamped in the future is stale")
+    func futureStamp() async throws {
+        try Fixtures.serveRelease(on: server)
+        _ = try await client().load(policy: .ifStale)
+        clock.advance(-3_600)
+        _ = try await client().load(policy: .ifStale)
+        #expect(server.requests.count == 2)
+    }
+
+    @Test("the age equal to maxAge is stale, just below it is fresh")
+    func maxAgeBoundary() async throws {
+        try Fixtures.serveRelease(on: server)
+        _ = try await client().load(policy: .ifStale)
+        clock.advance(3_599)
+        _ = try await client().load(policy: .ifStale)
+        #expect(server.requests.count == 1)
+        clock.advance(1)
+        _ = try await client().load(policy: .ifStale)
+        #expect(server.requests.count == 2)
+    }
+
+    @Test("a corrupt cache is refetched without If-None-Match and overwritten")
+    func corruptCacheRefetch() async throws {
+        try Fixtures.serveRelease(on: server)
+        let document = StorageLayout(root: tmp.url).manifest
+        try document.write(data: Data("nope".utf8), meta: .init(etag: "\"fixture-etag\"", fetchedAt: clock.now))
+        let loaded = try await client().load(policy: .always)
+        #expect(loaded.manifest.release == "data-ci")
+        #expect(server.requests[0].value(forHTTPHeaderField: "If-None-Match") == nil)
+        #expect(client().cached()?.manifest.release == "data-ci")
+    }
+
+    @Test("a transport error is a network error without a status code")
+    func transportError() async throws {
+        server.route(Fixtures.manifestURL) { _ in StubResponse(transportError: .notConnectedToInternet) }
+        await #expect(throws: ManifestError.network(statusCode: nil)) { _ = try await client().load(policy: .always) }
     }
 }
