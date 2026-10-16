@@ -1,0 +1,227 @@
+# .github/workflows/build-maps.yml
+name: build-maps
+
+on:
+  schedule:
+    - cron: "0 3 1 * *"   # 03:00 UTC on the 1st of each month
+  workflow_dispatch:
+    inputs:
+      region:
+        description: "One region id (or 'base'); empty builds every region and publishes"
+        default: ""
+        type: string
+      layers:
+        description: "Comma-separated layers; empty builds the default layers"
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-maps
+  cancel-in-progress: false   # a publishing run always finishes
+
+env:
+  # Must match the pins in pipeline/bootstrap.sh and maqs.tools.PINS (same as pipeline.yml).
+  TOOLS_KEY: versatiles-5.0.0-pmtiles-1.31.2-osmium-1.19.1-tippecanoe-2.79.0
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      targets: ${{ steps.plan.outputs.targets }}
+      release: ${{ steps.plan.outputs.release }}
+      full: ${{ steps.plan.outputs.full }}
+      layers: ${{ steps.plan.outputs.layers }}
+      md5: ${{ steps.geofabrik.outputs.md5 }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv sync --frozen
+        working-directory: pipeline
+      - run: uv run maqs check-config
+        working-directory: pipeline
+      - name: Plan the run
+        id: plan
+        shell: bash
+        working-directory: pipeline
+        env:
+          REGION: ${{ inputs.region }}
+          LAYERS: ${{ inputs.layers }}
+        run: |
+          set -euo pipefail
+          json=$(uv run maqs regions --json)
+          if [[ -z "$REGION" && -z "$LAYERS" ]]; then full=true; else full=false; fi
+          if [[ -z "$REGION" ]]; then
+            targets=$(jq -c '[.regions[] | select(.fixture|not) | .id]' <<<"$json")
+          elif [[ "$REGION" == "base" ]]; then
+            targets='["base"]'
+          else
+            known=$(jq -r '.regions[].id' <<<"$json")
+            grep -qx -- "$REGION" <<<"$known" || { echo "unknown region '$REGION'; valid: $(tr '\n' ' ' <<<"$known") base" >&2; exit 1; }
+            targets=$(jq -c --arg r "$REGION" '[$r]' <<<"$json")
+          fi
+          if [[ "$full" == true ]]; then targets=$(jq -c '. + ["base"]' <<<"$targets"); fi
+          echo "targets=$targets" >> "$GITHUB_OUTPUT"
+          echo "release=data-$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
+          echo "full=$full" >> "$GITHUB_OUTPUT"
+          echo "layers=$LAYERS" >> "$GITHUB_OUTPUT"
+          echo "targets $targets, release data-$(date -u +%Y-%m), full $full"
+      - name: Disk space
+        shell: bash
+        run: |
+          avail=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
+          echo "free: ${avail} GB (a full run needs about 3 GB)"
+          [[ "$avail" -ge 6 ]] || { echo "less than 6 GB free" >&2; exit 1; }
+      - name: Geofabrik extract checksum
+        id: geofabrik
+        shell: bash
+        run: |
+          md5=$(curl -fsSL -A "maqs-pipeline-ci (+https://github.com/lucavallin/maqs)" \
+            https://download.geofabrik.de/europe/italy/nord-est-latest.osm.pbf.md5 | cut -d' ' -f1)
+          [[ "$md5" =~ ^[0-9a-f]{32}$ ]] || { echo "bad md5: '$md5'" >&2; exit 1; }
+          echo "md5=$md5" >> "$GITHUB_OUTPUT"
+      - name: Cache the Geofabrik extract
+        uses: actions/cache@v6
+        with:
+          path: .cache/geofabrik
+          key: geofabrik-europe-italy-nord-est-${{ steps.geofabrik.outputs.md5 }}
+      - name: Download the extract once
+        run: uv run maqs fetch --extract europe/italy/nord-est --cache "$GITHUB_WORKSPACE/.cache"
+        working-directory: pipeline
+
+  build:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ fromJSON(needs.prepare.outputs.targets) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - name: Cache tool binaries
+        id: tools-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            /usr/local/bin/versatiles
+            /usr/local/bin/pmtiles
+            /usr/local/bin/osmium
+            /usr/local/bin/tippecanoe
+            /usr/local/bin/tile-join
+          key: tools-${{ runner.os }}-${{ runner.arch }}-${{ env.TOOLS_KEY }}
+      - name: Bootstrap tools
+        if: steps.tools-cache.outputs.cache-hit != 'true'
+        run: pipeline/bootstrap.sh
+      - name: Runtime libraries for cached binaries
+        if: steps.tools-cache.outputs.cache-hit == 'true'
+        run: sudo apt-get update -q && sudo apt-get install -y -q libboost-program-options1.83.0 liblz4-1 libexpat1 libbz2-1.0 libsqlite3-0
+      - run: pipeline/bootstrap.sh --check
+      - run: uv sync --frozen
+        working-directory: pipeline
+      - run: uv run maqs check-tools
+        working-directory: pipeline
+      - name: Restore the Geofabrik extract
+        uses: actions/cache@v6
+        with:
+          path: .cache/geofabrik
+          key: geofabrik-europe-italy-nord-est-${{ needs.prepare.outputs.md5 }}
+      - name: Build ${{ matrix.target }}
+        shell: bash
+        working-directory: pipeline
+        env:
+          LAYERS: ${{ needs.prepare.outputs.layers }}
+        run: |
+          set -euo pipefail
+          args=(--region "${{ matrix.target }}" --dist "$GITHUB_WORKSPACE/dist" --cache "$GITHUB_WORKSPACE/.cache")
+          if [[ -n "$LAYERS" ]]; then args+=(--layers "$LAYERS"); fi
+          uv run maqs build "${args[@]}"
+      - run: cat "dist/${{ matrix.target }}/build-report.json"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist-${{ matrix.target }}
+          path: dist/${{ matrix.target }}
+          retention-days: 7
+          if-no-files-found: error
+
+  release:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.full == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE: ${{ needs.prepare.outputs.release }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with: { enable-cache: true }
+      - run: uv sync --frozen
+        working-directory: pipeline
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: dist-*
+          path: artifacts
+      - name: Lay out dist/
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for d in artifacts/dist-*; do mv "$d" "dist/${d#artifacts/dist-}"; done
+          ls dist
+      - name: Fetch the latest published manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p previous
+          if gh release download --pattern manifest.json --dir previous 2>/dev/null && [[ -s previous/manifest.json ]]; then
+            echo "previous manifest: $(jq -r .release previous/manifest.json)"
+          else
+            echo "no published manifest yet; first release"
+            rm -f previous/manifest.json
+          fi
+      - name: Assemble the manifest
+        shell: bash
+        working-directory: pipeline
+        run: |
+          set -euo pipefail
+          args=(--release "$RELEASE" --dist "$GITHUB_WORKSPACE/dist")
+          if [[ -s "$GITHUB_WORKSPACE/previous/manifest.json" ]]; then args+=(--previous "$GITHUB_WORKSPACE/previous/manifest.json"); fi
+          uv run maqs manifest "${args[@]}"
+          uv run maqs check-config --manifest "$GITHUB_WORKSPACE/dist/manifest.json"
+      - name: Check the assets and write the notes
+        run: uv run maqs release-check --dist "$GITHUB_WORKSPACE/dist" --manifest "$GITHUB_WORKSPACE/dist/manifest.json" --notes "$GITHUB_WORKSPACE/notes.md" | tee "$GITHUB_WORKSPACE/assets.txt"
+        working-directory: pipeline
+      - name: Create the release if the tag is new
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE" >/dev/null 2>&1; then
+            echo "release $RELEASE exists; assets will be replaced"
+          else
+            gh release create "$RELEASE" --target "$GITHUB_SHA" --title "Map data ${RELEASE#data-}" --notes-file notes.md --latest=false
+          fi
+      - name: Upload the assets, then the manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=()
+          while read -r name _; do
+            [[ "$name" == total ]] && break
+            files+=("$(find dist -name "$name" -type f | head -1)")
+          done < assets.txt
+          gh release upload "$RELEASE" "${files[@]}" --clobber
+          gh release upload "$RELEASE" dist/manifest.json --clobber
+          gh release edit "$RELEASE" --latest --notes-file notes.md
+      - name: Summary
+        shell: bash
+        run: |
+          { echo "## $RELEASE"; echo; echo '```'; cat assets.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
