@@ -147,3 +147,43 @@ def test_only_a_run_on_main_is_full_and_publishes():
     assert plan.index(gate) < plan.index('echo "full=$full" >> "$GITHUB_OUTPUT"')
     release_if = load("build-maps.yml")["jobs"]["release"]["if"]
     assert release_if == "needs.prepare.outputs.full == 'true' && github.ref == 'refs/heads/main'"
+
+
+def test_release_job_has_an_hour():
+    assert load("build-maps.yml")["jobs"]["release"]["timeout-minutes"] == 60
+
+
+def test_disk_space_is_checked_on_each_build_leg_before_the_build():
+    jobs = load("build-maps.yml")["jobs"]
+    assert not any("df " in s.get("run", "") for s in jobs["prepare"]["steps"])
+    names = [s.get("name") for s in jobs["build"]["steps"]]
+    disk = jobs["build"]["steps"][names.index("Disk space")]
+    assert "df -BG --output=avail /" in disk["run"] and '[[ "$avail" -ge 6 ]]' in disk["run"]
+    assert names.index("Disk space") < names.index("Build ${{ matrix.target }}")
+
+
+def test_prepare_rejects_a_malformed_layers_input():
+    plan = prepare_step("Plan the run")["run"]
+    check = 'if [[ -n "$LAYERS" && ! "$LAYERS" =~ ^[a-z-]+(,[a-z-]+)*$ ]]; then'
+    assert check in plan
+    assert plan.index(check) < plan.index('echo "layers=$LAYERS" >> "$GITHUB_OUTPUT"')
+
+
+def test_gh_release_create_is_off_latest_and_targets_the_built_commit():
+    run = release_step("Create the release if the tag is new")["run"]
+    line = next(ln for ln in run.splitlines() if "gh release create" in ln)
+    assert "--latest=false" in line and '--target "$GITHUB_SHA"' in line
+
+
+@pytest.mark.parametrize("name", ["pipeline.yml", "build-maps.yml"])
+def test_run_bodies_take_no_expressions(name):
+    for job in load(name)["jobs"].values():
+        for step in job["steps"]:
+            assert "${{" not in step.get("run", ""), step.get("name") or step["run"]
+
+
+def test_pipeline_workflow_runs_when_build_maps_changes():
+    doc = load("pipeline.yml")
+    on_key = True if True in doc else "on"
+    for event in ("push", "pull_request"):
+        assert ".github/workflows/build-maps.yml" in doc[on_key][event]["paths"], event

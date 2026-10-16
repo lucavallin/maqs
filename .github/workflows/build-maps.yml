@@ -54,6 +54,11 @@ jobs:
           LAYERS: ${{ inputs.layers }}
         run: |
           set -euo pipefail
+          # The layers go into GITHUB_OUTPUT; a newline or anything but names and commas is refused.
+          if [[ -n "$LAYERS" && ! "$LAYERS" =~ ^[a-z-]+(,[a-z-]+)*$ ]]; then
+            echo "layers must be comma-separated layer names, got '$LAYERS'" >&2
+            exit 1
+          fi
           json=$(uv run maqs regions --json)
           jq -e '.geofabrik_extracts == ["europe/italy/nord-est"]' <<<"$json" >/dev/null || { echo "prepare only knows the nord-est extract; update build-maps.yml" >&2; exit 1; }
           if [[ -z "$REGION" && -z "$LAYERS" ]]; then full=true; else full=false; fi
@@ -74,12 +79,6 @@ jobs:
           echo "full=$full" >> "$GITHUB_OUTPUT"
           echo "layers=$LAYERS" >> "$GITHUB_OUTPUT"
           echo "targets $targets, release data-$(date -u +%Y-%m), full $full"
-      - name: Disk space
-        shell: bash
-        run: |
-          avail=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
-          echo "free: ${avail} GB (a full run needs about 3 GB)"
-          [[ "$avail" -ge 6 ]] || { echo "less than 6 GB free" >&2; exit 1; }
       - name: Geofabrik extract checksum
         id: geofabrik
         shell: bash
@@ -107,6 +106,13 @@ jobs:
       matrix:
         target: ${{ fromJSON(needs.prepare.outputs.targets) }}
     steps:
+      - name: Disk space
+        shell: bash
+        run: |
+          set -euo pipefail
+          avail=$(df -BG --output=avail / | tail -1 | tr -dc '0-9')
+          echo "free: ${avail} GB"
+          [[ "$avail" -ge 6 ]] || { echo "less than 6 GB free" >&2; exit 1; }
       - uses: actions/checkout@v7
         with: { persist-credentials: false }
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
@@ -167,7 +173,7 @@ jobs:
     needs: [prepare, build]
     if: needs.prepare.outputs.full == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     permissions:
       contents: write
     env:
