@@ -57,7 +57,7 @@ Three files per region: `<region>-trails.v1.sqlite`, `<region>-places.v1.sqlite`
 Rules shared by all three:
 
 - **Writing.** Python's `sqlite3` builds the file as `<name>.sqlite.tmp`: schema, rows, the metadata row, an FTS5 `rebuild`, a commit, then `VACUUM`. The finished file is renamed into place, so a crash never leaves a half-written file under the final name. Page size and journal mode are SQLite's defaults.
-- **Metadata.** Every file has this table with exactly one row. `schema_version` is the layer's `layer_schema_version`; `layer` is `trails`, `places` or `curvature`; `region` is the region id; `data_date` is the UTC build date (`YYYY-MM-DD`); `osm_timestamp` is the `osmosis_replication_timestamp` in the Geofabrik extract's header (null when the header has none); `attribution` is `© OpenStreetMap contributors (ODbL)`.
+- **Metadata.** Every file has this table with exactly one row. `schema_version` is the layer's `layer_schema_version`; `layer` is `trails`, `places` or `curvature`; `region` is the region id; `data_date` is the UTC date of the build run (`YYYY-MM-DD`), one value for the whole run and the same as the manifest entry's `data_date`; `osm_timestamp` is the `osmosis_replication_timestamp` in the Geofabrik extract's header (null when the header has none); `attribution` is `© OpenStreetMap contributors (ODbL)`.
 
   ```sql
   CREATE TABLE metadata (
@@ -316,9 +316,9 @@ The top level has exactly these fields. The schema sets `additionalProperties: f
 | Field | Rule |
 |---|---|
 | `manifest_version` | 1 |
-| `created_at` | when `maqs manifest` ran, UTC, `YYYY-MM-DDTHH:MM:SSZ` |
-| `release` | the release tag: `data-YYYY-MM`, or `data-ci` in CI |
-| `shortbread_version` | `"1.0"`, the Shortbread version of every basemap entry ([ADR 0001](decisions.md)) |
+| `created_at` | when `maqs manifest` ran, UTC, `YYYY-MM-DDTHH:MM:SSZ`; never older than the newest build report's `built_at` |
+| `release` | the release tag: `data-YYYY-MM` with a month from 01 to 12, or `data-ci` in CI |
+| `shortbread_version` | `"1.0"`, the Shortbread version of the newest basemap entries ([ADR 0001](decisions.md)). While a basemap bump is carried over, the older entries can follow another Shortbread version, so a client picks basemap files by `layer_schema_version` and reads which Shortbread version each basemap version means under [Tile archives](#tile-archives-pmtiles-v3) |
 | `attribution` | the credits, at least one entry |
 | `regions` | at least one region, in `config/regions.yaml` order |
 | `base` | the base packs, in `config/regions.yaml` order; may be empty |
@@ -337,10 +337,10 @@ A `data-YYYY-MM` manifest lists every region in `regions.yaml` that is not `fixt
 |---|---|
 | `layer_schema_version` | integer ≥ 1, the version in the file name |
 | `file` | the asset name, `<label>-<layer>.v<N>.<ext>`, matching `^[a-z0-9]+(-[a-z0-9]+)*-(basemap\|terrain\|terrain-hd\|trails\|places\|curvature)\.v[1-9][0-9]*\.(pmtiles\|sqlite)$` (no `.v0.`) |
-| `url` | `https://github.com/lucavallin/maqs/releases/download/<tag>/<asset>`, where `<tag>` is `data-YYYY-MM` or `data-ci` and `<asset>` ends in `.pmtiles` or `.sqlite`; never `latest`. The schema does not tie `url` to `file` or to `release`: `maqs manifest` builds each new URL from `release` and `file`, and an entry carried over from an earlier release keeps that release's tag |
+| `url` | `https://github.com/lucavallin/maqs/releases/download/<tag>/<asset>`, where `<tag>` is `data-YYYY-MM` (month 01 to 12) or `data-ci` and `<asset>` matches the `file` pattern; never `latest`. The schema cannot tie `url` to the entry's `file` or to `release`, so `maqs manifest` checks that the last path segment is `file`. It builds each new URL from `release` and `file`, and an entry carried over from the previous release keeps that release's tag |
 | `bytes` | the file size, from 1 to 2,040,109,465 (1.9 GiB) |
 | `sha256` | 64 lowercase hex digits |
-| `data_date` | `YYYY-MM-DD`: the UTC date of the build run that wrote the region's report, also for an output that run skipped because it already existed. In CI `dist/` starts empty, so this is the date of the build run that produced the release |
+| `data_date` | `YYYY-MM-DD`: the UTC date of the build run that wrote the region's report, also for an output that run skipped because it already existed. It is one value per build run, taken when the run starts, so a run that crosses midnight does not mix two dates. In CI `dist/` starts empty, so this is the date of the build run that produced the release |
 | `osm_timestamp` | `YYYY-MM-DDTHH:MM:SSZ` or null; the build report's `source_data_date`. Basemap and base packs: the OSM replication time of the VersaTiles build (`planetiler:osm:osmosisreplicationtime`), which lags the Geofabrik data by months ([ADR 0004](decisions.md)). Trails, places and curvature SQLite files: the Geofabrik extract's replication timestamp, as in their `metadata` row. Terrain, terrain-hd and the two overlays: null, because their archives carry no date |
 | `role` | `"overlay"` on the trails and places tile archives, absent on every other entry |
 
@@ -353,13 +353,13 @@ A client knows which `layer_schema_version`s it can read for each layer. When it
 1. Checks `manifest_version`. An unknown value is a typed error: the client rejects the whole manifest and keeps using the last one it cached.
 2. For each region and layer, takes the first entry whose `layer_schema_version` it can read. Entries are sorted highest first, so that is the newest version it understands. For trails and places it takes both files of that version, the SQLite file and the overlay.
 3. Treats a layer with no readable entry as not available in that region. That is a typed error for that layer only: the other layers work, and the client can tell the user to update.
-4. Ignores fields and layer keys it does not know.
+4. Ignores fields and layer keys it does not know, and any entry whose `role` it does not know.
 
 Adding a field or a layer key keeps `manifest_version`. Renaming or removing a field, or changing what one means, bumps it. The schema is strict, so a new field goes into `config/schemas/manifest.schema.json` in the same change.
 
-**Producer rule.** The release that bumps a layer from version N to N+1 also lists the vN files, for one release. A client that reads only vN keeps the layer for that month, then sees it as not available until it updates. `maqs manifest --previous <path to the latest manifest>` does the carry-over. For each region and base pack in the new manifest, and each layer it has, the command appends the previous manifest's entries whose version is below the lowest version the new build has for that layer. They are copied unchanged, so `url` still names the earlier release's tag and `sha256` its file; the format allows that because `url` is per entry. Entries of the same or a higher version are not carried, nor are layers the new build lacks or regions and base packs no longer configured.
+**Producer rule.** The release that bumps a layer from version N to N+1 also lists the vN files, for one release. A client that reads only vN keeps the layer for that month, then sees it as not available until it updates. `maqs manifest --previous <path to the latest manifest>` does the carry-over. For each region and base pack in the new manifest, and each layer it has, the command appends the previous manifest's entries whose version is below the lowest version the new build has for that layer and whose `url` names the previous manifest's own `release`. They are copied unchanged, so `url` still names the earlier release's tag and `sha256` its file; the format allows that because `url` is per entry. Entries of the same or a higher version are not carried, nor are layers the new build lacks or regions and base packs no longer configured.
 
-The command does not count releases. Given a manifest that already carried vN, `--previous` carries vN again, so ending the window after one release is up to the release workflow (Phase 3). So is keeping the carried files online: a release asset that a published manifest names must not be deleted, also when a month is re-run.
+An entry that the previous manifest had carried itself names an older tag, so it is dropped, and the window ends after one release. A same-month re-run, where the previous manifest's `release` is the new one, keeps every lower entry that manifest lists. Carried URLs are never rewritten: the tag in the URL is what ends the window. The previous manifest is validated against the schema first, and for a `data-YYYY-MM` release it must be an earlier dated release or the same month; `data-ci` or a later month is refused. The command prints how many entries it carried. Keeping the carried files online is up to the release workflow (Phase 3): a release asset that a published manifest names must not be deleted, also when a month is re-run.
 
 ## `sources.json` (`sources_version` 1)
 
@@ -429,7 +429,7 @@ Every run writes `dist/<region>/build-report.json`, also when a step fails. `--r
 | `built_at` | ISO 8601 UTC, `YYYY-MM-DDTHH:MM:SSZ` |
 | `tools` | tool name → version found (`dev` for the Homebrew `pmtiles` build) |
 | `steps[]` | `name`, `status` (`built`, `skipped` or `failed`), `seconds`, `command` (the argv of the step's main tool run: the tile tool, or tippecanoe for trails and places; empty for curvature and when skipped), `outputs[]`, `anomalies`, `anomaly_count`, `anomaly_kinds`, and `error` when failed |
-| `steps[].outputs[]` | `file`, `layer` (the step's layer; `basemap` for a base pack), `layer_schema_version` (the layer's version, as in the file name), `data_date` (the UTC date of this run, `YYYY-MM-DD`, also for the outputs of a skipped step), `bytes`, `sha256`, `tile_type`, `min_zoom`, `max_zoom`, `tiles`, `compression`, `attribution`, `source_data_date` (both null when the archive metadata has no value), and `source`: the archive the output was cut from (`https://download.versatiles.org/osm-landcover.versatiles` for basemap and base packs, `https://download.versatiles.org/elevation.versatiles` for terrain, `https://download.mapterhorn.com` for terrain-hd, which reads several archives there; null for the overlays and SQLite files). A SQLite output has `tile_type`, `min_zoom`, `max_zoom`, `tiles` and `compression` null, takes `attribution` and `source_data_date` from its metadata row (`attribution`, `osm_timestamp`), and adds `rows`: table → row count (`trails`; `places`; `segments` and `corners`) |
+| `steps[].outputs[]` | `file`, `layer` (the step's layer; `basemap` for a base pack), `layer_schema_version` (the layer's version, as in the file name), `data_date` (the UTC date of this run, `YYYY-MM-DD`, one value for the whole run, also for the outputs of a skipped step), `bytes`, `sha256`, `tile_type`, `min_zoom`, `max_zoom`, `tiles`, `compression`, `attribution`, `source_data_date` (both null when the archive metadata has no value), and `source`: the archive the output was cut from (`https://download.versatiles.org/osm-landcover.versatiles` for basemap and base packs, `https://download.versatiles.org/elevation.versatiles` for terrain, `https://download.mapterhorn.com` for terrain-hd, which reads several archives there; null for the overlays and SQLite files). A SQLite output has `tile_type`, `min_zoom`, `max_zoom`, `tiles` and `compression` null, takes `attribution` and `source_data_date` from its metadata row (`attribution`, `osm_timestamp`), and adds `rows`: table → row count (`trails`; `places`; `segments` and `corners`) |
 | `steps[].anomalies` | data problems the step recorded and built past, each `{kind, id, message}`, in the order found and capped at 1,000 entries. `id` names the object: `way/<id>`, `relation/<id>`, `node/<id>`, the region id (`terrain_missing`) or the terrain file name (`terrain_unreadable`) |
 | `steps[].anomaly_count` | the total before the cap |
 | `steps[].anomaly_kinds` | kind → count over all anomalies, not capped, sorted by kind |
@@ -489,8 +489,11 @@ Validation follows JSON Schema draft 2020-12, where `pattern` is an ECMA-262 reg
 
 - every region it covers has `dist/<region>/build-report.json`: every non-fixture region for a `data-YYYY-MM` release, the `--regions` list for `data-ci`, where an unknown id fails;
 - every report parses, has `validation.ok` true (otherwise the command lists its failures), and every output in it carries `layer`, `layer_schema_version` and `data_date`. A report from before the versioned file names is refused with a hint to rebuild with `--force`;
+- every report belongs where it sits: its `region` is the name of its directory, and every output file starts with `<region>-`, or `base-<pack>-` for a base pack's step. A report copied into the wrong directory is refused;
 - every covered region has entries for the five standard layers; the outputs of a failed step do not count;
 - when base packs are configured, `dist/base/build-report.json` exists and every pack's step built at least one output, all of layer `basemap`;
-- `created_at` is UTC, and a NaN or infinite number is never written.
+- with `--previous`, the previous manifest passes the schema and, for a `data-YYYY-MM` release, is an earlier dated release or the same month;
+- after the carry-over, every entry's `url` ends in its `file`, and no entry of a `data-YYYY-MM` manifest points at `data-ci`;
+- `created_at` is UTC and not older than the newest report's `built_at`, and a NaN or infinite number is never written.
 
-The whole manifest, carried-over entries included, is then validated against the schema and written through a temporary file and a rename. A failure exits 1 with the reason. A `--release` that is neither `data-YYYY-MM` nor `data-ci`, `data-ci` without `--regions`, or `--regions` with a dated release is a usage error and exits 2.
+The whole manifest, carried-over entries included, is then validated against the schema and written through a temporary file and a rename. A failure exits 1 with the reason. A `--release` that is neither `data-YYYY-MM` (month 01 to 12) nor `data-ci`, `data-ci` without `--regions`, or `--regions` with a dated release is a usage error and exits 2.
