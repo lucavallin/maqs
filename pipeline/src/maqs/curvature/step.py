@@ -12,6 +12,7 @@ from maqs.config import Bbox, CurvatureConfig
 from maqs.context import BuildContext
 from maqs.curvature.score import Corner, score_way
 from maqs.geometry import Coord, bbox_of, encode_polyline, line_length_m
+from maqs.layers import output_name
 from maqs.osm import extract
 from maqs.sqlite_out import COUNT_TABLES, TABLES, write_sqlite
 from maqs.steps.base import Anomaly, StepOutcome
@@ -133,9 +134,10 @@ def corner_row(c: Corner, corner_id: int, segment_id: int, ordinal: int) -> tupl
 
 class CurvatureStep:
     name = "curvature"
+    layer = "curvature"
 
     def outputs(self, ctx: BuildContext) -> list[Path]:
-        return [ctx.out_dir / f"{ctx.label}-curvature.sqlite"]
+        return [ctx.out_dir / output_name(ctx.label, "curvature", "sqlite")]
 
     def expectation(self, ctx: BuildContext, output: Path) -> Expectation | SqliteExpectation:
         region = ctx.require_region()

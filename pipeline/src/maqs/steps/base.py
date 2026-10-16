@@ -5,11 +5,13 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol
 
 from maqs.context import BuildContext
+from maqs.layers import LAYER_SCHEMA_VERSION
 from maqs.tools import ToolError, ToolMissing
 from maqs.validate import (
     Expectation,
@@ -23,6 +25,10 @@ log = logging.getLogger("maqs.steps")
 
 
 MAX_REPORTED_ANOMALIES = 1000
+
+
+def _today() -> str:
+    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 @dataclass(frozen=True)
@@ -42,6 +48,7 @@ class StepOutcome:
 
 class Step(Protocol):
     name: str
+    layer: str
 
     def outputs(self, ctx: BuildContext) -> list[Path]: ...
 
@@ -123,7 +130,15 @@ def run_step(step: Step, ctx: BuildContext) -> StepResult:
     infos: list[OutputInfo] = []
     for path in outputs:
         try:
-            infos.append(validate_output(path, step.expectation(ctx, path)))
+            info = validate_output(path, step.expectation(ctx, path))
+            infos.append(
+                replace(
+                    info,
+                    layer=step.layer,
+                    layer_schema_version=LAYER_SCHEMA_VERSION[step.layer],
+                    data_date=_today(),
+                )
+            )
         except (ValidationError, OSError) as exc:
             hint = " Rerun with --force to rebuild it." if status == "skipped" else ""
             log.error("%s: validation failed: %s", step.name, exc)

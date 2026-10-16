@@ -108,7 +108,7 @@ def test_build_writes_segments_and_corners(ctx, tmp_path, monkeypatch):
     assert seen["expressions"] == ["w/highway=" + ",".join(ctx.config.curvature.highways)]
     assert result.command == []
     assert result.outputs[0].rows == {"segments": 3, "corners": 1}
-    conn = open_readonly(ctx.out_dir / "test-curvature.sqlite")
+    conn = open_readonly(ctx.out_dir / "test-curvature.v1.sqlite")
     seg = conn.execute(
         "SELECT id, osm_way_id, start_node, end_node, score, geometry FROM segments "
         "WHERE osm_way_id = 10"
@@ -150,7 +150,7 @@ def test_build_writes_segments_and_corners(ctx, tmp_path, monkeypatch):
 def test_outputs_and_expectation(ctx):
     step = CurvatureStep()
     (sqlite,) = step.outputs(ctx)
-    assert sqlite == ctx.dist / "test" / "test-curvature.sqlite"
+    assert sqlite == ctx.dist / "test" / "test-curvature.v1.sqlite"
     e = step.expectation(ctx, sqlite)
     assert e.layer == "curvature" and e.region == "test" and e.row_ranges == {}
     assert e.count_tables == ("segments", "corners")

@@ -59,6 +59,9 @@ class OutputInfo:
     source: str | None
     metadata: dict
     rows: dict[str, int] | None = None
+    layer: str | None = None
+    layer_schema_version: int | None = None
+    data_date: str | None = None
 
 
 def sha256(path: Path) -> str:

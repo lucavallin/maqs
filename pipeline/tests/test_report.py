@@ -6,7 +6,7 @@ from maqs.steps.base import Anomaly, StepResult
 from maqs.validate import OutputInfo
 
 
-def info(name="test-basemap.pmtiles"):
+def info(name="test-basemap.v1.pmtiles"):
     return OutputInfo(
         name,
         10,
@@ -41,7 +41,7 @@ def test_report_shape():
     assert basemap["status"] == "built" and basemap["seconds"] == 7.7
     assert basemap["command"] == ["versatiles", "convert"]
     out = basemap["outputs"][0]
-    assert out["file"] == "test-basemap.pmtiles" and out["sha256"] == "ab" * 32
+    assert out["file"] == "test-basemap.v1.pmtiles" and out["sha256"] == "ab" * 32
     assert out["tiles"] == 26
     assert out["attribution"] == "© OSM" and out["source_data_date"] == "2026-06-07T23:59:58Z"
     assert out["source"] == "https://download.versatiles.org/osm-landcover.versatiles"
@@ -64,7 +64,7 @@ def test_write_report_is_json_and_atomic(tmp_path):
 
 def test_report_carries_rows_and_anomalies():
     sqlite_info = OutputInfo(
-        file="test-trails.sqlite",
+        file="test-trails.v1.sqlite",
         bytes=10,
         sha256="ab" * 32,
         tile_type=None,
@@ -77,6 +77,9 @@ def test_report_carries_rows_and_anomalies():
         source=None,
         metadata={},
         rows={"trails": 3},
+        layer="trails",
+        layer_schema_version=1,
+        data_date="2026-10-16",
     )
     anomalies = [Anomaly("gap", "relation/1", "gap of 12 m")]
     result = StepResult(
@@ -91,6 +94,9 @@ def test_report_carries_rows_and_anomalies():
     )
     step = build_report("test", [result], {})["steps"][0]
     assert step["outputs"][0]["rows"] == {"trails": 3} and step["outputs"][0]["tile_type"] is None
+    assert step["outputs"][0]["layer"] == "trails"
+    assert step["outputs"][0]["layer_schema_version"] == 1
+    assert step["outputs"][0]["data_date"] == "2026-10-16"
     assert step["anomalies"] == [{"kind": "gap", "id": "relation/1", "message": "gap of 12 m"}]
     assert step["anomaly_count"] == 1 and step["anomaly_kinds"] == {"gap": 1}
     tile = build_report("test", [StepResult("basemap", "built", 1.0, [], [info()])], {})
