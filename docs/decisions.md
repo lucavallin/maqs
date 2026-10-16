@@ -510,4 +510,18 @@ How the bytes split between tables and indexes has not been measured. The decisi
 
 **Measurements.** A subset dispatch on 2026-10-16, `gh workflow run build-maps.yml -f region=test` (run 38901194493): `prepare` took 12 s, with targets `["test"]`, release `data-2026-10`, full `false`, 86 GB free and a Geofabrik cache hit on the key shared with `pipeline.yml`. `build (test)` took 74 s, `release` was skipped, and the artifact `dist-test` was 3,394,402 bytes. `pipeline.yml` stayed green on the same commit.
 
-No release had been published when this ADR was written.
+**First release.** `gh workflow run build-maps.yml` on `main` at 7fb4694 published `data-2026-10` on 2026-10-16 (run 38913426920, 6 min 53 s). `prepare` planned the targets triveneto, veneto, friuli-venezia-giulia, trentino-alto-adige and base, with `full` true and a Geofabrik cache hit. `maqs previous-manifest` found no published release with a `manifest.json`, so the run took the first-release path, and `release-check` accepted 29 assets (2,074,020,577 bytes) with none carried.
+
+| Job | Duration |
+|---|---|
+| `prepare` | 19 s |
+| `build (base)` | 43 s |
+| `build (friuli-venezia-giulia)` | 3 min 04 s |
+| `build (trentino-alto-adige)` | 2 min 48 s |
+| `build (veneto)` | 3 min 23 s |
+| `build (triveneto)` | 5 min 12 s |
+| `release` | 78 s |
+
+The legs ran in parallel. The REST API then returned release `data-2026-10` as not draft, not prerelease, target commit 7fb4694, marked latest, with 30 assets (the 29 files and `manifest.json`) and 2,074,036,371 bytes. `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json` answered 302, 302, 200, its `created_at` was 2026-10-16T14:15:17Z, and `maqs check-config --manifest` accepted it.
+
+**Same-month re-run.** The same dispatch ran again (run 38914494150, 12 min 00 s). `prepare` took 19 s; the legs took base 41 s, veneto 4 min 06 s, triveneto 6 min 06 s, friuli-venezia-giulia 7 min 01 s and trentino-alto-adige 9 min 18 s, slower than the first run (runner variance); `release` took 2 min 17 s for the artifact download, the hashing and the 2 GB `--clobber` upload. `maqs previous-manifest` chose the month's own release, `data-2026-10`, and the log said "release data-2026-10 exists; assets will be replaced". `release-check` again saw 29 assets and none carried. Afterwards the release still had 30 assets and was still latest, and the manifest's `created_at` had moved to 2026-10-16T14:27:56Z. Both runs hit the Geofabrik cache, so the one download per run held.

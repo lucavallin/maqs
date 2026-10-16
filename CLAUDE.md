@@ -11,7 +11,7 @@ This file governs *how you work* in this repository. Section 1 and the Stack cus
 
 `docs/BRIEF.md` is the source of truth for *what* to build, in what order, and which decisions are already made; it was amended after Phase 0 and `docs/decisions.md` records why. The owner's standing rules sit at the top of the brief: one map provider online and offline, as few providers as possible, nothing unmaintained, trail data from more than one source. This file governs *how*. When the two disagree, say so; do not silently pick one.
 
-**Where we are:** Phases 0–2 are done and recorded in `docs/decisions.md` ADRs 0001–0012. Phase 3 (the release workflow) is in progress: `build-maps.yml` runs and ADR 0013 records it; the first data release has not been published yet. The brief's phases are strictly ordered; each ends with a summary and waits for the go-ahead. Commands, paths, and file names below describe the contract the brief defines; a command that does not run yet is not a bug, it is a phase that has not happened.
+**Where we are:** Phases 0–3 are done and recorded in `docs/decisions.md` ADRs 0001–0013; the first data release, `data-2026-10`, is published. Phase 4 (the Swift package) is next. The brief's phases are strictly ordered; each ends with a summary and waits for the go-ahead. Commands, paths, and file names below describe the contract the brief defines; a command that does not run yet is not a bug, it is a phase that has not happened.
 
 ### Explicitly out of scope
 - Any reference to the consuming apps: their names, bundle ids, styles, or needs beyond what the public API expresses.
