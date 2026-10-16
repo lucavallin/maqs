@@ -399,3 +399,47 @@ How the bytes split between tables and indexes has not been measured. The decisi
 **CONTRADICTS BRIEF (minor):** brief item 6 asks for the per-way score summed "the way `curvature` does", so the numbers stay comparable. ADR 0008 already dropped comparability as a goal. The bands are the same, but the half-segment attribution gives different scores from `curvature`'s; item 6 should be amended.
 
 **Consequences.** The Swift package mirrors these formulas from `data-format.md` (ADR 0008). A release build must include terrain whenever it builds trails; the fixed step order runs terrain first. Open: the owner's decisions on the curvature size and on the ascent rule for partly covered trails, and the per-kind anomaly counts of Friuli-Venezia Giulia and Trentino-Alto Adige.
+
+---
+
+## 0012 — Manifest, sources and the compatibility rule
+
+**Date:** 2026-10-16 · **Status:** accepted (owner decision 2026-10-16)
+
+**Context.** Phase 2 of the brief defines the two files every client reads: `manifest.json`, one per data release, and `config/sources.json` on `main`. Shipped apps parse both, and an app on someone's phone keeps reading new releases for months without an update, so the two formats are a public API. Each layer's schema will change on its own schedule, and some changes will come before the Swift package (Phase 4) exists. The manifest also has to list the base pack (ADR 0007) and give each layer's OSM date separately, because the VersaTiles basemap lags Geofabrik by months (ADR 0004).
+
+**Decision.** `docs/data-format.md` has both formats and the full compatibility rule. In short:
+
+- Old and new schema versions sit side by side for one release. When a layer's schema changes incompatibly, the next release ships the new files and the previous version's files. The manifest lists every version of a layer, highest first; a client takes the newest it can read, and a layer it cannot read is unavailable while the others keep working.
+- File names carry the version from the first release on: `<label>-<layer>.v<N>.<ext>`, so two versions of a layer fit in one release. The tile layers get `layer_schema_version` 1, defined in `data-format.md`; the SQLite layers already had it. File names in ADRs 0007, 0009 and 0011 predate the suffix.
+- Every `url` in the manifest is pinned to a release tag. Only `manifest.json` itself is read through `releases/latest/download/`.
+- The producer is strict and clients are tolerant. The JSON Schemas in `config/schemas/` (draft 2020-12) allow no unknown field; clients ignore fields they do not know.
+- `jsonschema` validates both files. It is the pipeline's only new dependency (`jsonschema>=4.23` in `pyproject.toml`) and reaches nothing in the Swift package. From `uv.lock`: jsonschema 4.26.0 (MIT), with attrs 26.1.0 (MIT), jsonschema-specifications 2025.9.1 (MIT), referencing 0.37.0 (MIT), rpds-py 2026.9.1 (MIT) and, on Python older than 3.13, typing-extensions 4.16.0 (PSF-2.0).
+- JSON Schema's `pattern` is an ECMA-262 regex, and `jsonschema` runs it with Python's `re`, which differs. The schemas spell digits `[0-9]`, because Python's `\d` matches any Unicode digit. `maqs/schemas.py` makes a pattern's final `$` match only at the end of the string; Python's also matches before a trailing newline. That covers what the current patterns use. A new pattern that needs other ECMA behaviour, or a `$` anywhere but the end, has to be checked against both.
+- `maqs manifest` assembles the manifest from the build reports, not the workflow, so the file is validated where it is written and the assembly is unit-tested. `--previous` carries the older versions over.
+- The `release` and `url` patterns also accept `data-ci`, only so that CI can assemble and validate a manifest from the `test` build. `maqs manifest --release data-ci` requires `--regions`; a `data-YYYY-MM` release refuses `--regions` and always covers every region that is not a fixture. A `data-ci` manifest is never published.
+- `maqs check-config` is the gate for `regions.yaml`, `sources.json` and, with `--manifest`, a manifest. The smoke job runs it, and the unit tests validate the real `sources.json`.
+- `config/sources.json` has one source per layer, both VersaTiles (ADR 0004).
+
+**Verified live on 2026-10-16.**
+
+| Fact | Verified value | Source |
+|---|---|---|
+| Basemap TileJSON | `https://tiles.versatiles.org/tiles/osm/tiles.json`: TileJSON 3.0.0, zoom 0–14, `tile_schema` `shortbread@1.0`, `tile_format` `application/vnd.mapbox-vector-tile`, tiles at `/tiles/osm/{z}/{x}/{y}`; attribution names © OpenStreetMap contributors and CC BY 4.0 ESA WorldCover 2021; `planetiler:osm:osmosisreplicationtime` 2026-06-07T23:59:58Z | the TileJSON |
+| Terrain TileJSON | `https://tiles.versatiles.org/tiles/elevation/tiles.json`: TileJSON 3.0.0, zoom 0–12, `tile_schema` `dem/terrarium`, `tile_format` `image/webp`, tiles at `/tiles/elevation/{z}/{x}/{y}`; attribution © Mapterhorn. The TileJSON gives no tile size; tile 0/0/0 decodes as a 512 × 512 WebP | the TileJSON; one tile |
+| Caching | Tiles and TileJSON send `Cache-Control: public, max-age=21600, no-transform` and now a weak `ETag`. A request for tile `osm/0/0/0` with `If-None-Match` got 304 and no body. ADR 0001 found no ETag; with one, revalidation no longer has to be a full download | response headers |
+
+**Rejected.**
+- Unavailable, never broken: no overlap window, so a client that finds only a newer version reports the layer unavailable. Simpler, but an old app silently loses a layer the day its schema changes.
+- Additive forever: never change a schema incompatibly. That forbids fixing a schema mistake even now, before Phase 4 has written any client.
+- Assembling the manifest in the workflow with `jq`: nothing validates the file where it is written, and nothing tests it.
+
+**CONTRADICTS BRIEF (minor):** the brief's Phase 1 output table names the files without a version (`<region>-trails.sqlite`). Every output now carries `.v<N>.`, so the table should be amended.
+
+**Consequences.**
+- For one month after a bump, that layer's files are in the release twice, once per version. Each file stays under the 1.9 GiB asset limit as before.
+- Phase 3 has to download the latest manifest before assembling a new one and pass it as `--previous`. Carried entries keep the earlier tag's URL, so the workflow either keeps those assets or re-uploads them; it must never delete an asset a published manifest names, also when a month is re-run. `maqs manifest` does not count releases: from a manifest that already carried vN it carries vN again, so ending the window after one release is the workflow's job.
+- Phase 4 has to implement the client side of the rule exactly as `data-format.md` states it.
+- ADR 0008 lets an app run without online sources through an empty `sources.json` or an explicit opt-out. An empty file fails the schema, since each layer needs at least one source, so the opt-out has to be a package setting.
+- A `dist/` built before the versioned names is rebuilt, not reused: `maqs manifest` refuses its reports.
+- The curvature size question (ADR 0011) is unaffected.

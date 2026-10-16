@@ -1,19 +1,27 @@
 # Data formats
 
-This document lists every file maqs publishes, with a version for each format. A format change bumps the version named in its section and states the compatibility rule. Today the pipeline builds the tile archives, the trails and places overlay archives, the three SQLite layers (trails, places, curvature) and the build report.
+This document lists every file maqs publishes, with a version for each format. A format change bumps the version named in its section and states the compatibility rule. The pipeline builds the tile archives, the trails and places overlay archives, the three SQLite layers (trails, places, curvature), the build report and `manifest.json`. `config/sources.json` is kept by hand and validated in CI.
+
+Every layer file carries its layer's `layer_schema_version` in its name: `<label>-<layer>.v<N>.<ext>`. `<label>` is the region id, or `base-<pack>` for a base pack; `<layer>` is `basemap`, `terrain`, `terrain-hd`, `trails`, `places` or `curvature`; `<ext>` is `pmtiles` or `sqlite` (`output_name` in `pipeline/src/maqs/layers.py`). Two versions of one layer can therefore sit side by side in a release (see the [compatibility rule](#compatibility-rule)). All files of a layer share its version: the trails SQLite file and the trails overlay are both `.v1.` today.
 
 ## Tile archives (PMTiles v3)
 
 Every tile output is a [PMTiles v3](https://github.com/protomaps/PMTiles/blob/main/spec/v3/spec.md) archive with `tile_compression` and `internal_compression` each gzip or none. The archives `versatiles` writes (basemap, terrain, base packs) are clustered, with gzip internal compression. MapLibre Native reads gzip or uncompressed tiles only and rejects brotli and zstd, so the pipeline recompresses VersaTiles' brotli basemap tiles to gzip.
 
-The tile archives carry no `layer_schema_version` yet. The per-layer version arrives with `manifest.json` in Phase 2.
+Version 1 of the tile layers, as `pipeline/src/maqs/layers.py` records it:
+
+- **basemap** (`layer_schema_version` 1): Shortbread 1.0 MVT, gzip tile compression, z0–14. A base pack is the same format up to its `max_zoom`.
+- **terrain** (1): terrarium-encoded DEM, WebP, 512 px tiles, z0–12, tile compression none.
+- **terrain-hd** (1): the same terrarium encoding at z13–`hd_max_zoom`, in the image format Mapterhorn stores (WebP or PNG).
+
+A change of encoding, tile schema or zoom range bumps the layer's version. The table gives each archive's extent.
 
 | File | Layer | Tile type | Zoom | Tile compression | Source and extent |
 |---|---|---|---|---|---|
-| `<region>-basemap.pmtiles` | basemap | MVT, Shortbread 1.0 (OSM plus ESA WorldCover landcover) | 0–14 | gzip | `download.versatiles.org/osm-landcover.versatiles`: the region's bbox plus a ring of `bbox_border` tiles at every zoom (default 1, 0 for `test`) |
-| `<region>-terrain.pmtiles` | terrain | WebP 512 px, terrarium-encoded DEM | 0–12 | none | `download.versatiles.org/elevation.versatiles` (Mapterhorn's build), same bbox and border as the basemap |
-| `<region>-terrain-hd.pmtiles` | terrain-hd (opt-in) | terrarium, as Mapterhorn stores it (WebP or PNG accepted) | 13–`hd_max_zoom` (13 by default) | gzip or none | `download.mapterhorn.com/6-<x>-<y>.pmtiles`, the region's bbox, merged into one archive when the bbox spans several; no border |
-| `base-<pack>-basemap.pmtiles` | base pack, bundled inside apps | MVT, Shortbread 1.0 | 0–`max_zoom` (10 by default) | gzip | as the basemap, over the union bbox of the pack's regions; no border |
+| `<region>-basemap.v1.pmtiles` | basemap | MVT, Shortbread 1.0 (OSM plus ESA WorldCover landcover) | 0–14 | gzip | `download.versatiles.org/osm-landcover.versatiles`: the region's bbox plus a ring of `bbox_border` tiles at every zoom (default 1, 0 for `test`) |
+| `<region>-terrain.v1.pmtiles` | terrain | WebP 512 px, terrarium-encoded DEM | 0–12 | none | `download.versatiles.org/elevation.versatiles` (Mapterhorn's build), same bbox and border as the basemap |
+| `<region>-terrain-hd.v1.pmtiles` | terrain-hd (opt-in) | terrarium, as Mapterhorn stores it (WebP or PNG accepted) | 13–`hd_max_zoom` (13 by default) | gzip or none | `download.mapterhorn.com/6-<x>-<y>.pmtiles`, the region's bbox, merged into one archive when the bbox spans several; no border |
+| `base-<pack>-basemap.v1.pmtiles` | base pack, bundled inside apps | MVT, Shortbread 1.0 | 0–`max_zoom` (10 by default) | gzip | as the basemap, over the union bbox of the pack's regions; no border |
 
 Region outputs are written to `dist/<region>/`, every base pack to `dist/base/`.
 
@@ -37,14 +45,14 @@ Two PMTiles v3 archives of gzip-compressed MVT tiles, written by tippecanoe from
 
 | File | MVT layer | Zoom | Features | Properties |
 |---|---|---|---|---|
-| `<region>-trails.pmtiles` | `trails` | 6–14 | one per primary trail with geometry: a LineString, or a MultiLineString when the trail has several legs | `id`, `ref`, `name`, `difficulty`, `network`, `osmc_symbol` |
-| `<region>-places.pmtiles` | `places` | 8–14 | one Point per place | `id`, `kind`, `name`, `ele`, `rank_score` |
+| `<region>-trails.v1.pmtiles` | `trails` | 6–14 | one per primary trail with geometry: a LineString, or a MultiLineString when the trail has several legs | `id`, `ref`, `name`, `difficulty`, `network`, `osmc_symbol` |
+| `<region>-places.v1.pmtiles` | `places` | 8–14 | one Point per place | `id`, `kind`, `name`, `ele`, `rank_score` |
 
-Secondary trails (`secondary_of` set) and trails without geometry are in the SQLite file only. Apart from the layer name and the zoom range, tippecanoe runs with its defaults, so trail lines are simplified to each tile's resolution. The places overlay adds `-r1` (drop rate 1): every place is in every zoom from 8 to 14, and the style decides which to label, with `rank_score` for priority. Without it tippecanoe would keep about one point in 2.5 per zoom level below 14, chosen by density, not by `rank_score`. Measured on Triveneto (2026-10-15): all 29,198 places are present at z8, z11 and z14, in 7,515,620 bytes and 15,410 tiles. Like the other tile archives, the overlays carry no `layer_schema_version` yet.
+Secondary trails (`secondary_of` set) and trails without geometry are in the SQLite file only. Apart from the layer name and the zoom range, tippecanoe runs with its defaults, so trail lines are simplified to each tile's resolution. The places overlay adds `-r1` (drop rate 1): every place is in every zoom from 8 to 14, and the style decides which to label, with `rank_score` for priority. Without it tippecanoe would keep about one point in 2.5 per zoom level below 14, chosen by density, not by `rank_score`. Measured on Triveneto (2026-10-15): all 29,198 places are present at z8, z11 and z14, in 7,515,620 bytes and 15,410 tiles. An overlay has its layer's `layer_schema_version`, 1 for both: renaming the MVT layer, changing the zoom range, or renaming or removing a property bumps `trails` or `places`.
 
 ## SQLite layers
 
-Three files per region: `<region>-trails.sqlite`, `<region>-places.sqlite` and `<region>-curvature.sqlite`. The schemas live in `pipeline/src/maqs/sqlite_out.py`; the DDL below is copied from it.
+Three files per region: `<region>-trails.v1.sqlite`, `<region>-places.v1.sqlite` and `<region>-curvature.v1.sqlite`. The schemas live in `pipeline/src/maqs/sqlite_out.py`; the DDL below is copied from it.
 
 Rules shared by all three:
 
@@ -119,7 +127,7 @@ One row per trail record from the region's trail sources (`trails.sources` in `c
 | 5 | `EEA:PD` | `demanding_alpine_hiking` |
 | 6 | `EEA:D`, `EEA:MD`, `EEA:ED` | `difficult_alpine_hiking` |
 
-**Ascent and descent.** Each leg is resampled every 25 m, plus its end points. A sample's elevation comes from `<region>-terrain.pmtiles` in the same output directory, at the archive's maximum zoom (12): the terrarium value interpolated bilinearly between the four nearest pixel centres of the tile under the sample, clamped at the tile's edge (no interpolation across tiles). Along a leg, a reference elevation moves only when a sample is more than 5 m above or below it; the whole difference then counts as ascent or descent. The legs' totals are summed. Samples without a terrain tile are skipped, so:
+**Ascent and descent.** Each leg is resampled every 25 m, plus its end points. A sample's elevation comes from `<region>-terrain.v1.pmtiles` in the same output directory, at the archive's maximum zoom (12): the terrarium value interpolated bilinearly between the four nearest pixel centres of the tile under the sample, clamped at the tile's edge (no interpolation across tiles). Along a leg, a reference elevation moves only when a sample is more than 5 m above or below it; the whole difference then counts as ascent or descent. The legs' totals are summed. Samples without a terrain tile are skipped, so:
 
 - with no terrain archive in the output directory, both columns are null for every trail (anomaly `terrain_missing`); when the archive cannot be read, they are null from that point on: for every trail if it cannot be opened, otherwise for the trail being sampled and every later one (`terrain_unreadable`);
 - when no sample of a trail has a tile, both are null (`terrain_no_coverage`);
@@ -204,6 +212,212 @@ CREATE VIRTUAL TABLE corners_rtree USING rtree(id, min_lon, max_lon, min_lat, ma
 4. **Score.** score = Σ over interior vertices B of weight(radius at B) × (|AB| + |BC|) / 2. Each vertex weighs half of each adjacent segment, so a way scores the same in both directions. The end vertices have no radius, so half of the first and half of the last segment weigh 0. With fewer than three merged vertices the score is 0.
 5. **Corners.** A corner is a maximal run of consecutive interior vertices that turn the same way with a radius under 500 m. A straight vertex, a radius of 500 m or more, or a turn the other way ends the run; an opposite turn starts the next run at once. The apex is the run's vertex with the smallest radius (the first one on a tie); entry and exit are the vertices just before and just after the run. `min_radius_m` is the radius of the circle through entry, apex and exit (the apex's own radius if those three are collinear), so it can exceed both the apex vertex's radius and 500 m. `direction` is the run's turn. When the turn flips from one vertex to the next, the two corners overlap by one segment: the first corner's exit is the second run's first vertex, and the second corner's entry is the first run's last vertex.
 
+## `manifest.json` (`manifest_version` 1)
+
+One file per data release, uploaded as the release asset `manifest.json`. Clients read it from `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json`, and that is the only file they fetch through `latest`: every `url` inside the manifest names the release tag its file was uploaded under, so a manifest keeps pointing at its own files after a newer release becomes latest.
+
+`maqs manifest --release <tag>` writes it from the build reports in `dist/` (`pipeline/src/maqs/manifest.py`) and validates it against `config/schemas/manifest.schema.json` before writing. The schema is the format's single source of truth; the checks the command adds are under [Validation rules](#validation-rules).
+
+The example is real, abridged: the manifest CI assembles from the `test` build and the `triveneto` base pack, written on 2026-10-16 by `maqs manifest --release data-ci --regions test`. A `data-ci` manifest exists only in CI and is never published (below). A real release is tagged `data-YYYY-MM` and lists every region that is not a fixture.
+
+```jsonc
+{
+  "manifest_version": 1,
+  "created_at": "2026-10-16T09:54:53Z",
+  "release": "data-ci",
+  "shortbread_version": "1.0",
+  "attribution": [
+    { "text": "© OpenStreetMap contributors", "licence": "ODbL 1.0", "url": "https://www.openstreetmap.org/copyright",
+      "layers": ["basemap", "trails", "places", "curvature"] },
+    { "text": "CC BY 4.0 ESA WorldCover 2021", "licence": "CC BY 4.0", "url": "https://esa-worldcover.org/en/data-access",
+      "layers": ["basemap"] },
+    { "text": "© Mapterhorn", "licence": "multiple open licences, listed at url", "url": "https://mapterhorn.com/attribution",
+      "layers": ["terrain", "terrain-hd"] }
+  ],
+  "regions": [
+    {
+      "id": "test",
+      "name": { "it": "Nevegal (test)", "en": "Nevegal (test)" },
+      "bbox": [12.21, 46.08, 12.29, 46.13],
+      "layers": {
+        "basemap": [
+          {
+            "layer_schema_version": 1,
+            "file": "test-basemap.v1.pmtiles",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-basemap.v1.pmtiles",
+            "bytes": 1617480,
+            "sha256": "748b46de5a711f228bbd3afcbecf2c7713a386d60cc2417dd46cceef65bdb952",
+            "data_date": "2026-10-16",
+            "osm_timestamp": "2026-06-07T23:59:58Z"
+          }
+        ],
+        "terrain": [
+          {
+            "layer_schema_version": 1,
+            "file": "test-terrain.v1.pmtiles",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-terrain.v1.pmtiles",
+            "bytes": 1496730,
+            "sha256": "e24d222d07bcd861eb9c66f73bc0e2c902f9f41b94d64cd9131c9105f062318d",
+            "data_date": "2026-10-16",
+            "osm_timestamp": null
+          }
+        ],
+        "trails": [
+          {
+            "layer_schema_version": 1,
+            "file": "test-trails.v1.sqlite",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-trails.v1.sqlite",
+            "bytes": 126976,
+            "sha256": "e1356b0d03031dbcfa714401fa65b3afbf299b9ed3c461343a23efeeba0fd137",
+            "data_date": "2026-10-16",
+            "osm_timestamp": "2026-10-14T20:21:12Z"
+          },
+          {
+            "layer_schema_version": 1,
+            "file": "test-trails.v1.pmtiles",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-trails.v1.pmtiles",
+            "bytes": 190928,
+            "sha256": "bad2caf361edea7d89305a485ae882782f3dd384d44125c0b9903dad431abb8d",
+            "data_date": "2026-10-16",
+            "osm_timestamp": null,
+            "role": "overlay"
+          }
+        ],
+        // "places": the same pair as trails, test-places.v1.sqlite then test-places.v1.pmtiles with "role": "overlay"
+        // "curvature": one entry, test-curvature.v1.sqlite
+      }
+    }
+  ],
+  "base": [
+    {
+      "id": "triveneto",
+      "regions": ["triveneto"],
+      "max_zoom": 10,
+      "layers": {
+        "basemap": [
+          {
+            "layer_schema_version": 1,
+            "file": "base-triveneto-basemap.v1.pmtiles",
+            "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/base-triveneto-basemap.v1.pmtiles",
+            "bytes": 13165829,
+            "sha256": "75430f171e1c1edc7a9678cb47becb02ecec94612335e19ccd319258b8dd0f91",
+            "data_date": "2026-10-16",
+            "osm_timestamp": "2026-06-07T23:59:58Z"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+The top level has exactly these fields. The schema sets `additionalProperties: false` on every object: the producer is strict, while clients ignore what they do not know ([compatibility rule](#compatibility-rule)).
+
+| Field | Rule |
+|---|---|
+| `manifest_version` | 1 |
+| `created_at` | when `maqs manifest` ran, UTC, `YYYY-MM-DDTHH:MM:SSZ` |
+| `release` | the release tag: `data-YYYY-MM`, or `data-ci` in CI |
+| `shortbread_version` | `"1.0"`, the Shortbread version of every basemap entry ([ADR 0001](decisions.md)) |
+| `attribution` | the credits, at least one entry |
+| `regions` | at least one region, in `config/regions.yaml` order |
+| `base` | the base packs, in `config/regions.yaml` order; may be empty |
+
+**Attribution.** Each entry has `text`, the display string verbatim from [`DATA_LICENSE.md`](../DATA_LICENSE.md) (a test checks that they agree); `licence`; `url`, an HTTPS link; and `layers`, the layers that need the credit (at least one, no repeats). The three entries are constants in `manifest.py` and are the same in every manifest: OpenStreetMap for basemap, trails, places and curvature, ESA WorldCover for basemap, Mapterhorn for terrain and terrain-hd.
+
+**Region.** `id`, lowercase kebab-case (`^[a-z0-9]+(-[a-z0-9]+)*$`); `name`, with non-empty `it` and `en` (the schema allows further language keys, the pipeline writes these two); `bbox`, the four numbers `[lon_min, lat_min, lon_max, lat_max]` from `regions.yaml`; `layers`, with a non-empty list of entries for each of `basemap`, `terrain`, `trails`, `places` and `curvature`, plus `terrain-hd` when the region was built with it, and no other key.
+
+A `data-YYYY-MM` manifest lists every region in `regions.yaml` that is not `fixture: true`, and `maqs manifest` refuses `--regions` for such a tag. `data-ci` exists so that CI can assemble and validate a manifest from the `test` build. The `release` and `url` patterns accept it, and `maqs manifest --release data-ci` requires `--regions <ids>` and lists exactly those regions, fixtures included. Its URLs point at a release that does not exist, so a `data-ci` manifest is never published.
+
+**Base pack.** `id`; `regions`, the ids of the regions it covers (at least one); `max_zoom` (0–14); and `layers` with `basemap` only ([ADR 0007](decisions.md)), whose file is `base-<pack>-basemap.v<N>.pmtiles`. Every configured base pack is listed, in a `data-ci` manifest too.
+
+**Entry.** One file of a layer:
+
+| Field | Rule |
+|---|---|
+| `layer_schema_version` | integer ≥ 1, the version in the file name |
+| `file` | the asset name, `<label>-<layer>.v<N>.<ext>`, matching `^[a-z0-9]+(-[a-z0-9]+)*-(basemap\|terrain\|terrain-hd\|trails\|places\|curvature)\.v[1-9][0-9]*\.(pmtiles\|sqlite)$` (no `.v0.`) |
+| `url` | `https://github.com/lucavallin/maqs/releases/download/<tag>/<asset>`, where `<tag>` is `data-YYYY-MM` or `data-ci` and `<asset>` ends in `.pmtiles` or `.sqlite`; never `latest`. The schema does not tie `url` to `file` or to `release`: `maqs manifest` builds each new URL from `release` and `file`, and an entry carried over from an earlier release keeps that release's tag |
+| `bytes` | the file size, from 1 to 2,040,109,465 (1.9 GiB) |
+| `sha256` | 64 lowercase hex digits |
+| `data_date` | `YYYY-MM-DD`: the UTC date of the build run that wrote the region's report, also for an output that run skipped because it already existed. In CI `dist/` starts empty, so this is the date of the build run that produced the release |
+| `osm_timestamp` | `YYYY-MM-DDTHH:MM:SSZ` or null; the build report's `source_data_date`. Basemap and base packs: the OSM replication time of the VersaTiles build (`planetiler:osm:osmosisreplicationtime`), which lags the Geofabrik data by months ([ADR 0004](decisions.md)). Trails, places and curvature SQLite files: the Geofabrik extract's replication timestamp, as in their `metadata` row. Terrain, terrain-hd and the two overlays: null, because their archives carry no date |
+| `role` | `"overlay"` on the trails and places tile archives, absent on every other entry |
+
+A layer's entries are sorted by `layer_schema_version`, highest first. Within one version the SQLite file comes first, then the overlay with `role: "overlay"`.
+
+### Compatibility rule
+
+A client knows which `layer_schema_version`s it can read for each layer. When it gets a manifest it:
+
+1. Checks `manifest_version`. An unknown value is a typed error: the client rejects the whole manifest and keeps using the last one it cached.
+2. For each region and layer, takes the first entry whose `layer_schema_version` it can read. Entries are sorted highest first, so that is the newest version it understands. For trails and places it takes both files of that version, the SQLite file and the overlay.
+3. Treats a layer with no readable entry as not available in that region. That is a typed error for that layer only: the other layers work, and the client can tell the user to update.
+4. Ignores fields and layer keys it does not know.
+
+Adding a field or a layer key keeps `manifest_version`. Renaming or removing a field, or changing what one means, bumps it. The schema is strict, so a new field goes into `config/schemas/manifest.schema.json` in the same change.
+
+**Producer rule.** The release that bumps a layer from version N to N+1 also lists the vN files, for one release. A client that reads only vN keeps the layer for that month, then sees it as not available until it updates. `maqs manifest --previous <path to the latest manifest>` does the carry-over. For each region and base pack in the new manifest, and each layer it has, the command appends the previous manifest's entries whose version is below the lowest version the new build has for that layer. They are copied unchanged, so `url` still names the earlier release's tag and `sha256` its file; the format allows that because `url` is per entry. Entries of the same or a higher version are not carried, nor are layers the new build lacks or regions and base packs no longer configured.
+
+The command does not count releases. Given a manifest that already carried vN, `--previous` carries vN again, so ending the window after one release is up to the release workflow (Phase 3). So is keeping the carried files online: a release asset that a published manifest names must not be deleted, also when a month is re-run.
+
+## `sources.json` (`sources_version` 1)
+
+`config/sources.json` lists the online tile sources per layer. Clients fetch it from `https://raw.githubusercontent.com/lucavallin/maqs/main/config/sources.json`, cache it, and carry a copy bundled in the package as a fallback (Phase 4). Shipped apps read the file on `main` at runtime, so editing it is a production change: it goes through review, and CI validates it with `maqs check-config` against `config/schemas/sources.schema.json`. The file today:
+
+```json
+{
+  "sources_version": 1,
+  "layers": {
+    "basemap": [
+      {
+        "id": "versatiles-osm",
+        "provider": "VersaTiles",
+        "tiles": "https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}",
+        "tilejson": "https://tiles.versatiles.org/tiles/osm/tiles.json",
+        "schema": "shortbread-1.0",
+        "format": "mvt",
+        "min_zoom": 0,
+        "max_zoom": 14,
+        "attribution": ["© OpenStreetMap contributors", "CC BY 4.0 ESA WorldCover 2021"]
+      }
+    ],
+    "terrain": [
+      {
+        "id": "versatiles-elevation",
+        "provider": "VersaTiles",
+        "tiles": "https://tiles.versatiles.org/tiles/elevation/{z}/{x}/{y}",
+        "tilejson": "https://tiles.versatiles.org/tiles/elevation/tiles.json",
+        "schema": "terrarium",
+        "format": "webp",
+        "tile_size": 512,
+        "min_zoom": 0,
+        "max_zoom": 12,
+        "attribution": ["© Mapterhorn"]
+      }
+    ]
+  }
+}
+```
+
+| Field | Rule |
+|---|---|
+| `sources_version` | 1 |
+| `layers` | exactly `basemap` and `terrain`, each a non-empty list of sources in priority order. Each has one source today, VersaTiles ([ADR 0004](decisions.md)) |
+| `id` | lowercase kebab-case |
+| `provider` | the provider's display name |
+| `tiles` | an HTTPS URL template containing `{z}`, `{x}` and `{y}`, in that order |
+| `tilejson` | the HTTPS URL of the source's TileJSON |
+| `schema` | `shortbread-1.0` for a basemap source, `terrarium` for a terrain source |
+| `format` | `mvt` for a basemap source; `webp` or `png` for a terrain source |
+| `tile_size` | terrain sources only, and required there: 256 or 512 |
+| `min_zoom`, `max_zoom` | 0–22, with `min_zoom` ≤ `max_zoom`. JSON Schema cannot compare two fields, so `pipeline/src/maqs/schemas.py` checks the order after the schema |
+| `attribution` | a non-empty list of display strings, each verbatim from `DATA_LICENSE.md` (a test checks) |
+
+No other field is allowed, so a basemap source cannot carry `tile_size`. Every URL, zoom range, schema, format and attribution string in the file was checked against the live VersaTiles TileJSON on 2026-10-16, and the terrain tile size against a live tile ([ADR 0012](decisions.md)).
+
+Compatibility rule: clients ignore fields they do not know, and a structural change bumps `sources_version`. A client that cannot parse the file falls back to its bundled copy.
+
 ## Build report (`build-report.json`, `report_version` 1)
 
 Every run writes `dist/<region>/build-report.json`, also when a step fails. `--region base` writes one `dist/base/build-report.json` for all base packs, with one step per pack named `base-<pack>`.
@@ -215,7 +429,7 @@ Every run writes `dist/<region>/build-report.json`, also when a step fails. `--r
 | `built_at` | ISO 8601 UTC, `YYYY-MM-DDTHH:MM:SSZ` |
 | `tools` | tool name → version found (`dev` for the Homebrew `pmtiles` build) |
 | `steps[]` | `name`, `status` (`built`, `skipped` or `failed`), `seconds`, `command` (the argv of the step's main tool run: the tile tool, or tippecanoe for trails and places; empty for curvature and when skipped), `outputs[]`, `anomalies`, `anomaly_count`, `anomaly_kinds`, and `error` when failed |
-| `steps[].outputs[]` | `file`, `bytes`, `sha256`, `tile_type`, `min_zoom`, `max_zoom`, `tiles`, `compression`, `attribution`, `source_data_date` (both null when the archive metadata has no value), and `source`: the archive the output was cut from (`https://download.versatiles.org/osm-landcover.versatiles` for basemap and base packs, `https://download.versatiles.org/elevation.versatiles` for terrain, `https://download.mapterhorn.com` for terrain-hd, which reads several archives there; null for the overlays and SQLite files). A SQLite output has `tile_type`, `min_zoom`, `max_zoom`, `tiles` and `compression` null, takes `attribution` and `source_data_date` from its metadata row (`attribution`, `osm_timestamp`), and adds `rows`: table → row count (`trails`; `places`; `segments` and `corners`) |
+| `steps[].outputs[]` | `file`, `layer` (the step's layer; `basemap` for a base pack), `layer_schema_version` (the layer's version, as in the file name), `data_date` (the UTC date of this run, `YYYY-MM-DD`, also for the outputs of a skipped step), `bytes`, `sha256`, `tile_type`, `min_zoom`, `max_zoom`, `tiles`, `compression`, `attribution`, `source_data_date` (both null when the archive metadata has no value), and `source`: the archive the output was cut from (`https://download.versatiles.org/osm-landcover.versatiles` for basemap and base packs, `https://download.versatiles.org/elevation.versatiles` for terrain, `https://download.mapterhorn.com` for terrain-hd, which reads several archives there; null for the overlays and SQLite files). A SQLite output has `tile_type`, `min_zoom`, `max_zoom`, `tiles` and `compression` null, takes `attribution` and `source_data_date` from its metadata row (`attribution`, `osm_timestamp`), and adds `rows`: table → row count (`trails`; `places`; `segments` and `corners`) |
 | `steps[].anomalies` | data problems the step recorded and built past, each `{kind, id, message}`, in the order found and capped at 1,000 entries. `id` names the object: `way/<id>`, `relation/<id>`, `node/<id>`, the region id (`terrain_missing`) or the terrain file name (`terrain_unreadable`) |
 | `steps[].anomaly_count` | the total before the cap |
 | `steps[].anomaly_kinds` | kind → count over all anomalies, not capped, sorted by kind |
@@ -240,7 +454,7 @@ A skipped step builds nothing, so it reports no anomalies; they are in the repor
 | curvature | `too_short` | a way with fewer than two located nodes, skipped |
 | curvature | `unlocated_nodes` | a way with some unlocated nodes, kept and joined over them |
 
-Compatibility rule: readers ignore unknown fields. A new `report_version` means a field changed meaning or was removed.
+Compatibility rule: readers ignore unknown fields. A new `report_version` means a field changed meaning or was removed. `maqs manifest` reads `layer`, `layer_schema_version` and `data_date`; a report written before outputs had them is refused (below).
 
 ## Validation rules
 
@@ -266,3 +480,17 @@ Every SQLite file:
 - its SHA-256 recorded.
 
 Base packs must also be under 15 MB (15,000,000 bytes). For every `fixture: true` region (today `test`) the build prints a warning when its basemap plus terrain exceed 5,000,000 bytes. A failed check fails the step, and the build exits non-zero.
+
+`maqs check-config` checks the configuration. It loads `config/regions.yaml` with the checks listed in [`docs/architecture.md`](architecture.md); an invalid file exits 1. It validates `config/sources.json` against `config/schemas/sources.schema.json` and then checks `min_zoom` ≤ `max_zoom` on every source. With `--manifest <path>` it also validates that manifest against `config/schemas/manifest.schema.json`. A schema violation exits 2 and names the file and the JSON Pointer of the offending value, for example `manifest.json: /regions/0/layers/trails/0/url: …`; when there are several, it reports the deepest.
+
+Validation follows JSON Schema draft 2020-12, where `pattern` is an ECMA-262 regular expression. Python's `re` differs from it in two places the schemas would hit. `\d` matches any Unicode digit, so the patterns spell digits `[0-9]`. `$` also matches before a final newline, so `pipeline/src/maqs/schemas.py` makes a pattern's final `$` match only at the end of the string. A validator that hands the patterns to Python's `re` unchanged accepts a value ending in a newline that maqs rejects.
+
+`maqs manifest` checks in code what the schema cannot express:
+
+- every region it covers has `dist/<region>/build-report.json`: every non-fixture region for a `data-YYYY-MM` release, the `--regions` list for `data-ci`, where an unknown id fails;
+- every report parses, has `validation.ok` true (otherwise the command lists its failures), and every output in it carries `layer`, `layer_schema_version` and `data_date`. A report from before the versioned file names is refused with a hint to rebuild with `--force`;
+- every covered region has entries for the five standard layers; the outputs of a failed step do not count;
+- when base packs are configured, `dist/base/build-report.json` exists and every pack's step built at least one output, all of layer `basemap`;
+- `created_at` is UTC, and a NaN or infinite number is never written.
+
+The whole manifest, carried-over entries included, is then validated against the schema and written through a temporary file and a rename. A failure exits 1 with the reason. A `--release` that is neither `data-YYYY-MM` nor `data-ci`, `data-ci` without `--regions`, or `--regions` with a dated release is a usage error and exits 2.
