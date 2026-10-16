@@ -16,7 +16,8 @@ final class DownloadSession: NSObject, URLSessionDownloadDelegate, Sendable {
         let url: URL
         let key: String
 
-        /// `key` must be one path component (non-empty, no `/`, not `.` or `..`); anything else is a programming error.
+        /// `key` must be one path component (non-empty, no `/`, not `.` or `..`) that does not end in `.resume`;
+        /// anything else is a programming error.
         init(url: URL, key: String) {
             guard Self.validKey(key) != nil else {
                 preconditionFailure("DownloadSession.Request key is not one path component")
@@ -25,9 +26,11 @@ final class DownloadSession: NSObject, URLSessionDownloadDelegate, Sendable {
             self.key = key
         }
 
-        /// `candidate` when it can name a file directly under `downloads/`, nil otherwise.
+        /// `candidate` when it can name a file directly under `downloads/` without being another key's resume file,
+        /// nil otherwise.
         static func validKey(_ candidate: String?) -> String? {
-            guard let candidate, !candidate.isEmpty, !candidate.contains("/"), candidate != ".", candidate != ".." else {
+            guard let candidate, !candidate.isEmpty, !candidate.contains("/"), candidate != ".", candidate != "..",
+                  !candidate.hasSuffix(".resume") else {
                 return nil
             }
             return candidate
@@ -147,7 +150,12 @@ final class DownloadSession: NSObject, URLSessionDownloadDelegate, Sendable {
             switch registration {
             case .joined(let task, let bytesWritten):
                 progress(bytesWritten)
-                if Task.isCancelled { cancelKeepingResumeData(task, key: request.key) }
+                if Task.isCancelled {
+                    cancelKeepingResumeData(task, key: request.key)
+                } else if task.state == .suspended {
+                    // A task restored suspended would never call back; resuming one that is running does nothing.
+                    task.resume()
+                }
             case .started(let task):
                 if Task.isCancelled { cancelKeepingResumeData(task, key: request.key) } else { task.resume() }
             }
