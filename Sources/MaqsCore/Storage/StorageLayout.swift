@@ -5,9 +5,11 @@ import Foundation
 /// ```
 /// <root>/manifest.json, manifest.meta.json, sources.json, sources.meta.json
 /// <root>/packs/<region-id | base-id>/pack.json
-/// <root>/packs/<…>/<layer>/<file>
+/// <root>/packs/<…>/<layer>/<sha256>/<file>
 /// <root>/downloads/<file>, <file>.resume
 /// ```
+///
+/// Installed files sit under their SHA-256, so an update never overwrites a file the live `pack.json` names.
 struct StorageLayout: Sendable {
     let root: URL
 
@@ -23,7 +25,9 @@ struct StorageLayout: Sendable {
     func packDirectory(_ id: PackID) -> URL { packsDirectory.appending(path: id.directoryName, directoryHint: .isDirectory) }
     func recordURL(_ id: PackID) -> URL { packDirectory(id).appending(path: "pack.json") }
     func layerDirectory(_ id: PackID, layer: Layer) -> URL { packDirectory(id).appending(path: layer.rawValue, directoryHint: .isDirectory) }
-    func fileURL(_ id: PackID, layer: Layer, fileName: String) -> URL { layerDirectory(id, layer: layer).appending(path: fileName) }
+    func fileURL(_ id: PackID, layer: Layer, sha256: String, fileName: String) -> URL {
+        layerDirectory(id, layer: layer).appending(path: sha256, directoryHint: .isDirectory).appending(path: fileName)
+    }
     func downloadURL(fileName: String) -> URL { downloadsDirectory.appending(path: fileName) }
     func resumeDataURL(fileName: String) -> URL { downloadsDirectory.appending(path: fileName + ".resume") }
 

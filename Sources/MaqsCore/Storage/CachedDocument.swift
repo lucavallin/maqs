@@ -21,9 +21,13 @@ struct CachedDocument: Sendable {
     func write(data: Data, meta: Meta) throws {
         do {
             try data.write(to: dataURL, options: .atomic)
-            try JSONEncoder().encode(meta).write(to: metaURL, options: .atomic)
         } catch {
             throw StorageError.writeFailed(dataURL.lastPathComponent)
+        }
+        do {
+            try JSONEncoder().encode(meta).write(to: metaURL, options: .atomic)
+        } catch {
+            throw StorageError.writeFailed(metaURL.lastPathComponent)
         }
     }
 
