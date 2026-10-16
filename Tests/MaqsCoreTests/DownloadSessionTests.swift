@@ -16,19 +16,42 @@ import MaqsTestSupport
     }
 
     func session() -> DownloadSession {
-        DownloadSession(configuration: server.configuration, userAgent: "T Maqs/0", orphanDirectory: layout.downloadsDirectory)
+        DownloadSession(configuration: server.configuration, userAgent: "T Maqs/0", layout: layout)
     }
 
-    func request(_ name: String) -> DownloadSession.Request {
-        DownloadSession.Request(url: URL(string: "https://github.com/dl/\(name)")!, fileName: name,
-                                destination: layout.downloadURL(fileName: name), resumeDataURL: layout.resumeDataURL(fileName: name))
+    func request(_ key: String) -> DownloadSession.Request {
+        DownloadSession.Request(url: URL(string: "https://github.com/dl/\(key)")!, key: key)
     }
 
-    func downloadExists(_ name: String) -> Bool {
-        FileManager.default.fileExists(atPath: layout.downloadURL(fileName: name).path(percentEncoded: false))
+    func downloadExists(_ key: String) -> Bool {
+        FileManager.default.fileExists(atPath: layout.downloadURL(fileName: key).path(percentEncoded: false))
     }
 
-    @Test("a download lands at its destination, reports progress, and sends the User-Agent")
+    func downloaded(_ key: String) throws -> String {
+        try String(contentsOf: layout.downloadURL(fileName: key), encoding: .utf8)
+    }
+
+    /// Routes `key` to a delayed response and returns a stream that yields each time a request for it reaches the stub.
+    func routeDelayed(_ key: String, body: String, delay: TimeInterval) -> AsyncStream<Void> {
+        let (reached, continuation) = AsyncStream<Void>.makeStream()
+        server.route(request(key).url) { _ in
+            continuation.yield()
+            return StubResponse(status: 200, body: Data(body.utf8), delay: delay)
+        }
+        return reached
+    }
+
+    func expectCancelled(_ task: Task<Void, any Error>) async {
+        let error = await #expect(throws: TransferError.self) { try await task.value }
+        guard case .cancelled = error else {
+            Issue.record("expected cancellation, got \(String(describing: error))")
+            return
+        }
+    }
+
+    // MARK: Transfers
+
+    @Test("a download lands at its key's destination, reports progress, and sends the User-Agent")
     func success() async throws {
         let body = Data(repeating: 1, count: 50_000)
         server.route(request("a.bin").url, body: body)
@@ -47,6 +70,13 @@ import MaqsTestSupport
         #expect(!downloadExists("b.bin"))
     }
 
+    @Test("a fresh task answered with 206 is an http error and leaves no file")
+    func partialContentOnFreshTask() async throws {
+        server.route(request("p.bin").url, status: 206, body: Data("part".utf8))
+        await #expect(throws: TransferError.http(206)) { try await session().download(request("p.bin")) { _ in } }
+        #expect(!downloadExists("p.bin"))
+    }
+
     @Test("a transport failure is a transport error and leaves no file")
     func transportFailure() async throws {
         server.route(request("t.bin").url) { _ in StubResponse(transportError: .networkConnectionLost) }
@@ -63,10 +93,10 @@ import MaqsTestSupport
         try Data("old".utf8).write(to: layout.downloadURL(fileName: "c.bin"))
         server.route(request("c.bin").url, body: Data("new".utf8))
         try await session().download(request("c.bin")) { _ in }
-        #expect(try String(contentsOf: layout.downloadURL(fileName: "c.bin"), encoding: .utf8) == "new")
+        #expect(try downloaded("c.bin") == "new")
     }
 
-    @Test("concurrent downloads on one session do not mix up their destinations")
+    @Test("concurrent downloads of different keys on one session do not mix up their destinations")
     func concurrent() async throws {
         for i in 0..<5 { server.route(request("f\(i).bin").url, body: Data("file \(i)".utf8)) }
         let session = session()
@@ -74,24 +104,33 @@ import MaqsTestSupport
             for i in 0..<5 { group.addTask { try await session.download(self.request("f\(i).bin")) { _ in } } }
             try await group.waitForAll()
         }
-        for i in 0..<5 {
-            #expect(try String(contentsOf: layout.downloadURL(fileName: "f\(i).bin"), encoding: .utf8) == "file \(i)")
-        }
+        for i in 0..<5 { #expect(try downloaded("f\(i).bin") == "file \(i)") }
     }
+
+    @Test("unusable resume data is discarded and the download starts fresh", arguments: ["not a property list", "empty dictionary"])
+    func unusableResumeData(kind: String) async throws {
+        let blob = kind == "empty dictionary"
+            ? try PropertyListSerialization.data(fromPropertyList: [String: String](), format: .binary, options: 0)
+            : Data(kind.utf8)
+        try blob.write(to: layout.resumeDataURL(fileName: "r.bin"))
+        server.route(request("r.bin").url, body: Data("fresh".utf8))
+        try await session().download(request("r.bin")) { _ in }
+        #expect(try downloaded("r.bin") == "fresh")
+        #expect(server.requests.count == 1)
+        #expect(!FileManager.default.fileExists(atPath: layout.resumeDataURL(fileName: "r.bin").path(percentEncoded: false)))
+    }
+
+    // MARK: Cancellation
 
     @Test("cancelling a running download throws cancelled and leaves no destination file")
     func cancel() async throws {
-        server.route(request("slow.bin").url) { _ in StubResponse(status: 200, body: Data(repeating: 2, count: 1_000), delay: 2) }
+        let reached = routeDelayed("slow.bin", body: "slow", delay: 5)
         let session = session()
         let task = Task { try await session.download(self.request("slow.bin")) { _ in } }
-        try await Task.sleep(for: .milliseconds(200))
+        var iterator = reached.makeAsyncIterator()
+        _ = await iterator.next()
         session.cancel(url: request("slow.bin").url)
-        do {
-            try await task.value
-            Issue.record("expected cancellation")
-        } catch let error as TransferError {
-            guard case .cancelled = error else { Issue.record("wrong error \(error)"); return }
-        }
+        await expectCancelled(task)
         #expect(!downloadExists("slow.bin"))
     }
 
@@ -103,9 +142,107 @@ import MaqsTestSupport
             withUnsafeCurrentTask { $0?.cancel() }
             try await session.download(self.request("late.bin")) { _ in }
         }
-        await #expect(throws: TransferError.cancelled(resumeData: nil)) { try await task.value }
+        await expectCancelled(task)
         #expect(!downloadExists("late.bin"))
     }
+
+    // MARK: One task per key
+
+    @Test("two downloads of one key share one request and both complete")
+    func sharedTransfer() async throws {
+        let reached = routeDelayed("s.bin", body: "shared", delay: 2)
+        let session = session()
+        let first = Task { try await session.download(self.request("s.bin")) { _ in } }
+        var reachedIterator = reached.makeAsyncIterator()
+        _ = await reachedIterator.next()
+        let (joined, joinedContinuation) = AsyncStream<Int64>.makeStream()
+        let second = Task { try await session.download(self.request("s.bin")) { joinedContinuation.yield($0) } }
+        var joinedIterator = joined.makeAsyncIterator()
+        _ = await joinedIterator.next()
+        try await first.value
+        try await second.value
+        #expect(server.requests.count == 1)
+        #expect(try downloaded("s.bin") == "shared")
+    }
+
+    @Test("cancelling a shared transfer cancels every download waiting on it")
+    func sharedCancel() async throws {
+        let reached = routeDelayed("sc.bin", body: "shared", delay: 5)
+        let session = session()
+        let first = Task { try await session.download(self.request("sc.bin")) { _ in } }
+        var reachedIterator = reached.makeAsyncIterator()
+        _ = await reachedIterator.next()
+        let (joined, joinedContinuation) = AsyncStream<Int64>.makeStream()
+        let second = Task { try await session.download(self.request("sc.bin")) { joinedContinuation.yield($0) } }
+        var joinedIterator = joined.makeAsyncIterator()
+        _ = await joinedIterator.next()
+        session.cancel(url: request("sc.bin").url)
+        await expectCancelled(first)
+        await expectCancelled(second)
+        #expect(server.requests.count == 1)
+        #expect(!downloadExists("sc.bin"))
+    }
+
+    @Test("a download joins a running task for its key that it did not start, as after a relaunch")
+    func joinsRestoredTask() async throws {
+        let reached = routeDelayed("o.bin", body: "restored", delay: 2)
+        let session = session()
+        let restored = session.urlSession.downloadTask(with: request("o.bin").url)
+        restored.taskDescription = "o.bin"
+        restored.resume()
+        var reachedIterator = reached.makeAsyncIterator()
+        _ = await reachedIterator.next()
+        let progress = Mutex<[Int64]>([])
+        try await session.download(request("o.bin")) { bytes in progress.withLock { $0.append(bytes) } }
+        #expect(server.requests.count == 1)
+        #expect(try downloaded("o.bin") == "restored")
+        #expect(progress.withLock { $0.first } == 0)
+    }
+
+    @Test("a task with no caller that fails keeps its resume data under its key")
+    func orphanFailureKeepsResumeData() throws {
+        let session = session()
+        let other = URLSession(configuration: .ephemeral)
+        let orphan = other.downloadTask(with: request("lost.bin").url)
+        orphan.taskDescription = "lost.bin"
+        let error = NSError(domain: NSURLErrorDomain, code: NSURLErrorCancelled,
+                            userInfo: [NSURLSessionDownloadTaskResumeData: Data("resume".utf8)])
+        session.urlSession(other, task: orphan, didCompleteWithError: error)
+        #expect(try Data(contentsOf: layout.resumeDataURL(fileName: "lost.bin")) == Data("resume".utf8))
+        orphan.cancel()
+    }
+
+    // MARK: Background events
+
+    @Test("a background handler set before the events finish runs once, on the main thread")
+    func backgroundHandlerFirst() async {
+        let session = session()
+        let (calls, callsContinuation) = AsyncStream<Bool>.makeStream()
+        session.setBackgroundCompletionHandler { callsContinuation.yield(Thread.isMainThread) }
+        session.urlSessionDidFinishEvents(forBackgroundURLSession: URLSession.shared)
+        session.urlSessionDidFinishEvents(forBackgroundURLSession: URLSession.shared)
+        await MainActor.run {}
+        callsContinuation.finish()
+        var seen: [Bool] = []
+        for await onMain in calls { seen.append(onMain) }
+        #expect(seen == [true])
+    }
+
+    @Test("a background handler set after the events finished runs at once, and only that one")
+    func backgroundEventsFirst() async {
+        let session = session()
+        let (calls, callsContinuation) = AsyncStream<String>.makeStream()
+        session.urlSessionDidFinishEvents(forBackgroundURLSession: URLSession.shared)
+        session.setBackgroundCompletionHandler { callsContinuation.yield(Thread.isMainThread ? "first on main" : "first") }
+        session.setBackgroundCompletionHandler { callsContinuation.yield("second") }
+        await MainActor.run {}
+        callsContinuation.finish()
+        var seen: [String] = []
+        for await call in calls { seen.append(call) }
+        #expect(seen == ["first on main"])
+    }
+
+    // MARK: Rules
 
     @Test("a fresh task succeeds only on 200; a task resumed from resume data also on 206", arguments: [
         (200, false, true), (206, false, false), (200, true, true), (206, true, true),
@@ -115,10 +252,27 @@ import MaqsTestSupport
         #expect(DownloadSession.isSuccess(status: status, resumed: resumed) == success)
     }
 
-    @Test("sha256 of a file matches CryptoKit over its bytes")
+    @Test("a key is one path component", arguments: [
+        ("a.bin", true), ("0123abcd-veneto-trails.v1.sqlite", true), ("..a", true),
+        ("", false), (".", false), ("..", false), ("a/b", false), ("/a", false), ("../a", false),
+    ])
+    func keyValidation(key: String, valid: Bool) {
+        #expect((DownloadSession.Request.validKey(key) != nil) == valid)
+    }
+
+    @Test("a request with a key that is not one path component stops the program")
+    func invalidKeyTraps() async {
+        await #expect(processExitsWith: .failure) {
+            _ = DownloadSession.Request(url: URL(string: "https://github.com/dl/x")!, key: "../x")
+        }
+    }
+
+    // MARK: Hash and progress
+
+    @Test("sha256 of a file larger than one read chunk matches CryptoKit over its bytes")
     func hash() throws {
         let url = layout.downloadURL(fileName: "h.bin")
-        let data = Data((0..<300_000).map { UInt8($0 % 251) })
+        let data = Data((0..<2_621_440).map { UInt8($0 % 251) })
         try data.write(to: url)
         #expect(try FileHash.sha256(of: url) == SHA256Hex.hex(of: data))
     }

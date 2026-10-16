@@ -1,6 +1,6 @@
 /// Bytes received so far and the total expected, summed over every file of a pack.
 public struct DownloadProgress: Sendable, Equatable {
-    /// Bytes received so far, including bytes kept from an earlier, resumed attempt.
+    /// Bytes the pack's current transfers have received so far.
     public let bytesReceived: Int64
     /// Bytes expected in total, as the manifest lists them; 0 when unknown.
     public let totalBytes: Int64
