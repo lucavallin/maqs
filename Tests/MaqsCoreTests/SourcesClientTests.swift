@@ -117,7 +117,7 @@ import MaqsTestSupport
         .init(name: "tiles without {y}", layer: "basemap", change: { $0["tiles"] = "https://t.example/{z}/{x}" },
               message: "basemap.[0].tiles: must be https and contain {z}, {x} and {y}"),
         .init(name: "http tilejson", layer: "basemap", change: { $0["tilejson"] = "http://t.example/tiles.json" },
-              message: "basemap.[0].tilejson: must be https"),
+              message: "basemap.[0].tilejson: must be an https URL with a host and no credentials"),
         .init(name: "negative min zoom", layer: "basemap", change: { $0["min_zoom"] = -1 },
               message: "basemap.[0].min_zoom: must be between 0 and max_zoom, at most 22"),
         .init(name: "min above max", layer: "basemap", change: { $0["min_zoom"] = 15 },
@@ -134,7 +134,49 @@ import MaqsTestSupport
               message: "terrain.[0].tile_size: must be 256 or 512"),
         .init(name: "odd tile size", layer: "terrain", change: { $0["tile_size"] = 300 },
               message: "terrain.[0].tile_size: must be 256 or 512"),
+        .init(name: "uppercase placeholder", layer: "basemap", change: { $0["tiles"] = "https://t.example/{Z}/{x}/{y}" },
+              message: "basemap.[0].tiles: must be https and contain {z}, {x} and {y}"),
+        .init(name: "tiles without host", layer: "basemap", change: { $0["tiles"] = "https:///{z}/{x}/{y}" },
+              message: "basemap.[0].tiles: must be an https URL with a host and no credentials"),
+        .init(name: "tiles with credentials", layer: "terrain", change: { $0["tiles"] = "https://u:p@t.example/{z}/{x}/{y}" },
+              message: "terrain.[0].tiles: must be an https URL with a host and no credentials"),
+        .init(name: "tilejson with credentials", layer: "terrain", change: { $0["tilejson"] = "https://u@t.example/tiles.json" },
+              message: "terrain.[0].tilejson: must be an https URL with a host and no credentials"),
+        .init(name: "tilejson without host", layer: "basemap", change: { $0["tilejson"] = "https:///tiles.json" },
+              message: "basemap.[0].tilejson: must be an https URL with a host and no credentials"),
+        .init(name: "id not kebab-case", layer: "basemap", change: { $0["id"] = "Versa_Tiles" },
+              message: "basemap.[0].id: must be lowercase kebab-case"),
+        .init(name: "basemap schema", layer: "basemap", change: { $0["schema"] = "terrarium" },
+              message: "basemap.[0].schema: must be shortbread-1.0"),
+        .init(name: "basemap format", layer: "basemap", change: { $0["format"] = "png" },
+              message: "basemap.[0].format: must be mvt"),
+        .init(name: "terrain schema", layer: "terrain", change: { $0["schema"] = "shortbread-1.0" },
+              message: "terrain.[0].schema: must be terrarium"),
+        .init(name: "terrain format", layer: "terrain", change: { $0["format"] = "mvt" },
+              message: "terrain.[0].format: must be webp or png"),
     ]
+
+    @Test("an empty layer list is rejected", arguments: ["basemap", "terrain"])
+    func emptyLayer(_ layer: String) throws {
+        var object = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: SourcesClient.bundledURL)) as? [String: Any])
+        var layers = try #require(object["layers"] as? [String: [[String: Any]]])
+        layers[layer] = []
+        object["layers"] = layers
+        let data = try JSONSerialization.data(withJSONObject: object)
+        #expect(throws: SourcesError.invalid("\(layer): must not be empty")) { try SourcesDocument.decode(data) }
+    }
+
+    @Test("a corrupt cached file falls back to the bundled copy and a refresh overwrites it without If-None-Match")
+    func corruptCache() async throws {
+        let cache = StorageLayout(root: tmp.url).sources
+        try cache.write(data: Data("{not json".utf8), meta: .init(etag: "\"old\"", fetchedAt: now))
+        #expect(client().current()?.basemap.first?.id == "versatiles-osm")
+        server.route(url, headers: ["ETag": "\"s2\""], body: try Data(contentsOf: SourcesClient.bundledURL))
+        _ = try await client().refresh(policy: .always)
+        #expect(server.requests[0].value(forHTTPHeaderField: "If-None-Match") == nil)
+        #expect(cache.read()?.meta.etag == "\"s2\"")
+        #expect(try SourcesDocument.decode(#require(cache.read()).data).version == 1)
+    }
 
     @Test("a document that breaks the schema is rejected naming the field only", arguments: invalidCases)
     func invalid(_ testCase: Invalid) throws {
