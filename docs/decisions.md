@@ -445,3 +445,55 @@ How the bytes split between tables and indexes has not been measured. The decisi
 - ADR 0008 lets an app run without online sources through an empty `sources.json` or an explicit opt-out. An empty file fails the schema, since each layer needs at least one source. Whether an app-side setting replaces the empty-file opt-out is open for the owner (status line).
 - A `dist/` built before the versioned names is rebuilt, not reused: `maqs manifest` refuses its reports.
 - The curvature size question (ADR 0011) is unaffected.
+
+---
+
+## 0013 — Release workflow
+
+**Date:** 2026-10-16 · **Status:** accepted (owner decision 2026-10-16)
+
+**Context.** Phase 3 of the brief asks for `build-maps.yml`: a monthly cron and a manual dispatch with optional `region` and `layers` inputs, one job that downloads the Geofabrik extract and shares it, a matrix job per region, and a final job that assembles `manifest.json`, creates the `data-YYYY-MM` release with `gh`, uploads every asset and marks the release latest. Re-running a month must replace its assets. The release is the production endpoint: every installed app reads `releases/latest/download/manifest.json`, so a month that failed halfway must never become latest. ADR 0012 adds two requirements. The new manifest is assembled with the latest published one as `--previous`, and no asset that a published manifest names may be deleted.
+
+**Decision.** `docs/architecture.md` describes the workflow step by step. In short:
+
+- Three jobs on `ubuntu-24.04`: `prepare` (15 min), a `build` matrix with one leg per target (45 min each) and `release` (20 min). The cron is `0 3 1 * *`, 03:00 UTC on the 1st. A run is full when both inputs are empty, which every cron run is. The workflow has `contents: read`, and only `release` gets `contents: write`. Runs share one concurrency group with `cancel-in-progress: false`, so a publishing run always finishes.
+- `prepare` runs `maqs check-config` and plans the run from `maqs regions --json`: the targets, the tag `data-$(date -u +%Y-%m)` and the layers. A full run targets every non-fixture region plus `base`. The job then restores `.cache/geofabrik` under `geofabrik-nord-est-<md5>`, the key `pipeline.yml` already uses, so both workflows share one cached extract. On a miss `maqs fetch --extract europe/italy/nord-est` downloads the file and checks its MD5, and the cache is saved when the job ends. On a hit the command does nothing.
+- Each `build` leg restores the extract with `fail-on-cache-miss`, so no leg downloads it again. It runs `maqs build --region <target> [--layers …]` and uploads `dist/<target>` as the artifact `dist-<target>`, kept 7 days. `fail-fast` is off.
+- `release` runs only on a full run whose legs all passed. It runs `maqs manifest`, `maqs check-config --manifest` and `maqs release-check` before any upload. `release-check` requires every file the manifest names under this tag to be in `dist/` with the manifest's bytes and SHA-256. A full run has built every region and base pack the tag needs, so `--regions` is not passed.
+- Publishing order: `gh release create <tag> --target "$GITHUB_SHA" --latest=false` when the tag is new; `gh release upload --clobber` for the assets; `manifest.json` after them, also with `--clobber`; then `gh release edit <tag> --latest`. A new release stays off latest until its manifest is up.
+- The previous manifest comes from the release that `gh release list` marks latest, and only when that release has a `manifest.json` asset. Any other `gh` error fails the step, because assembling without `--previous` by mistake would end ADR 0012's one-release window early with no error. Carried URLs are never rewritten, and the workflow deletes nothing on any release.
+- A dispatch with `region` or `layers` set is a subset run. It builds and uploads the artifacts for inspection and skips `release`.
+- Disk space is checked, not freed: `prepare` fails under 6 GB free, against the roughly 3 GB a run needs.
+- Third-party actions are pinned to a full commit SHA with the version in a comment, in both workflows (`astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0`). GitHub's own `actions/*` stay at major tags. `GH_TOKEN` is set only on the steps that call `gh`, every checkout has `persist-credentials: false`, and inputs and matrix values reach the shell through `env`. `pipeline/tests/test_workflows.py` checks these rules and the order of the release steps.
+
+**Verified on 2026-10-16.**
+
+| Fact | Verified value | Source |
+|---|---|---|
+| `gh release upload --clobber` | "Delete and re-upload existing assets of the same name". If the upload fails, the original is already gone | gh manual |
+| `gh release edit --latest` | exists | gh manual |
+| `gh release download` | without a tag it reads the latest release, and then `--pattern` is required | gh manual |
+| `gh release create` | a missing tag is created "from the latest state of the default branch" unless `--target` is given | gh manual |
+| Latest release | "the most recent non-prerelease, non-draft release, sorted by the created_at attribute", where `created_at` "is the date of the commit used for the release" | GitHub REST docs |
+| Runner disk | `ubuntu-24.04` had 86 GB free in `prepare`; ADR 0001 recorded about 20 GB | run 38901194493 |
+
+**Rejected.**
+- One sequential job: no isolation between regions and no parallelism.
+- Publishing subset runs. `maqs manifest` refuses a `data-YYYY-MM` manifest that lacks a non-fixture region or a base pack, and a release missing regions must never become latest.
+- A third-party "free disk space" action: one more pinned dependency, to reclaim space the runner already has.
+
+**CONTRADICTS BRIEF (minor):** Phase 3 lists `swift.yml`, but there is no `Package.swift` to build yet, so it moves to Phase 4. Phase 3 also asks to free disk space up front; the workflow checks it instead, as above.
+
+**Consequences.**
+- A same-month re-run reuses the tag and skips `gh release create`. It replaces same-named assets, `manifest.json` last, and marks the release latest. When that release already was latest, the previous manifest is the month's own, so ADR 0012's same-month rule applies. Older releases are not touched.
+- A failed build leg skips `release`, and a failed `maqs manifest`, `check-config` or `release-check` stops it before any upload. The month's release, if there is one, stays as it was.
+- On the first run of a month the new release is not latest until the last step. If an upload fails, the previous month stays latest and its manifest names only its own files.
+- Accepted failure mode, on a same-month re-run: an upload that fails midway leaves a mix of old and new assets while the old `manifest.json` still names the old SHA-256s. A client that verifies SHA-256 refuses the mismatched file and keeps its installed data, and the next run repairs the release. If the manifest upload itself fails, `--clobber` has already deleted the old manifest, and the latest release has none until the next run.
+- Phase 4 may assume that `manifest.json` is uploaded after every file it names. On a SHA-256 mismatch the client re-fetches the manifest and never installs the file; a missing manifest is a failed update check.
+- The tag points at the commit the run built from. Two months tagged on the same commit tie on `created_at`, which is why the workflow sets latest explicitly.
+- A region from another Geofabrik extract needs `build-maps.yml` changed as well as `regions.yaml`. The cache key and the `maqs fetch` call name `europe/italy/nord-est`, and `prepare` fails while `regions.yaml` lists any other extract.
+- The first release is a dispatch on `main` with both inputs empty, after a subset run has proven the build legs, and only on the owner's go. With no release yet there is no previous manifest, and that path through `gh release list` runs for the first time then. Afterwards `releases/latest/download/manifest.json` must return the file, and `maqs check-config --manifest` must accept it.
+
+**Measurements.** A subset dispatch on 2026-10-16, `gh workflow run build-maps.yml -f region=test` (run 38901194493): `prepare` took 12 s, with targets `["test"]`, release `data-2026-10`, full `false`, 86 GB free and a Geofabrik cache hit on the key shared with `pipeline.yml`. `build (test)` took 74 s, `release` was skipped, and the artifact `dist-test` was 3,394,402 bytes. `pipeline.yml` stayed green on the same commit.
+
+The first release had not been published when this ADR was written; its figures are appended below once it is.

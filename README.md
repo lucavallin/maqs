@@ -2,11 +2,20 @@
 
 Map data and a Swift package for native Apple apps: Shortbread basemap tiles, terrarium terrain, hiking trails, places and road curvature, per region. Online-first, offline optional, zero hosting cost: code in this repository, data as GitHub Release assets, compute in GitHub Actions. One map provider, [VersaTiles](https://versatiles.org), serves every tile online and offline.
 
-**Status:** the pipeline builds all five layers of a region (basemap, terrain, trails, places, curvature) and the bundled base packs, and writes `manifest.json` from the build reports. The release workflow and the Swift package come next. [`docs/BRIEF.md`](docs/BRIEF.md) has the plan and [`docs/decisions.md`](docs/decisions.md) has every decision and the numbers behind it.
+**Status:** the pipeline builds all five layers of a region (basemap, terrain, trails, places, curvature) and the bundled base packs, and writes `manifest.json` from the build reports. A GitHub Actions workflow builds every region each month and publishes the files as a release. The Swift package comes next. [`docs/BRIEF.md`](docs/BRIEF.md) has the plan and [`docs/decisions.md`](docs/decisions.md) has every decision and the numbers behind it.
 
-## Data
+## Data releases
 
-Data releases will be GitHub Releases tagged `data-YYYY-MM`, one a month, each with every region's files and a `manifest.json`; none is published yet. Clients will read `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json`, which lists each file with its size, its SHA-256 and a URL pinned to its release. The online tile sources are in [`config/sources.json`](config/sources.json), which clients will read from `main`. A client picks the files it can read by the [compatibility rule](docs/data-format.md#compatibility-rule).
+A GitHub Actions workflow, [`build-maps.yml`](.github/workflows/build-maps.yml), builds every region at 03:00 UTC on the 1st of each month and publishes a GitHub Release tagged `data-YYYY-MM`, marked latest. The release holds the files of every region except the `test` fixture, the base packs and a `manifest.json`. Clients read `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json`, which lists each file with its size, its SHA-256 and a URL pinned to its release. The online tile sources are in [`config/sources.json`](config/sources.json), which clients will read from `main`. A client picks the files it can read by the [compatibility rule](docs/data-format.md#compatibility-rule).
+
+To run the workflow by hand, for example after a failed month:
+
+```sh
+gh workflow run build-maps.yml                 # every region and the base packs; publishes this month's release
+gh workflow run build-maps.yml -f region=test  # one region (or base): builds it and uploads the dist-test artifact; publishes nothing
+```
+
+A run in a month that already has a release replaces that release's files and its manifest. It never deletes a file that a published manifest names. A dispatch with `-f region=…` or `-f layers=…` only builds, and keeps its outputs as workflow artifacts for 7 days. [`docs/architecture.md`](docs/architecture.md#data-releases) explains the jobs, and ADR 0013 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
 
 ## Build a region locally
 

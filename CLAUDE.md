@@ -11,7 +11,7 @@ This file governs *how you work* in this repository. Section 1 and the Stack cus
 
 `docs/BRIEF.md` is the source of truth for *what* to build, in what order, and which decisions are already made; it was amended after Phase 0 and `docs/decisions.md` records why. The owner's standing rules sit at the top of the brief: one map provider online and offline, as few providers as possible, nothing unmaintained, trail data from more than one source. This file governs *how*. When the two disagree, say so; do not silently pick one.
 
-**Where we are:** Phase 0 (verification) is done and recorded in `docs/decisions.md` ADRs 0001–0006. Phase 1 (pipeline) is next. The brief's phases are strictly ordered; each ends with a summary and waits for the go-ahead. Commands, paths, and file names below describe the contract the brief defines; a command that does not run yet is not a bug, it is a phase that has not happened.
+**Where we are:** Phases 0–2 are done and recorded in `docs/decisions.md` ADRs 0001–0012. Phase 3 (the release workflow) is in progress: `build-maps.yml` runs and ADR 0013 records it; the first data release has not been published yet. The brief's phases are strictly ordered; each ends with a summary and waits for the go-ahead. Commands, paths, and file names below describe the contract the brief defines; a command that does not run yet is not a bug, it is a phase that has not happened.
 
 ### Explicitly out of scope
 - Any reference to the consuming apps: their names, bundle ids, styles, or needs beyond what the public API expresses.
@@ -63,8 +63,8 @@ Pipeline: Python managed with `uv` in `pipeline/`, entry point `uv run maqs buil
 | Environment | Purpose | Shared? | Reach it via |
 |---|---|---|---|
 | local (macOS) | package build/tests, `test`-region pipeline runs, the demo app | no | `swift build` / `swift test`, `uv run maqs build --region test`, Xcode for the demo |
-| CI `ubuntu-24.04` | the data pipeline per region | no (ephemeral) | `pipeline.yml` (today: lint, tests, `test`-region smoke build), `build-maps.yml` (Phase 3) |
-| CI `macos-latest` | package build + tests, iOS Simulator and macOS | no (ephemeral) | `swift.yml` |
+| CI `ubuntu-24.04` | the data pipeline per region | no (ephemeral) | `pipeline.yml` (lint, tests, `test`-region smoke build), `build-maps.yml` (monthly region builds and the data release; a dispatch with `region` or `layers` builds without publishing) |
+| CI `macos-latest` | package build + tests, iOS Simulator and macOS | no (ephemeral) | `swift.yml` (Phase 4) |
 | GitHub Releases `data-YYYY-MM` | **the production data endpoint**: every installed app fetches `releases/latest/download/manifest.json` from here | **yes — public, consumed by shipped apps** | `gh release` from the workflow only; never hand-upload |
 | `main` | **also production**: clients fetch `config/sources.json` from `main` at runtime | **yes** | push |
 
@@ -86,13 +86,13 @@ config/sources.json        # online providers, priority order — fetched by cli
 config/regions.yaml        # region id, names (it/en), bbox — adding a region is one entry here
 config/schemas/            # JSON Schemas for manifest.json and sources.json; CI validates against them
 pipeline/                  # Python (uv) orchestrator + per-layer steps; bootstrap.sh installs pinned CLIs
-pipeline/src/maqs/         # cli, config, validate, report, tools; cache.py (downloads), geometry.py (polyline6, circles), sqlite_out.py, overlay.py, pmtiles_*.py; layers.py (schema versions, output names), schemas.py (JSON Schema validation), manifest.py (manifest assembly)
+pipeline/src/maqs/         # cli, config, validate, report, tools; cache.py (downloads), geometry.py (polyline6, circles), sqlite_out.py, overlay.py, pmtiles_*.py; layers.py (schema versions, output names), schemas.py (JSON Schema validation), manifest.py (manifest assembly), release.py (pre-publish asset check, release notes)
 pipeline/src/maqs/steps/   # step runner and the tile layers
 pipeline/src/maqs/osm/     # Geofabrik download, osmium cuts, terrain sampling
 pipeline/src/maqs/trails/  # trail record, source adapters (sources/osm.py), merge, trails step
 pipeline/src/maqs/places/  # places step and rank_score
 pipeline/src/maqs/curvature/ # curvature score, corners, curvature step
-.github/workflows/         # pipeline.yml (pipeline lint, tests and test-region smoke build), build-maps.yml (data) and swift.yml (package)
+.github/workflows/         # pipeline.yml (pipeline lint, tests and test-region smoke build), build-maps.yml (monthly region builds and the data release, ADR 0013) and swift.yml (package, Phase 4)
 .cache/                    # downloaded inputs (gitignored, idempotent reuse)
 dist/<region>/             # build outputs (gitignored; Releases only, never git)
 ```
@@ -119,8 +119,13 @@ uv run ruff check . && uv run ruff format --check .        # pipeline lint/forma
 uv run maqs check-config [--manifest PATH]                 # regions.yaml, and sources.json (and the manifest) against their schemas
 uv run maqs manifest --release data-YYYY-MM [--previous PATH] # dist/manifest.json from every non-fixture region and the base packs
 uv run maqs manifest --release data-ci --regions test      # CI-only manifest from the test and base builds; never published
+uv run maqs regions [--json]                               # regions, base packs and Geofabrik extracts; build-maps.yml plans its matrix from --json
+uv run maqs fetch --extract europe/italy/nord-est          # download and MD5-check one Geofabrik extract into .cache/; a no-op when it is there
+uv run maqs release-check --dist DIR --manifest PATH [--notes PATH] # every file the manifest names for its release is in DIR with its bytes and sha256
 
-# Data release (the workflow does this; run by hand only to debug)
+# Data release (only build-maps.yml publishes; never upload by hand)
+gh workflow run build-maps.yml                             # full run: every non-fixture region + base, publishes data-YYYY-MM for the current month (the cron runs it at 03:00 UTC on the 1st)
+gh workflow run build-maps.yml -f region=test              # subset run: one target (a region or base), artifact dist-<target>, never publishes
 gh release view --json tagName,assets                      # inspect the latest data release
 ```
 Grep xcodebuild output for `": error:"`; a bare `error` matches unrelated tool paths. Swift Testing prints a fake XCTest summary ("Executed 0 tests") — read the `Test run with N tests` line.
@@ -200,7 +205,7 @@ Grep xcodebuild output for `": error:"`; a bare `error` matches unrelated tool p
 |---|---|---|---|
 | Swift unit | Swift Testing (`@Suite`/`@Test`) | manifest/schema parsing (valid, each invalid case, unknown versions), compatibility rule, PMTiles reader against fixtures (valid, truncated, corrupt), terrarium decoding with known values, bilinear sampling, profile corrections, SQLite queries against `test`-region fixtures, download verification (bad checksum rejected, atomic install), style assembly online/offline, attribution correctness | `Tests/<Module>Tests/<Type>Tests.swift`, one target per product |
 | Pipeline unit | pytest | corner detection geometry (three-point radius, direction), `rank_score`, relation ordering and flagging, size limit, checksum/report generation, schema validation | `pipeline/tests/test_<step>.py` |
-| Pipeline end-to-end | `uv run maqs build --region test` | every layer, every output, validated and under budget; produces the Swift fixtures | CI `build-maps.yml` on PRs (test region only) |
+| Pipeline end-to-end | `uv run maqs build --region test` | every layer, every output, validated and under budget; produces the Swift fixtures | CI `pipeline.yml` smoke job, on pushes and PRs that touch the pipeline |
 | Demo / manual | `Examples/MaqsDemo` | online map, download test region, airplane-mode map, trail search, places along a bearing, elevation profile | run by hand before a package release; steps in the README |
 
 Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite files for corruption cases. Never a real region's files, never anything over a few MB, never a user's position.
@@ -232,7 +237,7 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **A `.poly` file holds several sections, and `osmium extract --polygon` takes exactly one file.** A clip of several admin relations (`triveneto`) is one `.poly` with one section per ring.
 - **`|` is a character of the encoded-polyline alphabet** (codes 63–126), so it can never separate polylines in text. Trail legs are joined by `;`.
 - **PMTiles sources cannot use MapLibre offline packs** (an ambient cache for remote PMTiles exists since 6.27, irrelevant to us). Offline is our PMTiles files plus bundled glyphs and sprite; a style that references remote glyphs or sprites breaks offline silently (labels disappear).
-- **`releases/latest/download/<asset>` resolves "latest" by GitHub's rules** (most recent non-draft, non-prerelease by creation date). Re-running a month must update the existing release's assets, not create a second release with the same tag or a prerelease; verify the behaviour and record it in Phase 3's ADR.
+- **`releases/latest/download/<asset>` resolves "latest" by GitHub's rules** (most recent non-draft, non-prerelease, ordered by `created_at`, which is the tagged commit's date; ADR 0013). Re-running a month updates the existing release's assets with `--clobber`; it never creates a second release with the same tag or a prerelease.
 - **GitHub Release assets are capped at 2 GiB**; we enforce 1.9 GiB. A region that exceeds it needs a split or a lower max zoom — decided by ADR, never by raising the limit.
 - **No Git LFS, no generated data in git.** `dist/` and `.cache/` are gitignored; a `.pmtiles` or `.sqlite` in a commit is a mistake to revert, not to keep.
 - **The GitHub REST API is 60 requests/hour unauthenticated.** One app checking for updates via the API would exhaust it across a few users. Clients never call `api.github.com`.
@@ -243,11 +248,15 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **`versatiles convert --bbox` on a remote `.versatiles` file is a range-request extract.** If a step is downloading the whole planet file, something is wrong — stop it.
 - **The one-tile `--bbox-border` ring costs at least ~15 MB at z0–11, however small the bbox** (a 200 m bbox still came to 17.4 MB), so the `test` fixture sets `bbox_border: 0` in `regions.yaml` to stay under 5 MB; real regions keep the default of 1 (ADR 0009).
 - **macOS CI runners are slow and scarce.** `swift.yml` must not run on data-only or docs-only changes; use `paths` filters. Diagnose locally, batch fixes, never re-run CI casually.
-- **Free disk space on the Ubuntu runner is small** relative to a Geofabrik PBF plus extracts plus tiles. The workflow frees space up front and the matrix job must not download the PBF per region (shared artifact or cache).
+- **Disk space on the Ubuntu runner is checked, not freed.** `ubuntu-24.04` reported 86 GB free on 2026-10-16 (ADR 0001 had recorded about 20 GB); `prepare` fails under 6 GB. The matrix legs must not download the PBF per region: they restore the cache `prepare` warms, with `fail-on-cache-miss` (ADR 0013).
 - **`swift test` on macOS does not exercise the iOS Simulator leg**; availability differences (`Network.framework`, background `URLSession` behaviour) only show there. Run the simulator leg before declaring Phase 4 work done.
 - **Swift Testing prints a fake XCTest summary** ("Executed 0 tests"); read `Test run with N tests`. Grep xcodebuild output for `": error:"`, not `error`.
 - **Ubuntu's apt ships old osmium-tool (1.16) and tippecanoe (2.49).** `bootstrap.sh` fetches or builds current versions on Linux; Homebrew is current on macOS.
 - **GitHub picks "latest" by the tagged commit's date**, not the publish date. After re-uploading a month's assets, call `gh release edit <tag> --latest` explicitly.
+- **`gh release upload --clobber` deletes before it uploads.** If the upload fails, the old asset is gone. `build-maps.yml` uploads `manifest.json` after every other asset, so a failure leaves files that disagree with the old manifest's SHA-256 (clients refuse them), not a manifest naming files that are not there (ADR 0013).
+- **`gh release create` tags the default branch head — pass `--target $GITHUB_SHA`.** Without `--target`, a missing tag is created from the latest state of the default branch, not from the commit the data was built from.
+- **Subset dispatches never publish; only a full run assembles the manifest.** A dispatch with `region` or `layers` builds and uploads `dist-<target>` artifacts and skips the `release` job. Publishing takes the cron or a dispatch with both inputs empty.
+- **`build-maps.yml` knows one Geofabrik extract.** Its cache key (`geofabrik-nord-est-<md5>`, shared with `pipeline.yml`) and its `maqs fetch` call name `europe/italy/nord-est`, and `prepare` fails while `regions.yaml` lists another. A region from another extract is a `regions.yaml` entry plus a workflow change.
 - **Every manifest `url` is tag-pinned; only `manifest.json` itself is fetched through `releases/latest/download/`.** A `latest` URL inside the manifest fails the schema. `data-ci` passes it, but only CI uses it and a `data-ci` manifest is never published.
 - **`maqs manifest --previous` carries only entries built for the previous release** (URL tag == its `release`), or every lower entry on a same-month re-run; a carried URL must keep its original tag or the window never closes.
 - **Output files carry the schema version (`veneto-trails.v1.sqlite`).** A `dist/` from before 2026-10-16 is rebuilt, not reused; `maqs manifest` refuses its reports.
@@ -257,7 +266,7 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 ### Git and CI
 - Solo-maintainer repo: commit and push **directly to `main` when asked** — this deliberately overrides §13's open-a-PR rule until branch protection is enabled. Never force-push. The brief asks for one commit per phase (or per meaningful chunk within one).
 - Commit style: `type(scope): summary` conventional-ish messages with a body that records diagnoses and decisions.
-- Merge bar (CI gates): `pipeline.yml` today — ruff, the pipeline unit tests, and the `test`-region smoke build with the live network test; from Phase 4 `swift.yml` — build + tests on iOS Simulator and macOS, warnings as errors; from Phase 3 `build-maps.yml` on PRs — `test` region end to end, schema validation, size limit, checksums. All from a clean checkout.
+- Merge bar (CI gates): `pipeline.yml` — ruff, the pipeline unit tests, and the `test`-region smoke build with the live network test and a validated `data-ci` manifest; from Phase 4 `swift.yml` — build + tests on iOS Simulator and macOS, warnings as errors. All from a clean checkout. `build-maps.yml` is not a PR gate: it runs on the monthly cron and on dispatch, and checks schema, sizes and checksums before it publishes.
 - Versioning: the **package** follows SemVer tags `vX.Y.Z` (consumers pin a version); **data** releases are `data-YYYY-MM`, monthly, latest-marked. A breaking change to a file format bumps that layer's `layer_schema_version`; a breaking change to the manifest bumps `manifest_version`; both are documented with the compatibility rule in `docs/data-format.md`.
 - Public API stability: the Swift public API follows SemVer (additive in minor, removals only in major after a deprecation window with `@available(*, deprecated)`). The data formats are the other public API: an old client must find data it understands in a new manifest — that rule is in `docs/data-format.md` and is tested.
 
