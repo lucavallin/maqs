@@ -129,3 +129,21 @@ def test_summary_shows_how_many_entries_were_carried():
     run = release_step("Summary")["run"]
     assert "carried=$(grep '^carried ' assets.txt)" in run
     assert '"$carried"' in run and "$GITHUB_STEP_SUMMARY" in run
+
+
+def prepare_step(name: str) -> dict:
+    steps = load("build-maps.yml")["jobs"]["prepare"]["steps"]
+    return next(s for s in steps if s.get("name") == name)
+
+
+def test_only_a_run_on_main_is_full_and_publishes():
+    plan = prepare_step("Plan the run")["run"]
+    gate = (
+        'if [[ "$GITHUB_REF" != refs/heads/main ]];'
+        ' then echo "not on main: build only"; full=false; fi'
+    )
+    assert gate in plan
+    assert plan.index("then full=true; else full=false; fi") < plan.index(gate)
+    assert plan.index(gate) < plan.index('echo "full=$full" >> "$GITHUB_OUTPUT"')
+    release_if = load("build-maps.yml")["jobs"]["release"]["if"]
+    assert release_if == "needs.prepare.outputs.full == 'true' && github.ref == 'refs/heads/main'"
