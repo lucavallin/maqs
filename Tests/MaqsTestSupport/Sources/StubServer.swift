@@ -118,5 +118,8 @@ final class StubURLProtocol: URLProtocol {
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() { stopped.withLock { $0 = true } }
+    override func stopLoading() {
+        stopped.withLock { $0 = true }
+        NSObject.cancelPreviousPerformRequests(withTarget: self)
+    }
 }
