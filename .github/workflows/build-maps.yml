@@ -189,24 +189,24 @@ jobs:
           mkdir -p dist
           for d in artifacts/dist-*; do mv "$d" "dist/${d#artifacts/dist-}"; done
           ls dist
+      # maqs previous-manifest picks the newest published data-YYYY-MM release with a
+      # manifest.json and fails when the newest one has none and is another month (ADR 0013).
+      # `gh api --paginate` prints one JSON array per page; `jq -s 'add'` joins them into one.
       - name: Fetch the latest published manifest
         shell: bash
+        working-directory: pipeline
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          mkdir -p previous
-          latest=$(gh release list --exclude-drafts --exclude-pre-releases --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName')
-          if [[ -n "$latest" ]]; then
-            assets=$(gh release view "$latest" --json assets --jq '.assets[].name')
-            if grep -qxF manifest.json <<<"$assets"; then
-              gh release download "$latest" --pattern manifest.json --dir previous
-              echo "previous manifest: $(jq -r .release previous/manifest.json) (release $latest)"
-            else
-              echo "latest release $latest has no manifest.json; treating as first release"
-            fi
+          mkdir -p "$GITHUB_WORKSPACE/previous"
+          gh api "repos/$GH_REPO/releases" --paginate | jq -s 'add' > "$GITHUB_WORKSPACE/releases.json"
+          prev=$(uv run maqs previous-manifest --releases "$GITHUB_WORKSPACE/releases.json" --release "$RELEASE")
+          if [[ "$prev" != none ]]; then
+            gh release download "$prev" --pattern manifest.json --dir "$GITHUB_WORKSPACE/previous"
+            echo "previous manifest: $(jq -r .release "$GITHUB_WORKSPACE/previous/manifest.json") (release $prev)"
           else
-            echo "no published release yet; first release"
+            echo "no published data release has a manifest.json; first release"
           fi
       - name: Assemble the manifest
         shell: bash
