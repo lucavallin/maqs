@@ -13,7 +13,7 @@ import click
 from maqs.config import DEFAULT_CONFIG_PATH, Config, ConfigError, load_config
 from maqs.context import BASE_TARGET, BuildContext
 from maqs.curvature.step import CurvatureStep
-from maqs.manifest import ManifestError, build_manifest, write_manifest
+from maqs.manifest import CI_RELEASE, ManifestError, build_manifest, write_manifest
 from maqs.places.step import PlacesStep
 from maqs.report import build_report, report_path, write_report
 from maqs.schemas import SchemaError, validate
@@ -41,7 +41,6 @@ LAYER_STEPS: dict[str, type] = {
 }
 DEFAULT_LAYERS: tuple[str, ...] = ("basemap", "terrain", "trails", "places", "curvature")
 RELEASE_TAG = re.compile(r"^data-[0-9]{4}-[0-9]{2}$")
-CI_RELEASE = "data-ci"
 LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
 
 
@@ -392,6 +391,10 @@ def manifest(
             previous_doc = json.loads(previous.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise click.ClickException(f"--previous {previous}: {exc}") from exc
+        try:
+            validate(previous_doc, "manifest")
+        except SchemaError as exc:
+            raise click.ClickException(f"--previous {previous}: {exc.path}: {exc.message}") from exc
     try:
         doc = build_manifest(cfg, dist, release, regions=region_ids, previous=previous_doc)
     except (ManifestError, SchemaError) as exc:

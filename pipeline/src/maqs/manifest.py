@@ -12,11 +12,12 @@ from pathlib import Path
 from maqs.config import BasePack, Config, Region
 from maqs.layers import STANDARD_LAYERS
 from maqs.report import report_path
-from maqs.schemas import validate
+from maqs.schemas import SchemaError, validate
 
 MANIFEST_VERSION = 1
 SHORTBREAD_VERSION = "1.0"
 REPO = "lucavallin/maqs"
+CI_RELEASE = "data-ci"
 VERSIONED_KEYS = frozenset({"layer", "layer_schema_version", "data_date"})
 OVERLAY_LAYERS = frozenset({"trails", "places"})
 
@@ -180,6 +181,35 @@ def carry_over(current: dict, previous: dict) -> dict:
     return merged
 
 
+def _check_previous(previous: dict, release: str) -> None:
+    """The previous manifest passes the schema and, for a dated release, is not a later one."""
+    try:
+        validate(previous, "manifest")
+    except SchemaError as exc:
+        raise ManifestError(f"previous manifest: {exc.path}: {exc.message}") from exc
+    earlier = previous["release"]
+    if release != CI_RELEASE and (earlier == CI_RELEASE or earlier > release):
+        raise ManifestError(
+            f"previous manifest {earlier} is not a dated release at or before {release}"
+        )
+
+
+def _check_entry_urls(manifest: dict) -> None:
+    """What the schema cannot tie together, on every entry, carried ones included."""
+    dated = manifest["release"] != CI_RELEASE
+    docs = [(r["id"], r) for r in manifest["regions"]]
+    docs += [(f"base-{b['id']}", b) for b in manifest["base"]]
+    for label, doc in docs:
+        for layer, entries in doc["layers"].items():
+            for e in entries:
+                if e["url"].rsplit("/", 1)[1] != e["file"]:
+                    raise ManifestError(
+                        f"{label}: {layer}: url {e['url']} does not name {e['file']}"
+                    )
+                if dated and url_tag(e["url"]) == CI_RELEASE:
+                    raise ManifestError(f"{label}: {layer}: {e['file']} points at {CI_RELEASE}")
+
+
 def build_manifest(
     config: Config,
     dist: Path,
@@ -193,6 +223,8 @@ def build_manifest(
     if moment.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     stamp = moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if previous is not None:
+        _check_previous(previous, release)
     if regions is None:
         ids = config.region_ids(include_fixtures=False)
     else:
@@ -214,6 +246,7 @@ def build_manifest(
     if previous is not None:
         manifest = carry_over(manifest, previous)
     validate(manifest, "manifest")
+    _check_entry_urls(manifest)
     return manifest
 
 

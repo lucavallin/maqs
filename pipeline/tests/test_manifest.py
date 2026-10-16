@@ -376,3 +376,53 @@ def test_a_rollback_to_a_lower_version_carries_nothing(cfg, full_dist):
     november = carry_over(_release(cfg, full_dist, "data-2026-11", 2), october)
     december = _release(cfg, full_dist, "data-2026-12", 1)
     assert carry_over(december, november) == december
+
+
+@pytest.fixture
+def bumped_dist(tmp_path):
+    """Every region and the base pack built, with veneto's trails at schema version 2."""
+    veneto = region_report("veneto")
+    for o in _trails_step(veneto)["outputs"]:
+        o["layer_schema_version"] = 2
+        o["file"] = o["file"].replace(".v1.", ".v2.")
+    return write_dist(tmp_path / "bumped", _reports(veneto=veneto))
+
+
+def test_a_previous_manifest_failing_the_schema_is_refused(cfg, full_dist):
+    previous = build_manifest(cfg, full_dist, "data-2026-10", now=NOW)
+    previous["release"] = "latest"
+    with pytest.raises(ManifestError, match="previous manifest: /release: "):
+        build_manifest(cfg, full_dist, "data-2026-11", previous=previous, now=NOW)
+
+
+def test_a_dated_release_refuses_a_data_ci_previous(cfg, full_dist):
+    previous = build_manifest(cfg, full_dist, "data-ci", regions=list(REGIONS), now=NOW)
+    with pytest.raises(ManifestError, match="previous manifest data-ci"):
+        build_manifest(cfg, full_dist, "data-2026-11", previous=previous, now=NOW)
+
+
+def test_a_dated_release_refuses_a_later_previous_but_takes_the_same_month(cfg, full_dist):
+    previous = build_manifest(cfg, full_dist, "data-2026-12", now=NOW)
+    with pytest.raises(ManifestError, match="previous manifest data-2026-12"):
+        build_manifest(cfg, full_dist, "data-2026-11", previous=previous, now=NOW)
+    same = build_manifest(cfg, full_dist, "data-2026-11", now=NOW)
+    build_manifest(cfg, full_dist, "data-2026-11", previous=same, now=NOW)
+
+
+def test_a_carried_url_that_does_not_name_its_file_fails(cfg, full_dist, bumped_dist):
+    previous = build_manifest(cfg, full_dist, "data-2026-10", now=NOW)
+    veneto = next(r for r in previous["regions"] if r["id"] == "veneto")
+    veneto["layers"]["trails"][0]["url"] = asset_url("data-2026-10", "veneto-places.v1.sqlite")
+    with pytest.raises(ManifestError, match=r"veneto: trails: url .* does not name veneto-trails"):
+        build_manifest(cfg, bumped_dist, "data-2026-11", previous=previous, now=NOW)
+
+
+def test_a_dated_release_never_carries_a_data_ci_url(cfg, full_dist, bumped_dist):
+    previous = build_manifest(cfg, full_dist, "data-2026-11", now=NOW)
+    veneto = next(r for r in previous["regions"] if r["id"] == "veneto")
+    for e in veneto["layers"]["trails"]:
+        e["url"] = e["url"].replace("/data-2026-11/", "/data-ci/")
+    with pytest.raises(
+        ManifestError, match="veneto: trails: veneto-trails.v1.sqlite points at data-ci"
+    ):
+        build_manifest(cfg, bumped_dist, "data-2026-11", previous=previous, now=NOW)
