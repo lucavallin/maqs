@@ -141,7 +141,7 @@ def test_default_dist_and_cache_sit_under_the_repo_root_not_the_cwd(monkeypatch,
         main, ["--config", str(config), "build", "--region", "test", "--layers", "basemap,terrain"]
     )
     assert result.exit_code == 0, result.output
-    assert (repo / "dist" / "test" / "test-basemap.pmtiles").exists()
+    assert (repo / "dist" / "test" / "test-basemap.v1.pmtiles").exists()
     assert (repo / "dist" / "test" / "build-report.json").exists()
     assert seen["dist"] == repo / "dist" and seen["cache"] == repo / ".cache"
     assert not (elsewhere / "dist").exists()
@@ -166,7 +166,7 @@ def test_build_runs_steps_and_writes_report(monkeypatch, tmp_path):
     assert report["tools"] == tools.PINS
     sources = [s["outputs"][0]["source"] for s in report["steps"]]
     assert sources == [tiles.OSM_SOURCE, tiles.ELEVATION_SOURCE]
-    assert (tmp_path / "test" / "test-basemap.pmtiles").exists()
+    assert (tmp_path / "test" / "test-basemap.v1.pmtiles").exists()
     second = build("--region", "test", "--layers", "basemap,terrain", "--dist", str(tmp_path))
     assert second.exit_code == 0 and "skipped" in second.output
 
@@ -239,11 +239,11 @@ def test_build_base_packs(monkeypatch, tmp_path):
     monkeypatch.setattr(tools, "run", fake_run)
     result = build("--region", "base", "--dist", str(tmp_path))
     assert result.exit_code == 0, result.output
-    assert (tmp_path / "base" / "base-triveneto-basemap.pmtiles").exists()
+    assert (tmp_path / "base" / "base-triveneto-basemap.v1.pmtiles").exists()
     report = json.loads((tmp_path / "base" / "build-report.json").read_text())
     assert report["region"] == "base" and report["validation"]["ok"] is True
     assert [s["name"] for s in report["steps"]] == ["base-triveneto"]
-    assert report["steps"][0]["outputs"][0]["file"] == "base-triveneto-basemap.pmtiles"
+    assert report["steps"][0]["outputs"][0]["file"] == "base-triveneto-basemap.v1.pmtiles"
 
 
 def test_build_base_puts_every_pack_in_one_report(monkeypatch, tmp_path):
@@ -272,8 +272,8 @@ def test_build_base_puts_every_pack_in_one_report(monkeypatch, tmp_path):
     )
     assert result.exit_code == 0, result.output
     assert sorted(p.name for p in (dist / "base").iterdir()) == [
-        "base-north-basemap.pmtiles",
-        "base-south-basemap.pmtiles",
+        "base-north-basemap.v1.pmtiles",
+        "base-south-basemap.v1.pmtiles",
         "build-report.json",
     ]
     report = json.loads((dist / "base" / "build-report.json").read_text())

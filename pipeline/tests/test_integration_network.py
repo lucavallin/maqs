@@ -46,7 +46,7 @@ def test_test_region_builds_end_to_end(tmp_path):
     # Terrain is built first in the same run, so trails must have sampled it.
     trails_kinds = by_name["trails"]["anomaly_kinds"]
     assert not {"terrain_missing", "terrain_unreadable"} & set(trails_kinds), trails_kinds
-    conn = open_readonly(tmp_path / "test" / "test-trails.sqlite")
+    conn = open_readonly(tmp_path / "test" / "test-trails.v1.sqlite")
     try:
         query = "SELECT count(*) FROM trails WHERE ascent_m IS NOT NULL"
         with_ascent = conn.execute(query).fetchone()[0]
@@ -58,10 +58,10 @@ def test_test_region_builds_end_to_end(tmp_path):
     assert 80 <= curvature_rows["segments"] <= 280
     assert 400 <= curvature_rows["corners"] <= 1250
     for name in (
-        "test-trails.sqlite",
-        "test-trails.pmtiles",
-        "test-places.sqlite",
-        "test-places.pmtiles",
-        "test-curvature.sqlite",
+        "test-trails.v1.sqlite",
+        "test-trails.v1.pmtiles",
+        "test-places.v1.sqlite",
+        "test-places.v1.pmtiles",
+        "test-curvature.v1.sqlite",
     ):
         assert (tmp_path / "test" / name).exists()

@@ -54,7 +54,7 @@ def ctx(tmp_path):
 
 def test_outputs_and_expectation(ctx):
     step = TerrainHDStep()
-    assert step.outputs(ctx) == [ctx.dist / "veneto" / "veneto-terrain-hd.pmtiles"]
+    assert step.outputs(ctx) == [ctx.dist / "veneto" / "veneto-terrain-hd.v1.pmtiles"]
     e = step.expectation(ctx, step.outputs(ctx)[0])
     assert (e.min_zoom, e.max_zoom) == (13, 13) and e.source == MAPTERHORN_BASE
 

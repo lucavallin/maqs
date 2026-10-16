@@ -220,10 +220,7 @@ def run_build(
             click.echo(f"{ctx.label}: {r.name} {r.status} in {r.seconds:.1f}s{detail}")
         if ctx.region and ctx.region.fixture:
             total = sum(
-                o.bytes
-                for r in results
-                for o in r.outputs
-                if o.file.endswith(("-basemap.pmtiles", "-terrain.pmtiles"))
+                o.bytes for r in results for o in r.outputs if o.layer in ("basemap", "terrain")
             )
             if total > TEST_REGION_WARN:
                 click.echo(

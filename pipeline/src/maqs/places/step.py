@@ -11,6 +11,7 @@ from pathlib import Path
 import osmium
 
 from maqs.context import BuildContext
+from maqs.layers import output_name
 from maqs.osm import extract
 from maqs.overlay import build_overlay
 from maqs.sqlite_out import COUNT_TABLES, TABLES, write_sqlite
@@ -144,11 +145,12 @@ def place_feature(record: PlaceRecord, place_id: int) -> dict:
 
 class PlacesStep:
     name = "places"
+    layer = "places"
 
     def outputs(self, ctx: BuildContext) -> list[Path]:
         return [
-            ctx.out_dir / f"{ctx.label}-places.sqlite",
-            ctx.out_dir / f"{ctx.label}-places.pmtiles",
+            ctx.out_dir / output_name(ctx.label, "places", "sqlite"),
+            ctx.out_dir / output_name(ctx.label, "places", "pmtiles"),
         ]
 
     def expectation(self, ctx: BuildContext, output: Path) -> Expectation | SqliteExpectation:

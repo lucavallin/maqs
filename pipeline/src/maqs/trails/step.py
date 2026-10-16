@@ -7,6 +7,7 @@ from pathlib import Path
 
 from maqs.context import BuildContext
 from maqs.geometry import encode_polyline
+from maqs.layers import output_name
 from maqs.osm import extract
 from maqs.osm.terrain_sampler import TerrainSampler, ascent_descent
 from maqs.overlay import build_overlay
@@ -97,11 +98,12 @@ def _add_elevation(record: TrailRecord, sampler: TerrainSampler, anomalies: list
 
 class TrailsStep:
     name = "trails"
+    layer = "trails"
 
     def outputs(self, ctx: BuildContext) -> list[Path]:
         return [
-            ctx.out_dir / f"{ctx.label}-trails.sqlite",
-            ctx.out_dir / f"{ctx.label}-trails.pmtiles",
+            ctx.out_dir / output_name(ctx.label, "trails", "sqlite"),
+            ctx.out_dir / output_name(ctx.label, "trails", "pmtiles"),
         ]
 
     def expectation(self, ctx: BuildContext, output: Path) -> Expectation | SqliteExpectation:
@@ -123,7 +125,7 @@ class TrailsStep:
             if source == "osm":
                 per_source.append(("osm", read_osm_trails(hiking, source_date=meta.osm_timestamp)))
         records = merge(per_source)
-        terrain = ctx.out_dir / f"{ctx.label}-terrain.pmtiles"
+        terrain = ctx.out_dir / output_name(ctx.label, "terrain", "pmtiles")
         sampler: TerrainSampler | None = None
         unreadable = False
         if not terrain.exists():

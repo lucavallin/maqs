@@ -11,6 +11,7 @@ from pathlib import Path
 from maqs import tools
 from maqs.config import BasePack, Bbox, Region
 from maqs.context import BuildContext
+from maqs.layers import output_name
 from maqs.steps.base import StepOutcome
 from maqs.validate import BASE_PACK_CAP, Expectation
 
@@ -33,8 +34,12 @@ class _VersatilesStep:
     name = "tiles"
     suffix = ""
 
+    @property
+    def layer(self) -> str:
+        return self.suffix
+
     def outputs(self, ctx: BuildContext) -> list[Path]:
-        return [ctx.out_dir / f"{ctx.label}-{self.suffix}.pmtiles"]
+        return [ctx.out_dir / output_name(ctx.label, self.suffix, "pmtiles")]
 
     def argv(self, ctx: BuildContext) -> list[str]:
         raise NotImplementedError
@@ -99,7 +104,7 @@ class BasePackStep(_VersatilesStep):
         self.name = f"base-{pack.id}"
 
     def outputs(self, ctx: BuildContext) -> list[Path]:
-        return [ctx.out_dir / f"{self.name}-{self.suffix}.pmtiles"]
+        return [ctx.out_dir / output_name(self.name, "basemap", "pmtiles")]
 
     def argv(self, ctx: BuildContext) -> list[str]:
         bbox = ctx.config.base_pack_bbox(self.pack)

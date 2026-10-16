@@ -50,7 +50,7 @@ def test_format_bbox_is_plain_decimal():
 
 def test_basemap_argv_and_outputs(veneto, versatiles_bin):
     step = BasemapStep()
-    assert step.outputs(veneto) == [veneto.dist / "veneto" / "veneto-basemap.pmtiles"]
+    assert step.outputs(veneto) == [veneto.dist / "veneto" / "veneto-basemap.v1.pmtiles"]
     assert step.argv(veneto) == [
         "/usr/bin/versatiles",
         "convert",
@@ -61,7 +61,7 @@ def test_basemap_argv_and_outputs(veneto, versatiles_bin):
         "--compress",
         "gzip",
         tiles.OSM_SOURCE,
-        str(veneto.dist / "veneto" / "veneto-basemap.pmtiles"),
+        str(veneto.dist / "veneto" / "veneto-basemap.v1.pmtiles"),
     ]
     e = step.expectation(veneto, step.outputs(veneto)[0])
     assert (e.min_zoom, e.max_zoom) == (0, 14) and e.tile_types == frozenset({"mvt"})
@@ -70,7 +70,7 @@ def test_basemap_argv_and_outputs(veneto, versatiles_bin):
 
 def test_terrain_argv_and_outputs(veneto, versatiles_bin):
     step = TerrainStep()
-    assert step.outputs(veneto) == [veneto.dist / "veneto" / "veneto-terrain.pmtiles"]
+    assert step.outputs(veneto) == [veneto.dist / "veneto" / "veneto-terrain.v1.pmtiles"]
     assert step.argv(veneto) == [
         "/usr/bin/versatiles",
         "convert",
@@ -81,7 +81,7 @@ def test_terrain_argv_and_outputs(veneto, versatiles_bin):
         "--max-zoom",
         "12",
         tiles.ELEVATION_SOURCE,
-        str(veneto.dist / "veneto" / "veneto-terrain.pmtiles"),
+        str(veneto.dist / "veneto" / "veneto-terrain.v1.pmtiles"),
     ]
     e = step.expectation(veneto, step.outputs(veneto)[0])
     assert (e.min_zoom, e.max_zoom) == (0, 12) and e.tile_types == frozenset({"webp", "png"})
@@ -98,7 +98,7 @@ def test_a_region_with_bbox_border_0_gets_no_border_flag(fixture_region, versati
         "--compress",
         "gzip",
         tiles.OSM_SOURCE,
-        str(out / "test-basemap.pmtiles"),
+        str(out / "test-basemap.v1.pmtiles"),
     ]
     assert TerrainStep().argv(fixture_region) == [
         "/usr/bin/versatiles",
@@ -108,7 +108,7 @@ def test_a_region_with_bbox_border_0_gets_no_border_flag(fixture_region, versati
         "--max-zoom",
         "12",
         tiles.ELEVATION_SOURCE,
-        str(out / "test-terrain.pmtiles"),
+        str(out / "test-terrain.v1.pmtiles"),
     ]
 
 
@@ -116,7 +116,7 @@ def test_base_pack_argv_outputs_and_cap(cfg, tmp_path, versatiles_bin):
     ctx = BuildContext(config=cfg, dist=tmp_path, cache=tmp_path, force=False)
     step = BasePackStep(cfg.base_pack("triveneto"))
     assert step.name == "base-triveneto"
-    assert step.outputs(ctx) == [tmp_path / "base" / "base-triveneto-basemap.pmtiles"]
+    assert step.outputs(ctx) == [tmp_path / "base" / "base-triveneto-basemap.v1.pmtiles"]
     assert step.argv(ctx) == [
         "/usr/bin/versatiles",
         "convert",
@@ -127,7 +127,7 @@ def test_base_pack_argv_outputs_and_cap(cfg, tmp_path, versatiles_bin):
         "--compress",
         "gzip",
         tiles.OSM_SOURCE,
-        str(tmp_path / "base" / "base-triveneto-basemap.pmtiles"),
+        str(tmp_path / "base" / "base-triveneto-basemap.v1.pmtiles"),
     ]
     e = step.expectation(ctx, step.outputs(ctx)[0])
     assert (e.min_zoom, e.max_zoom) == (0, 10) and e.size_cap == 15_000_000

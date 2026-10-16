@@ -61,8 +61,8 @@ def test_outputs_and_expectations(ctx):
     step = TrailsStep()
     sqlite, pmtiles = step.outputs(ctx)
     assert (
-        sqlite == ctx.dist / "test" / "test-trails.sqlite"
-        and pmtiles == ctx.dist / "test" / "test-trails.pmtiles"
+        sqlite == ctx.dist / "test" / "test-trails.v1.sqlite"
+        and pmtiles == ctx.dist / "test" / "test-trails.v1.pmtiles"
     )
     e = step.expectation(ctx, sqlite)
     assert (
@@ -80,7 +80,7 @@ def test_expectation_carries_the_region_row_range(ctx):
     veneto = BuildContext(
         config=cfg, dist=ctx.dist, cache=ctx.cache, force=False, region=cfg.region("veneto")
     )
-    e = TrailsStep().expectation(veneto, veneto.out_dir / "veneto-trails.sqlite")
+    e = TrailsStep().expectation(veneto, veneto.out_dir / "veneto-trails.v1.sqlite")
     assert e.row_ranges["trails"].min == 1500
 
 
@@ -95,7 +95,7 @@ def test_build_writes_sqlite_overlay_and_anomalies(ctx, stubs):
         and "-z14" in stubs["argv"]
         and not any(a.startswith("-r") for a in stubs["argv"])  # trails keep tippecanoe's default
     )
-    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    conn = open_readonly(ctx.out_dir / "test-trails.v1.sqlite")
     rows = conn.execute(
         "SELECT id, ref, name, difficulty, geometry_status, length_m, ascent_m, geometry "
         "FROM trails ORDER BY id"
@@ -124,7 +124,7 @@ def test_build_computes_ascent_from_the_terrain_archive(ctx, stubs):
     ctx.out_dir.mkdir(parents=True)
     tile = terrarium_tile(lambda px, py: 1000.0 + 2.0 * px)  # 2 m per pixel eastwards
     write_pmtiles(
-        ctx.out_dir / "test-terrain.pmtiles",
+        ctx.out_dir / "test-terrain.v1.pmtiles",
         tile_type=4,
         min_zoom=0,
         max_zoom=12,
@@ -134,7 +134,7 @@ def test_build_computes_ascent_from_the_terrain_archive(ctx, stubs):
     )
     result = run_step(TrailsStep(), ctx)
     assert result.status == "built", result.error
-    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    conn = open_readonly(ctx.out_dir / "test-trails.v1.sqlite")
     ascent, descent = conn.execute(
         "SELECT ascent_m, descent_m FROM trails WHERE ref = '501'"
     ).fetchone()
@@ -152,7 +152,7 @@ def test_secondary_rows_point_at_their_winner(ctx, stubs):
     ctx2 = BuildContext(config=cfg, dist=ctx.dist, cache=ctx.cache, force=False, region=region)
     result = run_step(TrailsStep(), ctx2)
     assert result.status == "built", result.error
-    conn = open_readonly(ctx2.out_dir / "test-trails.sqlite")
+    conn = open_readonly(ctx2.out_dir / "test-trails.v1.sqlite")
     assert conn.execute(
         "SELECT count(*) FROM trails WHERE secondary_of IS NOT NULL"
     ).fetchone() == (2,)
@@ -164,7 +164,7 @@ def test_build_stores_null_ascent_when_no_sample_has_a_terrain_tile(ctx, stubs):
     ctx.out_dir.mkdir(parents=True)
     tile = terrarium_tile(lambda px, py: 1000.0)
     write_pmtiles(
-        ctx.out_dir / "test-terrain.pmtiles",
+        ctx.out_dir / "test-terrain.v1.pmtiles",
         tile_type=4,
         min_zoom=0,
         max_zoom=12,
@@ -174,7 +174,7 @@ def test_build_stores_null_ascent_when_no_sample_has_a_terrain_tile(ctx, stubs):
     )  # far from the trail
     result = run_step(TrailsStep(), ctx)
     assert result.status == "built", result.error
-    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    conn = open_readonly(ctx.out_dir / "test-trails.v1.sqlite")
     assert conn.execute("SELECT ascent_m, descent_m FROM trails WHERE ref = '501'").fetchone() == (
         None,
         None,
@@ -192,7 +192,7 @@ def _terrain_archive(ctx):
     ctx.out_dir.mkdir(parents=True, exist_ok=True)
     tile = terrarium_tile(lambda px, py: 1000.0 + 2.0 * px)
     write_pmtiles(
-        ctx.out_dir / "test-terrain.pmtiles",
+        ctx.out_dir / "test-terrain.v1.pmtiles",
         tile_type=4,
         min_zoom=0,
         max_zoom=12,
@@ -222,7 +222,7 @@ def _covered_values(ctx, stubs, monkeypatch, tmp_path):
     )
     result = run_step(TrailsStep(), ctx)
     assert result.status == "built", result.error
-    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    conn = open_readonly(ctx.out_dir / "test-trails.v1.sqlite")
     return conn.execute("SELECT ascent_m, descent_m FROM trails").fetchone()
 
 
@@ -237,7 +237,7 @@ def test_partial_coverage_keeps_values_and_records_a_gap(ctx, stubs, monkeypatch
     )
     result = run_step(TrailsStep(), ctx)
     assert result.status == "built", result.error
-    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    conn = open_readonly(ctx.out_dir / "test-trails.v1.sqlite")
     ascent, descent = conn.execute("SELECT ascent_m, descent_m FROM trails").fetchone()
     assert ascent is not None and ascent > 0 and descent is not None
     gaps = [a for a in result.anomalies if a.kind == "terrain_gap"]
@@ -258,7 +258,7 @@ def test_only_covered_legs_contribute_to_ascent(ctx, stubs, monkeypatch, tmp_pat
     )
     result = run_step(TrailsStep(), ctx)
     assert result.status == "built", result.error
-    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    conn = open_readonly(ctx.out_dir / "test-trails.v1.sqlite")
     assert conn.execute("SELECT ascent_m, descent_m FROM trails").fetchone() == expected
     legs = stubs["features"][0]["geometry"]["coordinates"]
     assert len(legs) == 2
@@ -271,14 +271,14 @@ def test_only_covered_legs_contribute_to_ascent(ctx, stubs, monkeypatch, tmp_pat
 
 def test_unreadable_terrain_archive_leaves_columns_null_and_the_build_going(ctx, stubs):
     ctx.out_dir.mkdir(parents=True)
-    (ctx.out_dir / "test-terrain.pmtiles").write_bytes(b"x" * 17)
+    (ctx.out_dir / "test-terrain.v1.pmtiles").write_bytes(b"x" * 17)
     result = run_step(TrailsStep(), ctx)
     assert result.status == "built", result.error
-    conn = open_readonly(ctx.out_dir / "test-trails.sqlite")
+    conn = open_readonly(ctx.out_dir / "test-trails.v1.sqlite")
     assert conn.execute("SELECT ascent_m, descent_m FROM trails").fetchall() == [
         (None, None),
         (None, None),
     ]
     unreadable = [a for a in result.anomalies if a.kind == "terrain_unreadable"]
-    assert len(unreadable) == 1 and unreadable[0].id == "test-terrain.pmtiles"
-    assert (ctx.out_dir / "test-trails.pmtiles").exists()
+    assert len(unreadable) == 1 and unreadable[0].id == "test-terrain.v1.pmtiles"
+    assert (ctx.out_dir / "test-trails.v1.pmtiles").exists()

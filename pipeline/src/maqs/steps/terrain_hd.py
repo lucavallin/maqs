@@ -14,6 +14,7 @@ from pathlib import Path
 from maqs import tools
 from maqs.config import Bbox
 from maqs.context import BuildContext
+from maqs.layers import output_name
 from maqs.steps.base import StepOutcome
 from maqs.steps.tiles import format_bbox
 from maqs.tools import ToolError
@@ -53,9 +54,10 @@ def parse_dry_run_tiles(output: str) -> int | None:
 
 class TerrainHDStep:
     name = "terrain-hd"
+    layer = "terrain-hd"
 
     def outputs(self, ctx: BuildContext) -> list[Path]:
-        return [ctx.out_dir / f"{ctx.label}-terrain-hd.pmtiles"]
+        return [ctx.out_dir / output_name(ctx.label, "terrain-hd", "pmtiles")]
 
     def max_zoom(self, ctx: BuildContext) -> int:
         assert ctx.region is not None

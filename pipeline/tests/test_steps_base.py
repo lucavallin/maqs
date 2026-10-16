@@ -16,6 +16,7 @@ REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
 
 class FakeStep:
     name = "fake"
+    layer = "basemap"
 
     def __init__(self, fail=False, raises=None, writes=True, anomalies=None):
         self.calls = 0
@@ -161,7 +162,7 @@ def test_each_output_gets_its_own_expectation(ctx):
 def test_row_count_outside_expected_range_fails_and_keeps_the_file(ctx):
     class SqliteStep(FakeStep):
         def outputs(self, ctx):
-            return [ctx.out_dir / "test-trails.sqlite"]
+            return [ctx.out_dir / "test-trails.v1.sqlite"]
 
         def expectation(self, ctx, output):
             return SqliteExpectation(
@@ -187,7 +188,7 @@ def test_row_count_outside_expected_range_fails_and_keeps_the_file(ctx):
 def test_malformed_sqlite_output_becomes_a_failed_result(ctx):
     class BadMetadataStep(FakeStep):
         def outputs(self, ctx):
-            return [ctx.out_dir / "test-trails.sqlite"]
+            return [ctx.out_dir / "test-trails.v1.sqlite"]
 
         def expectation(self, ctx, output):
             return SqliteExpectation("trails", "test", TABLES["trails"], COUNT_TABLES["trails"])
@@ -214,3 +215,13 @@ def test_base_pack_context(tmp_path):
     ctx = BuildContext(config=load_config(REAL), dist=tmp_path, cache=tmp_path, force=False)
     assert ctx.region is None
     assert ctx.out_dir == tmp_path / "base" and ctx.label == "base"
+
+
+def test_validated_outputs_carry_layer_version_and_build_date(ctx, monkeypatch):
+    from maqs.steps import base
+
+    monkeypatch.setattr(base, "_today", lambda: "2026-10-16")
+    result = run_step(FakeStep(), ctx)
+    assert result.status == "built"
+    info = result.outputs[0]
+    assert (info.layer, info.layer_schema_version, info.data_date) == ("basemap", 1, "2026-10-16")

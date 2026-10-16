@@ -148,7 +148,7 @@ def test_build_writes_sqlite_and_overlay(ctx, tmp_path, monkeypatch):
     # every point kept at every zoom: no density-based dot dropping below z14
     assert captured["argv"][-2] == "-r1" and captured["argv"][-1].endswith(".geojsonseq")
     assert result.command == captured["argv"]
-    conn = open_readonly(ctx.out_dir / "test-places.sqlite")
+    conn = open_readonly(ctx.out_dir / "test-places.v1.sqlite")
     rows = conn.execute(
         "SELECT osm_id, kind, name, ele, rank_score FROM places ORDER BY rank_score DESC"
     ).fetchall()
