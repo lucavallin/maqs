@@ -103,6 +103,12 @@ def test_valid_manifest_and_sources_pass():
     validate(SOURCES, "sources")
 
 
+def test_ci_release_tag_is_valid_but_latest_is_not():
+    validate(json.loads(json.dumps(MANIFEST).replace("data-2026-11", "data-ci")), "manifest")
+    with pytest.raises(SchemaError):
+        validate(broken(MANIFEST, ["release"], "latest"), "manifest")
+
+
 def broken(doc: dict, path: list, value) -> dict:
     out = copy.deepcopy(doc)
     node = out

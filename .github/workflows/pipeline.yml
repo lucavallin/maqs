@@ -82,6 +82,15 @@ jobs:
         run: uv run maqs build --region test --dist "$GITHUB_WORKSPACE/dist" --cache "$GITHUB_WORKSPACE/.cache"
         working-directory: pipeline
       - run: cat dist/test/build-report.json
+      - name: Build the base packs
+        # The manifest requires every configured base pack (a 13 MB range-request extract, ADR 0007).
+        run: uv run maqs build --region base --dist "$GITHUB_WORKSPACE/dist" --cache "$GITHUB_WORKSPACE/.cache"
+        working-directory: pipeline
+      - name: Assemble and validate a CI manifest from the test build
+        run: |
+          uv run maqs manifest --release data-ci --dist "$GITHUB_WORKSPACE/dist" --include-fixtures
+          uv run maqs check-config --manifest "$GITHUB_WORKSPACE/dist/manifest.json"
+        working-directory: pipeline
       - name: Assert the fixture budget (live network test)
         # Builds the test region again into a temp dir (reusing the repo-root .cache) and asserts
         # all five layers' outputs and row-count ranges plus gzip, zoom, tile type, tile count and
@@ -91,6 +100,8 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: test-region-fixtures
-          path: dist/test
+          path: |
+            dist/test
+            dist/manifest.json
           retention-days: 7
           if-no-files-found: error

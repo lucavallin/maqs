@@ -10,6 +10,7 @@ from maqs.steps import tiles
 from maqs.steps.base import StepResult
 from maqs.tools import ToolStatus
 from tests.helpers import write_pmtiles
+from tests.manifest_fixtures import base_report, region_report, write_dist
 
 REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
 
@@ -347,3 +348,83 @@ def test_check_config_validates_a_manifest(tmp_path):
     bad.write_text(json.dumps(bad_doc))
     result = check_config("--manifest", str(bad))
     assert result.exit_code == 2 and "/regions/0/layers/trails/0/url" in result.output
+
+
+ALL_REGIONS = ("triveneto", "veneto", "friuli-venezia-giulia", "trentino-alto-adige")
+
+
+def manifest_cmd(*args: str):
+    return CliRunner().invoke(main, ["--config", str(REAL), "manifest", *args])
+
+
+def full_dist(tmp_path):
+    reports = {r: region_report(r) for r in ALL_REGIONS}
+    reports["test"] = region_report("test")
+    reports["base"] = base_report(["triveneto"])
+    return write_dist(tmp_path / "dist", reports)
+
+
+def test_manifest_command_writes_a_valid_manifest(tmp_path):
+    dist = full_dist(tmp_path)
+    result = manifest_cmd("--release", "data-2026-11", "--dist", str(dist))
+    assert result.exit_code == 0, result.output
+    out = dist / "manifest.json"
+    assert "wrote" in result.output and out.exists()
+    doc = json.loads(out.read_text())
+    assert doc["release"] == "data-2026-11"
+    assert [r["id"] for r in doc["regions"]] == list(ALL_REGIONS)
+    assert check_config("--manifest", str(out)).exit_code == 0
+
+
+def test_manifest_command_fails_on_a_missing_region(tmp_path):
+    dist = full_dist(tmp_path)
+    (dist / "veneto" / "build-report.json").unlink()
+    result = manifest_cmd("--release", "data-2026-11", "--dist", str(dist))
+    assert result.exit_code == 1 and "veneto: build-report.json not found" in result.output
+    assert not (dist / "manifest.json").exists()
+
+
+def test_manifest_command_rejects_a_bad_release_tag(tmp_path):
+    dist = full_dist(tmp_path)
+    assert manifest_cmd("--release", "latest", "--dist", str(dist)).exit_code == 2
+    assert manifest_cmd("--release", "data-ci", "--dist", str(dist)).exit_code == 2
+    ok = manifest_cmd("--release", "data-ci", "--dist", str(dist), "--include-fixtures")
+    assert ok.exit_code == 0, ok.output
+    assert json.loads((dist / "manifest.json").read_text())["regions"][0]["id"] == "test"
+
+
+def test_manifest_command_applies_previous(tmp_path):
+    dist = full_dist(tmp_path)
+    previous = tmp_path / "previous.json"
+    first = manifest_cmd("--release", "data-2026-10", "--dist", str(dist), "--out", str(previous))
+    assert first.exit_code == 0
+    # The new build ships curvature schema 2; the previous release's v1 entries are carried over.
+    report_file = dist / "veneto" / "build-report.json"
+    report = json.loads(report_file.read_text())
+    for s in report["steps"]:
+        if s["name"] == "curvature":
+            s["outputs"][0]["layer_schema_version"] = 2
+            s["outputs"][0]["file"] = s["outputs"][0]["file"].replace(".v1.", ".v2.")
+    report_file.write_text(json.dumps(report))
+    result = manifest_cmd(
+        "--release", "data-2026-11", "--dist", str(dist), "--previous", str(previous)
+    )
+    assert result.exit_code == 0, result.output
+    doc = json.loads((dist / "manifest.json").read_text())
+    veneto = next(r for r in doc["regions"] if r["id"] == "veneto")
+    assert [e["layer_schema_version"] for e in veneto["layers"]["curvature"]] == [2, 1]
+    carried = veneto["layers"]["curvature"][1]["url"]
+    assert carried.endswith("/data-2026-10/veneto-curvature.v1.sqlite")
+    other = next(r for r in doc["regions"] if r["id"] == "triveneto")
+    # Same version in both releases: not carried.
+    assert [e["layer_schema_version"] for e in other["layers"]["curvature"]] == [1]
+
+
+def test_manifest_command_fails_on_an_unreadable_previous(tmp_path):
+    dist = full_dist(tmp_path)
+    broken = tmp_path / "previous.json"
+    broken.write_text("{not json")
+    result = manifest_cmd(
+        "--release", "data-2026-11", "--dist", str(dist), "--previous", str(broken)
+    )
+    assert result.exit_code == 1 and "--previous" in result.output
