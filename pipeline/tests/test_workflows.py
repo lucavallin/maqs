@@ -93,3 +93,18 @@ def test_build_restores_the_geofabrik_extract_strictly():
     restore = next(s for s in steps if s.get("name") == "Restore the Geofabrik extract")
     assert restore["uses"].startswith("actions/cache/restore@")
     assert restore["with"]["fail-on-cache-miss"] is True
+
+
+def release_step(name: str) -> dict:
+    steps = load("build-maps.yml")["jobs"]["release"]["steps"]
+    return next(s for s in steps if s.get("name") == name)
+
+
+def test_previous_manifest_is_chosen_by_the_tested_command():
+    step = release_step("Fetch the latest published manifest")
+    run = step["run"]
+    assert "GH_TOKEN" in step["env"] and step["shell"] == "bash"
+    assert "gh api \"repos/$GH_REPO/releases\" --paginate | jq -s 'add'" in run
+    assert "uv run maqs previous-manifest --releases" in run and '--release "$RELEASE"' in run
+    assert 'gh release download "$prev" --pattern manifest.json' in run
+    assert "gh release list" not in run and "|| true" not in run
