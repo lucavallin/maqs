@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import json
 import re
 from pathlib import Path
 
@@ -14,7 +15,7 @@ from maqs.release import (
     local_assets,
     release_notes,
 )
-from tests.test_schemas import MANIFEST
+from tests.test_schemas import ENTRY, MANIFEST
 
 
 def write_assets(dist: Path, manifest: dict) -> None:
@@ -46,6 +47,7 @@ def test_local_assets_lists_every_entry_of_this_release(tmp_path, doc):
     expected = [e["file"] for r in doc["regions"] for es in r["layers"].values() for e in es]
     expected += [e["file"] for p in doc["base"] for e in p["layers"]["basemap"]]
     assert sorted(a.file for a in assets) == sorted(expected)
+    assert {a.label for a in assets} == {"veneto", "base"}
     assert all(
         isinstance(a, Asset) and a.path.exists() and a.bytes == a.path.stat().st_size
         for a in assets
@@ -78,6 +80,53 @@ def test_carried_entries_are_not_required_locally(tmp_path, doc):
     assets = local_assets(doc, tmp_path)  # does not raise; the carried file is on an older release
     assert sum(a.file == "veneto-curvature.v1.sqlite" for a in assets) == 1
     assert carried_count(doc) == 1
+
+
+def bumped(doc: dict, tmp_path: Path) -> tuple[dict, dict]:
+    """A same-month re-run after a curvature bump: v2 built now, v1 carried at this tag.
+
+    Returns the new manifest and the previous one (this month's first run, which built v1).
+    """
+    previous = copy.deepcopy(doc)
+    curvature = doc["regions"][0]["layers"]["curvature"]
+    v1 = copy.deepcopy(curvature[0])
+    v2 = curvature[0]
+    v2["layer_schema_version"] = 2
+    v2["file"] = "veneto-curvature.v2.sqlite"
+    v2["url"] = v2["url"].replace(".v1.", ".v2.")
+    write_assets(tmp_path, doc)  # writes v2 and every other file built this run
+    curvature.append(v1)  # carried from the first run: this tag, not in dist
+    return doc, previous
+
+
+def test_a_file_already_on_this_release_is_accepted_and_not_uploaded(tmp_path, doc):
+    doc, previous = bumped(doc, tmp_path)
+    assets = local_assets(doc, tmp_path, previous=previous)
+    names = [a.file for a in assets]
+    assert "veneto-curvature.v2.sqlite" in names and "veneto-curvature.v1.sqlite" not in names
+    with pytest.raises(ReleaseError, match="veneto-curvature.v1.sqlite: missing"):
+        local_assets(doc, tmp_path)  # without the previous manifest it is just missing
+
+
+def test_a_file_the_previous_manifest_lists_with_another_sha_is_missing(tmp_path, doc):
+    doc, previous = bumped(doc, tmp_path)
+    previous["regions"][0]["layers"]["curvature"][0]["sha256"] = "c" * 64
+    with pytest.raises(ReleaseError, match="veneto-curvature.v1.sqlite: missing"):
+        local_assets(doc, tmp_path, previous=previous)
+
+
+def test_a_file_the_previous_manifest_lists_on_another_release_is_missing(tmp_path, doc):
+    doc, previous = bumped(doc, tmp_path)
+    previous = json.loads(json.dumps(previous).replace("data-2026-11", "data-2026-10"))
+    with pytest.raises(ReleaseError, match="veneto-curvature.v1.sqlite: missing"):
+        local_assets(doc, tmp_path, previous=previous)
+
+
+def test_asset_names_must_be_unique_in_the_release(tmp_path, doc):
+    doc["regions"][0]["layers"]["places"].append(copy.deepcopy(ENTRY))
+    write_assets(tmp_path, doc)
+    with pytest.raises(ReleaseError, match="veneto-trails.v1.sqlite: named twice"):
+        local_assets(doc, tmp_path)
 
 
 def test_release_notes_name_regions_layers_timestamps_and_carried(doc):

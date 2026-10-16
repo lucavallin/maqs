@@ -108,3 +108,24 @@ def test_previous_manifest_is_chosen_by_the_tested_command():
     assert "uv run maqs previous-manifest --releases" in run and '--release "$RELEASE"' in run
     assert 'gh release download "$prev" --pattern manifest.json' in run
     assert "gh release list" not in run and "|| true" not in run
+
+
+def test_release_check_gets_the_previous_manifest_when_there_is_one():
+    step = release_step("Check the assets and write the notes")
+    run = step["run"]
+    assert step["shell"] == "bash" and "set -euo pipefail" in run
+    previous = '"$GITHUB_WORKSPACE/previous/manifest.json"'
+    assert f"if [[ -s {previous} ]]; then args+=(--previous {previous}); fi" in run
+    assert 'uv run maqs release-check "${args[@]}" | tee "$GITHUB_WORKSPACE/assets.txt"' in run
+
+
+def test_upload_takes_release_check_paths_under_dist():
+    run = release_step("Upload the assets, then the manifest")["run"]
+    assert 'files+=("dist/$path")' in run
+    assert "find " not in run
+
+
+def test_summary_shows_how_many_entries_were_carried():
+    run = release_step("Summary")["run"]
+    assert "carried=$(grep '^carried ' assets.txt)" in run
+    assert '"$carried"' in run and "$GITHUB_STEP_SUMMARY" in run

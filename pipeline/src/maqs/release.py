@@ -23,6 +23,7 @@ class ReleaseStateError(ValueError):
 
 @dataclass(frozen=True)
 class Asset:
+    label: str
     file: str
     path: Path
     bytes: int
@@ -43,22 +44,44 @@ def carried_count(manifest: dict) -> int:
     return sum(1 for _, e in _entries(manifest) if url_tag(e["url"]) != release)
 
 
-def local_assets(manifest: dict, dist: Path) -> list[Asset]:
-    """Every file this release must upload, checked against the manifest's bytes and sha256."""
+def _already_on(release: str, previous: dict | None) -> set[tuple[str, str]]:
+    """(file, sha256) of every entry the previous manifest names under this release's tag."""
+    if previous is None:
+        return set()
+    return {(e["file"], e["sha256"]) for _, e in _entries(previous) if url_tag(e["url"]) == release}
+
+
+def local_assets(manifest: dict, dist: Path, previous: dict | None = None) -> list[Asset]:
+    """Every file this release must upload, checked against the manifest's bytes and sha256.
+
+    An entry under this release's tag whose file is not in `dist` passes only when `previous`,
+    the manifest this run carried over from, names the same file with the same sha256 under
+    this tag: an earlier run of the month uploaded it (a same-month re-run after a schema bump
+    carries the old version without rebuilding it). It is not uploaded again. File names must
+    be unique in the release, which is one flat list of assets.
+    """
     release = manifest["release"]
+    on_release = _already_on(release, previous)
+    names: set[str] = set()
     assets: list[Asset] = []
     for label, entry in _entries(manifest):
         if url_tag(entry["url"]) != release:
             continue  # carried from an earlier release; its file lives there
-        path = dist / label / entry["file"]
+        name = entry["file"]
+        if name in names:
+            raise ReleaseError(f"{name}: named twice in {release}; asset names must be unique")
+        names.add(name)
+        path = dist / label / name
         if not path.exists():
-            raise ReleaseError(f"{entry['file']}: missing (expected at {path})")
+            if (name, entry["sha256"]) in on_release:
+                continue
+            raise ReleaseError(f"{name}: missing (expected at {path})")
         size = path.stat().st_size
         if size != entry["bytes"]:
-            raise ReleaseError(f"{entry['file']}: {size} bytes, manifest says {entry['bytes']}")
+            raise ReleaseError(f"{name}: {size} bytes, manifest says {entry['bytes']}")
         if sha256(path) != entry["sha256"]:
-            raise ReleaseError(f"{entry['file']}: sha256 mismatch")
-        assets.append(Asset(entry["file"], path, size))
+            raise ReleaseError(f"{name}: sha256 mismatch")
+        assets.append(Asset(label, name, path, size))
     return assets
 
 
