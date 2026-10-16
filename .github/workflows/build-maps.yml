@@ -38,7 +38,7 @@ jobs:
       md5: ${{ steps.geofabrik.outputs.md5 }}
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with: { enable-cache: true }
       - run: uv sync --frozen
         working-directory: pipeline
@@ -84,11 +84,12 @@ jobs:
             https://download.geofabrik.de/europe/italy/nord-est-latest.osm.pbf.md5 | cut -d' ' -f1)
           [[ "$md5" =~ ^[0-9a-f]{32}$ ]] || { echo "bad md5: '$md5'" >&2; exit 1; }
           echo "md5=$md5" >> "$GITHUB_OUTPUT"
+      # The key must match pipeline.yml so both workflows share one cached extract.
       - name: Cache the Geofabrik extract
         uses: actions/cache@v6
         with:
           path: .cache/geofabrik
-          key: geofabrik-europe-italy-nord-est-${{ steps.geofabrik.outputs.md5 }}
+          key: geofabrik-nord-est-${{ steps.geofabrik.outputs.md5 }}
       - name: Download the extract once
         run: uv run maqs fetch --extract europe/italy/nord-est --cache "$GITHUB_WORKSPACE/.cache"
         working-directory: pipeline
@@ -103,7 +104,7 @@ jobs:
         target: ${{ fromJSON(needs.prepare.outputs.targets) }}
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with: { enable-cache: true }
       - name: Cache tool binaries
         id: tools-cache
@@ -131,7 +132,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: .cache/geofabrik
-          key: geofabrik-europe-italy-nord-est-${{ needs.prepare.outputs.md5 }}
+          key: geofabrik-nord-est-${{ needs.prepare.outputs.md5 }}
       - name: Build ${{ matrix.target }}
         shell: bash
         working-directory: pipeline
@@ -158,11 +159,10 @@ jobs:
     permissions:
       contents: write
     env:
-      GH_TOKEN: ${{ github.token }}
       RELEASE: ${{ needs.prepare.outputs.release }}
     steps:
       - uses: actions/checkout@v7
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with: { enable-cache: true }
       - run: uv sync --frozen
         working-directory: pipeline
@@ -179,6 +179,8 @@ jobs:
           ls dist
       - name: Fetch the latest published manifest
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           mkdir -p previous
@@ -202,6 +204,8 @@ jobs:
         working-directory: pipeline
       - name: Create the release if the tag is new
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           if gh release view "$RELEASE" >/dev/null 2>&1; then
@@ -211,6 +215,8 @@ jobs:
           fi
       - name: Upload the assets, then the manifest
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           files=()
