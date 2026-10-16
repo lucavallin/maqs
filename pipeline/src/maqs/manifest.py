@@ -60,6 +60,8 @@ def read_report(dist: Path, label: str) -> dict:
         report = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
         raise ManifestError(f"{label}: build-report.json: {exc}") from exc
+    if report.get("region") != label:
+        raise ManifestError(f"{label}: build-report.json belongs to '{report.get('region')}'")
     if not report.get("validation", {}).get("ok", False):
         failures = "; ".join(report.get("validation", {}).get("failures", [])) or "unknown"
         raise ManifestError(f"{label}: build failed: {failures}")
@@ -69,6 +71,10 @@ def read_report(dist: Path, label: str) -> dict:
                 raise ManifestError(
                     f"{label}: build-report.json predates the versioned outputs; "
                     "rebuild with --force"
+                )
+            if not output["file"].startswith(f"{label}-"):
+                raise ManifestError(
+                    f"{label}: output {output['file']} does not belong to this region"
                 )
     return report
 
@@ -132,6 +138,10 @@ def _base_docs(config: Config, dist: Path, release: str) -> list[dict]:
         for output in step["outputs"]:
             if output["layer"] != "basemap":
                 raise ManifestError(f"base-{pack.id}: unexpected layer {output['layer']}")
+            if not output["file"].startswith(f"base-{pack.id}-"):
+                raise ManifestError(
+                    f"base-{pack.id}: output {output['file']} does not belong to this base pack"
+                )
         entries = _sort_entries([entry_from_output(o, release) for o in step["outputs"]])
         docs.append(_base_doc(pack, entries))
     return docs

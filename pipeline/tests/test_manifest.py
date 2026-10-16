@@ -426,3 +426,36 @@ def test_a_dated_release_never_carries_a_data_ci_url(cfg, full_dist, bumped_dist
         ManifestError, match="veneto: trails: veneto-trails.v1.sqlite points at data-ci"
     ):
         build_manifest(cfg, bumped_dist, "data-2026-11", previous=previous, now=NOW)
+
+
+def test_a_report_written_for_another_region_is_refused(cfg, tmp_path):
+    misplaced = region_report("veneto")
+    misplaced["region"] = "triveneto"
+    dist = write_dist(tmp_path / "dist", _reports(veneto=misplaced))
+    with pytest.raises(ManifestError, match="veneto: build-report.json belongs to 'triveneto'"):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
+    base = base_report(["triveneto"])
+    base["region"] = "veneto"
+    dist = write_dist(tmp_path / "dist2", _reports(base=base))
+    with pytest.raises(ManifestError, match="base: build-report.json belongs to 'veneto'"):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
+
+
+def test_an_output_named_for_another_region_is_refused(cfg, tmp_path):
+    report = region_report("veneto")
+    _trails_step(report)["outputs"][0]["file"] = "triveneto-trails.v1.sqlite"
+    dist = write_dist(tmp_path / "dist", _reports(veneto=report))
+    with pytest.raises(
+        ManifestError, match="veneto: output triveneto-trails.v1.sqlite does not belong"
+    ):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
+
+
+def test_a_base_pack_output_named_for_another_pack_is_refused(cfg, tmp_path):
+    base = base_report(["triveneto"])
+    base["steps"][0]["outputs"][0]["file"] = "base-dolomiti-basemap.v1.pmtiles"
+    dist = write_dist(tmp_path / "dist", _reports(base=base))
+    with pytest.raises(
+        ManifestError, match="base-triveneto: output base-dolomiti-basemap.v1.pmtiles does not"
+    ):
+        build_manifest(cfg, dist, "data-2026-11", now=NOW)
