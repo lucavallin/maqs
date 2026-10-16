@@ -13,7 +13,7 @@ def load(name: str) -> dict:
     return yaml.safe_load((WORKFLOWS / name).read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize("name", ["pipeline.yml", "build-maps.yml"])
+@pytest.mark.parametrize("name", ["pipeline.yml", "build-maps.yml", "swift.yml"])
 def test_every_action_is_pinned(name):
     doc = load(name)
     uses = [s["uses"] for job in doc["jobs"].values() for s in job["steps"] if "uses" in s]
@@ -187,3 +187,18 @@ def test_pipeline_workflow_runs_when_build_maps_changes():
     on_key = True if True in doc else "on"
     for event in ("push", "pull_request"):
         assert ".github/workflows/build-maps.yml" in doc[on_key][event]["paths"], event
+
+
+def test_swift_workflow_is_read_only_and_path_filtered():
+    doc = load("swift.yml")
+    assert doc["permissions"] == {"contents": "read"}
+    for job in doc["jobs"].values():
+        assert "write" not in job.get("permissions", {}).values()
+        for step in job["steps"]:
+            if step.get("uses", "").startswith("actions/checkout"):
+                assert step["with"]["persist-credentials"] is False
+    on_key = True if True in doc else "on"
+    for event in ("push", "pull_request"):
+        paths = doc[on_key][event]["paths"]
+        assert "Package.swift" in paths and "Sources/**" in paths and "Tests/**" in paths
+        assert not any(p.startswith("pipeline") or p.startswith("docs") for p in paths)
