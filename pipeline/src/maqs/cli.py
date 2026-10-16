@@ -117,11 +117,35 @@ def _join(values: Iterable[object]) -> str:
     return ",".join(str(v) for v in values)
 
 
+def regions_json(cfg: Config) -> dict:
+    """The machine-readable region list the release workflow builds its matrix from."""
+    return {
+        "regions": [
+            {
+                "id": r.id,
+                "fixture": r.fixture,
+                "name": {"it": r.name["it"], "en": r.name["en"]},
+                "bbox": list(r.bbox),
+                "geofabrik": (r.osm or {}).get("geofabrik"),
+            }
+            for r in cfg.regions
+        ],
+        "base_packs": [
+            {"id": p.id, "regions": list(p.regions), "max_zoom": p.max_zoom} for p in cfg.base_packs
+        ],
+        "geofabrik_extracts": cfg.geofabrik_extracts(),
+    }
+
+
 @main.command()
+@click.option("--json", "as_json", is_flag=True, help="Machine-readable output for the workflows.")
 @click.pass_context
-def regions(ctx: click.Context) -> None:
+def regions(ctx: click.Context, as_json: bool) -> None:
     """List configured regions, their OSM extracts, and the base packs."""
     cfg = _load(_config_path(ctx))
+    if as_json:
+        click.echo(json.dumps(regions_json(cfg), ensure_ascii=False))
+        return
     for r in cfg.regions:
         extract = r.osm.get("geofabrik", "-") if r.osm else "-"
         flag = " (fixture)" if r.fixture else ""
