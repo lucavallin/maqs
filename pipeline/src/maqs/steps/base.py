@@ -6,7 +6,6 @@ import logging
 import time
 from collections import Counter
 from dataclasses import dataclass, field, replace
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -25,10 +24,6 @@ log = logging.getLogger("maqs.steps")
 
 
 MAX_REPORTED_ANOMALIES = 1000
-
-
-def _today() -> str:
-    return datetime.now(UTC).strftime("%Y-%m-%d")
 
 
 @dataclass(frozen=True)
@@ -136,7 +131,7 @@ def run_step(step: Step, ctx: BuildContext) -> StepResult:
                     info,
                     layer=step.layer,
                     layer_schema_version=LAYER_SCHEMA_VERSION[step.layer],
-                    data_date=_today(),
+                    data_date=ctx.data_date,
                 )
             )
         except (ValidationError, OSError) as exc:

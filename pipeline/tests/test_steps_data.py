@@ -25,3 +25,10 @@ def test_metadata_for_dates_the_build_and_stamps_the_extract(ctx, monkeypatch):
     )
     assert meta.data_date in {before, after}
     assert read == [source]
+
+
+def test_metadata_for_uses_the_run_date_of_the_context(ctx, monkeypatch):
+    monkeypatch.setattr(extract, "geofabrik_pbf", lambda c: Path("/cache/x.osm.pbf"))
+    monkeypatch.setattr(extract, "osm_timestamp", lambda pbf: None)
+    ctx.data_date = "2000-01-01"
+    assert metadata_for(ctx, "trails").data_date == "2000-01-01"
