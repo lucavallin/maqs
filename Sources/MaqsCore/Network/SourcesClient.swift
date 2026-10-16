@@ -16,7 +16,8 @@ struct SourcesClient: Sendable {
             ?? URL(filePath: "/missing/sources.json")
     }
 
-    /// The best copy available without a request: cached if it decodes, else bundled.
+    /// The best copy available without a request: cached if it decodes, else bundled. `nil` means no readable
+    /// copy exists, neither cached nor bundled.
     func current() -> OnlineSources? {
         if let stored = cache.read(), let sources = try? SourcesDocument.decode(stored.data) { return sources }
         guard let data = try? Data(contentsOf: bundled), let sources = try? SourcesDocument.decode(data) else {
