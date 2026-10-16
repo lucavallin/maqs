@@ -43,7 +43,7 @@ Do not build toward these, and do not add abstractions that only make sense if t
 | `rank_score` | Label-priority number per place: a `wikidata` tag is a strong notability signal, combined with elevation. The formula is simple and written down in `docs/data-format.md`; do not add inputs without updating both. |
 | Curvature segment | A road way (or run of ways) with a curvature score computed by our own pipeline step (three-point-circle radius per segment, summed per way with the same bands the `curvature` project uses, ADR 0005), plus name, ref, highway class, surface, length, geometry. |
 | Corner | A discrete curve on a segment: apex position, minimum radius (three-point circle over the way geometry), direction (left/right), entry/exit distance along the segment. |
-| Manifest | `manifest.json` in the latest data release: `manifest_version`, `created_at`, `shortbread_version`, attribution list, and per region → per layer `file`, `url`, `bytes`, `sha256`, `layer_schema_version`. Fetched by clients from `releases/latest/download/manifest.json`. |
+| Manifest | `manifest.json` in the latest data release, fetched from `releases/latest/download/manifest.json`: `manifest_version`, `created_at`, `release`, `shortbread_version`, the attribution list, `regions` with a list of file entries per layer (one per `layer_schema_version`, newest first) and the `base` packs. The format is in `docs/data-format.md`. |
 | `sources.json` | `config/sources.json`: the online providers per layer (basemap, terrain), today exactly one each (VersaTiles), with tile URL template or TileJSON URL, schema, attribution, max zoom. Fetched from `main`, cached, with a bundled copy as fallback. **No provider URL lives in Swift logic.** |
 | Data release | A GitHub Release tagged `data-YYYY-MM`, marked latest, holding every region's files plus `manifest.json`. Re-running the same month replaces assets. Distinct from package version tags. |
 | PMTiles | Single-file tile archive (v3). `MaqsTerrain` ships a minimal reader (header, directories, varints, gzip via Compression); MapLibre reads them via `pmtiles://file://…`. |
@@ -116,7 +116,7 @@ uv run maqs build --region veneto --layers basemap,terrain # one real region, a 
 uv run pytest                                              # pipeline unit tests (from pipeline/)
 uv run pytest --run-network                                # plus the live test-region build (CI's smoke job runs it); downloads the Geofabrik extract into .cache/ once
 uv run ruff check . && uv run ruff format --check .        # pipeline lint/format
-uv run maqs check-config [--manifest PATH]                 # regions.yaml, sources.json and a manifest against config/schemas/
+uv run maqs check-config [--manifest PATH]                 # regions.yaml, and sources.json (and the manifest) against their schemas
 uv run maqs manifest --release data-YYYY-MM [--previous PATH] # dist/manifest.json from every non-fixture region and the base packs
 uv run maqs manifest --release data-ci --regions test      # CI-only manifest from the test and base builds; never published
 
@@ -225,7 +225,7 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 ### Things that will bite you
 - **Phase 0 is a stop.** The brief says verify, record, summarise, wait. Do not start Phase 1 because Phase 0 went well.
 - **"Decisions already made" are fixed, but their facts are not.** Every URL, license, version, size, and capability in the brief must be re-verified against the live source in Phase 0. If one is wrong, stop and report before building on it — do not quietly substitute.
-- **tiles.versatiles.org is a demo server.** No SLA, per-IP rate limit answered with 429 and no Retry-After, six-hour `Cache-Control`, a weak ETag that answers revalidation with 304 (ADR 0012; ADR 0001 found none), data refreshed roughly quarterly. Send an identifying User-Agent, never no-cache, back off on 429. The provider swap lives in `sources.json`, so an outage is a config change, not an app update.
+- **tiles.versatiles.org is a demo server.** No SLA, per-IP rate limit answered with 429 and no Retry-After, six-hour `Cache-Control`, no ETag (every revalidation is a full download; one tile showed a weak ETag and a 304 on 2026-10-16, ADR 0012), data refreshed roughly quarterly. Send an identifying User-Agent, never no-cache, back off on 429. The provider swap lives in `sources.json`, so an outage is a config change, not an app update.
 - **MapLibre reads PMTiles with gzip or no compression only.** VersaTiles writes brotli by default; every basemap extract passes `--compress gzip` or MapLibre throws "Compression method not supported".
 - **`osmium export` does not assemble route relations**, only multipolygons and boundaries; member ways come out with their own tags. Trail geometry is our pyosmium step. And 5–10 % of hiking relations cross region borders: cut them per region from the `route=hiking` filter of the uncut extract with `osmium extract -s smart -S types=route`, never from the `complete_ways` region PBF.
 - **pyosmium fixture writers must emit nodes, then ways, then relations, each by ascending id**, or osmium rejects the file. `pipeline/tests/osm_fixtures.py` does it; reuse it.

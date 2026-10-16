@@ -311,7 +311,7 @@ The example is real, abridged: the manifest CI assembles from the `test` build a
 }
 ```
 
-The top level has exactly these fields. The schema sets `additionalProperties: false` on every object: the producer is strict, while clients ignore what they do not know ([compatibility rule](#compatibility-rule)).
+The top level has exactly these fields. The schema sets `additionalProperties: false` on every object except region `name`, which allows further language keys: the producer is strict, while clients ignore what they do not know ([compatibility rule](#compatibility-rule)).
 
 | Field | Rule |
 |---|---|
@@ -416,7 +416,7 @@ The command does not count releases. Given a manifest that already carried vN, `
 
 No other field is allowed, so a basemap source cannot carry `tile_size`. Every URL, zoom range, schema, format and attribution string in the file was checked against the live VersaTiles TileJSON on 2026-10-16, and the terrain tile size against a live tile ([ADR 0012](decisions.md)).
 
-Compatibility rule: clients ignore fields they do not know, and a structural change bumps `sources_version`. A client that cannot parse the file falls back to its bundled copy.
+Compatibility rule: clients ignore fields they do not know, and a structural change bumps `sources_version`. A client that meets an unknown `sources_version`, or cannot parse the file, keeps using its cached or bundled copy. From each layer's list, which is in priority order, a client uses the first source it can use.
 
 ## Build report (`build-report.json`, `report_version` 1)
 
