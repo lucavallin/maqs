@@ -388,9 +388,18 @@ def test_manifest_command_rejects_a_bad_release_tag(tmp_path):
     dist = full_dist(tmp_path)
     assert manifest_cmd("--release", "latest", "--dist", str(dist)).exit_code == 2
     assert manifest_cmd("--release", "data-ci", "--dist", str(dist)).exit_code == 2
-    ok = manifest_cmd("--release", "data-ci", "--dist", str(dist), "--include-fixtures")
-    assert ok.exit_code == 0, ok.output
-    assert json.loads((dist / "manifest.json").read_text())["regions"][0]["id"] == "test"
+    refused = manifest_cmd("--release", "data-2026-11", "--dist", str(dist), "--regions", "test")
+    assert refused.exit_code == 2
+
+
+def test_manifest_command_data_ci_covers_only_the_listed_regions(tmp_path):
+    reports = {"test": region_report("test"), "base": base_report(["triveneto"])}
+    dist = write_dist(tmp_path / "dist", reports)
+    result = manifest_cmd("--release", "data-ci", "--dist", str(dist), "--regions", "test")
+    assert result.exit_code == 0, result.output
+    assert "(1 regions, 1 base packs)" in result.output
+    doc = json.loads((dist / "manifest.json").read_text())
+    assert [r["id"] for r in doc["regions"]] == ["test"]
 
 
 def test_manifest_command_applies_previous(tmp_path):

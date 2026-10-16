@@ -167,7 +167,7 @@ def build_manifest(
     dist: Path,
     release: str,
     *,
-    include_fixtures: bool = False,
+    regions: Sequence[str] | None = None,
     previous: dict | None = None,
     now: datetime | None = None,
 ) -> dict:
@@ -175,17 +175,22 @@ def build_manifest(
     if moment.tzinfo is None:
         raise ValueError("now must be timezone-aware")
     stamp = moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
-    regions = [
-        _region_doc(config.region(rid), dist, release)
-        for rid in config.region_ids(include_fixtures=include_fixtures)
-    ]
+    if regions is None:
+        ids = config.region_ids(include_fixtures=False)
+    else:
+        known = config.region_ids(include_fixtures=True)
+        for rid in regions:
+            if rid not in known:
+                raise ManifestError(f"unknown region '{rid}'")
+        ids = [rid for rid in known if rid in regions]
+    region_docs = [_region_doc(config.region(rid), dist, release) for rid in ids]
     manifest = {
         "manifest_version": MANIFEST_VERSION,
         "created_at": stamp,
         "release": release,
         "shortbread_version": SHORTBREAD_VERSION,
         "attribution": copy.deepcopy(list(ATTRIBUTION)),
-        "regions": regions,
+        "regions": region_docs,
         "base": _base_docs(config, dist, release),
     }
     if previous is not None:
