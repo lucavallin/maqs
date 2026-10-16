@@ -18,6 +18,7 @@ MANIFEST_VERSION = 1
 SHORTBREAD_VERSION = "1.0"
 REPO = "lucavallin/maqs"
 CI_RELEASE = "data-ci"
+STAMP_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 VERSIONED_KEYS = frozenset({"layer", "layer_schema_version", "data_date"})
 OVERLAY_LAYERS = frozenset({"trails", "places"})
 
@@ -112,8 +113,7 @@ def region_layers(report: dict, release: str, *, required: Sequence[str]) -> dic
     return {name: _sort_entries(entries) for name, entries in layers.items()}
 
 
-def _region_doc(region: Region, dist: Path, release: str) -> dict:
-    report = read_report(dist, region.id)
+def _region_doc(region: Region, report: dict, release: str) -> dict:
     return {
         "id": region.id,
         "name": {"it": region.name["it"], "en": region.name["en"]},
@@ -122,13 +122,19 @@ def _region_doc(region: Region, dist: Path, release: str) -> dict:
     }
 
 
-def _base_docs(config: Config, dist: Path, release: str) -> list[dict]:
+def _base_report(config: Config, dist: Path) -> dict | None:
+    """The base-pack report, or None when no base pack is configured."""
     if not config.base_packs:
-        return []
+        return None
     if not report_path(dist / "base").exists():
         needed = ", ".join(f"base-{pack.id}" for pack in config.base_packs)
         raise ManifestError(f"base: build-report.json not found (needed for {needed})")
-    report = read_report(dist, "base")
+    return read_report(dist, "base")
+
+
+def _base_docs(config: Config, report: dict | None, release: str) -> list[dict]:
+    if report is None:
+        return []
     by_step = {step["name"]: step for step in report["steps"]}
     docs = []
     for pack in config.base_packs:
@@ -220,6 +226,22 @@ def _check_entry_urls(manifest: dict) -> None:
                     raise ManifestError(f"{label}: {layer}: {e['file']} points at {CI_RELEASE}")
 
 
+def _check_created_at(stamp: str, reports: dict[str, dict]) -> None:
+    """A manifest is never older than the newest build report it lists."""
+    built: list[tuple[datetime, str]] = []
+    for label, report in reports.items():
+        try:
+            built.append((datetime.strptime(report["built_at"], STAMP_FORMAT), label))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ManifestError(f"{label}: build-report.json has no valid built_at") from exc
+    newest, label = max(built)
+    if datetime.strptime(stamp, STAMP_FORMAT) < newest:
+        raise ManifestError(
+            f"created_at {stamp} is older than {label}'s build report"
+            f" ({newest.strftime(STAMP_FORMAT)})"
+        )
+
+
 def build_manifest(
     config: Config,
     dist: Path,
@@ -232,7 +254,7 @@ def build_manifest(
     moment = now or datetime.now(UTC)
     if moment.tzinfo is None:
         raise ValueError("now must be timezone-aware")
-    stamp = moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+    stamp = moment.astimezone(UTC).strftime(STAMP_FORMAT)
     if previous is not None:
         _check_previous(previous, release)
     if regions is None:
@@ -243,7 +265,10 @@ def build_manifest(
             if rid not in known:
                 raise ManifestError(f"unknown region '{rid}'")
         ids = [rid for rid in known if rid in regions]
-    region_docs = [_region_doc(config.region(rid), dist, release) for rid in ids]
+    reports = {rid: read_report(dist, rid) for rid in ids}
+    base = _base_report(config, dist)
+    _check_created_at(stamp, reports if base is None else {**reports, "base": base})
+    region_docs = [_region_doc(config.region(rid), reports[rid], release) for rid in ids]
     manifest = {
         "manifest_version": MANIFEST_VERSION,
         "created_at": stamp,
@@ -251,7 +276,7 @@ def build_manifest(
         "shortbread_version": SHORTBREAD_VERSION,
         "attribution": copy.deepcopy(list(ATTRIBUTION)),
         "regions": region_docs,
-        "base": _base_docs(config, dist, release),
+        "base": _base_docs(config, base, release),
     }
     if previous is not None:
         manifest = carry_over(manifest, previous)
