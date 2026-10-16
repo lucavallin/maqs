@@ -6,7 +6,7 @@ Map data and a Swift package for native Apple apps: Shortbread basemap tiles, te
 
 ## Data releases
 
-A GitHub Actions workflow, [`build-maps.yml`](.github/workflows/build-maps.yml), builds every region at 03:00 UTC on the 1st of each month and publishes a GitHub Release tagged `data-YYYY-MM`, marked latest. Each release holds a `manifest.json`, the base pack files, and the files of every region in `config/regions.yaml` except the `test` fixture. The first release has not been published yet. Clients will read `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json`, which lists each file with its size, its SHA-256 and a URL pinned to its release. The online tile sources are in [`config/sources.json`](config/sources.json), which clients will read from `main`. A client picks the files it can read by the [compatibility rule](docs/data-format.md#compatibility-rule).
+A GitHub Actions workflow, [`build-maps.yml`](.github/workflows/build-maps.yml), builds every region at 03:00 UTC on the 1st of each month and publishes a GitHub Release tagged `data-YYYY-MM`, marked latest. Each release holds a `manifest.json`, the base pack files, and the files of every region in `config/regions.yaml` except the `test` fixture. The first release, `data-2026-10`, is published. Clients read `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json`, which lists each file with its size, its SHA-256 and a URL pinned to its release. The online tile sources are in [`config/sources.json`](config/sources.json), which clients read from `main`. A client picks the files it can read by the [compatibility rule](docs/data-format.md#compatibility-rule).
 
 To run the workflow by hand, for example after a failed month:
 
