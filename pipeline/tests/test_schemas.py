@@ -109,6 +109,13 @@ def test_ci_release_tag_is_valid_but_latest_is_not():
         validate(broken(MANIFEST, ["release"], "latest"), "manifest")
 
 
+@pytest.mark.parametrize("month", ["01", "09", "10", "12"])
+def test_every_month_from_01_to_12_is_a_valid_release(month):
+    validate(
+        json.loads(json.dumps(MANIFEST).replace("data-2026-11", f"data-2026-{month}")), "manifest"
+    )
+
+
 def broken(doc: dict, path: list, value) -> dict:
     out = copy.deepcopy(doc)
     node = out
@@ -182,6 +189,29 @@ TRAIL_PATH = "/regions/0/layers/trails/0"
         ([*TRAIL, "url"], ENTRY["url"] + "\n", f"{TRAIL_PATH}/url"),
         ([*TRAIL, "osm_timestamp"], "2026-10-31T20:21:00Z\n", f"{TRAIL_PATH}/osm_timestamp"),
         (["regions", 0, "id"], "veneto\n", "/regions/0/id"),
+        (["release"], "data-2026-13", "/release"),
+        (["release"], "data-2026-00", "/release"),
+        (
+            [*TRAIL, "url"],
+            "https://github.com.evil.com/lucavallin/maqs/releases/download/data-2026-11/veneto-trails.v1.sqlite",
+            f"{TRAIL_PATH}/url",
+        ),
+        (
+            [*TRAIL, "url"],
+            "https://github.com/someone/maqs/releases/download/data-2026-11/veneto-trails.v1.sqlite",
+            f"{TRAIL_PATH}/url",
+        ),
+        (
+            [*TRAIL, "url"],
+            ENTRY["url"].replace("data-2026-11", "data-2026-13"),
+            f"{TRAIL_PATH}/url",
+        ),
+        ([*TRAIL, "url"], f"{RELEASE_URL}/..sqlite", f"{TRAIL_PATH}/url"),
+        ([*TRAIL, "url"], f"{RELEASE_URL}/veneto-roads.v1.sqlite", f"{TRAIL_PATH}/url"),
+        ([*TRAIL, "sha256"], ..., TRAIL_PATH),
+        (["regions", 0, "bbox"], [1, 2, 3, 4, 5], "/regions/0/bbox"),
+        (["base", 0, "layers", "basemap"], ..., "/base/0/layers"),
+        ([*TRAIL, "layer_schema_version"], 1.5, f"{TRAIL_PATH}/layer_schema_version"),
     ],
 )
 def test_invalid_manifests_name_the_offending_path(path, value, where):

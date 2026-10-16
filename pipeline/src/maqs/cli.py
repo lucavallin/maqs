@@ -40,7 +40,7 @@ LAYER_STEPS: dict[str, type] = {
     "curvature": CurvatureStep,
 }
 DEFAULT_LAYERS: tuple[str, ...] = ("basemap", "terrain", "trails", "places", "curvature")
-RELEASE_TAG = re.compile(r"^data-[0-9]{4}-[0-9]{2}$")
+RELEASE_TAG = re.compile(r"data-[0-9]{4}-(0[1-9]|1[0-2])")
 LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
 
 
@@ -374,7 +374,7 @@ def manifest(
     if release == CI_RELEASE:
         if region_list is None:
             raise click.UsageError(f"--release {CI_RELEASE} requires --regions")
-    elif not RELEASE_TAG.match(release):
+    elif not RELEASE_TAG.fullmatch(release):
         raise click.UsageError(f"--release must look like data-YYYY-MM, got '{release}'")
     elif region_list is not None:
         raise click.UsageError("--regions is only valid with --release data-ci")

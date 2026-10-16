@@ -453,3 +453,10 @@ def test_manifest_command_refuses_a_previous_that_fails_the_schema(tmp_path):
     assert result.exit_code == 1
     assert f"--previous {previous}: /regions/0/layers/trails/0/sha256: " in result.output
     assert not (dist / "manifest.json").exists()
+
+
+@pytest.mark.parametrize("tag", ["data-2026-13", "data-2026-00", "data-2026-11\n"])
+def test_manifest_command_rejects_a_month_outside_01_to_12(tmp_path, tag):
+    dist = full_dist(tmp_path)
+    result = manifest_cmd("--release", tag, "--dist", str(dist))
+    assert result.exit_code == 2 and "--release must look like data-YYYY-MM" in result.output
