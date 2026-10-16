@@ -15,10 +15,10 @@ cap_kb=8192
 )
 
 rm -rf "$fixtures/test" "$fixtures/base"
-mkdir -p "$fixtures/test" "$fixtures/base"
-cp "$root"/dist/test/* "$fixtures/test/"
-# The base pack itself is ~13 MB and would break the cap; tests use the test basemap under its name.
-cp "$root/dist/base/build-report.json" "$fixtures/base/build-report.json"
+mkdir -p "$fixtures/test"
+# Data files only: build reports hold absolute local paths. The base pack (~13 MB) would break the
+# cap, so tests serve the test basemap under the base pack's name.
+cp "$root"/dist/test/*.pmtiles "$root"/dist/test/*.sqlite "$fixtures/test/"
 cp "$root/dist/manifest.json" "$fixtures/manifest.json"
 cp "$root/config/sources.json" "$root/Sources/MaqsCore/Resources/sources.json"
 
