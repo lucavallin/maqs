@@ -89,8 +89,8 @@ def test_build_manifest_assembles_every_region_and_base_pack(cfg, full_dist):
 
 
 def test_include_fixtures_adds_the_test_region(cfg, full_dist):
-    m = build_manifest(cfg, full_dist, "data-2026-12", include_fixtures=True, now=NOW)
-    assert m["regions"][0]["id"] == "test"
+    m = build_manifest(cfg, full_dist, "data-ci", include_fixtures=True, now=NOW)
+    assert m["regions"][0]["id"] == "test" and m["release"] == "data-ci"
     validate(m, "manifest")
 
 

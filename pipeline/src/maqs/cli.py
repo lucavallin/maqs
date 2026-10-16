@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -12,6 +13,7 @@ import click
 from maqs.config import DEFAULT_CONFIG_PATH, Config, ConfigError, load_config
 from maqs.context import BASE_TARGET, BuildContext
 from maqs.curvature.step import CurvatureStep
+from maqs.manifest import ManifestError, build_manifest, write_manifest
 from maqs.places.step import PlacesStep
 from maqs.report import build_report, report_path, write_report
 from maqs.schemas import SchemaError, validate
@@ -38,6 +40,8 @@ LAYER_STEPS: dict[str, type] = {
     "curvature": CurvatureStep,
 }
 DEFAULT_LAYERS: tuple[str, ...] = ("basemap", "terrain", "trails", "places", "curvature")
+RELEASE_TAG = re.compile(r"^data-[0-9]{4}-[0-9]{2}$")
+CI_RELEASE = "data-ci"
 LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
 
 
@@ -324,3 +328,64 @@ def check_config(ctx: click.Context, manifest_file: Path | None) -> None:
     _validate_json_file(config_path.parent / "sources.json", "sources")
     if manifest_file is not None:
         _validate_json_file(manifest_file, "manifest")
+
+
+@main.command()
+@click.option(
+    "--release",
+    required=True,
+    help="Release tag, data-YYYY-MM (data-ci with --include-fixtures).",
+)
+@click.option(
+    "--dist",
+    type=click.Path(path_type=Path),
+    default=None,
+    show_default="dist/ under the repo root",
+)
+@click.option(
+    "--out",
+    type=click.Path(path_type=Path),
+    default=None,
+    show_default="<dist>/manifest.json",
+)
+@click.option(
+    "--previous",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    default=None,
+    help="The latest published manifest; its lower schema versions are carried over.",
+)
+@click.option("--include-fixtures", is_flag=True, help="Include fixture regions (CI smoke only).")
+@click.pass_context
+def manifest(
+    ctx: click.Context,
+    release: str,
+    dist: Path | None,
+    out: Path | None,
+    previous: Path | None,
+    include_fixtures: bool,
+) -> None:
+    """Assemble and validate manifest.json from every region's build report."""
+    config_path = _config_path(ctx)
+    cfg = _load(config_path)
+    if release == CI_RELEASE and not include_fixtures:
+        raise click.UsageError(f"--release {CI_RELEASE} is only valid with --include-fixtures")
+    if release != CI_RELEASE and not RELEASE_TAG.match(release):
+        raise click.UsageError(f"--release must look like data-YYYY-MM, got '{release}'")
+    if dist is None:
+        dist = _repo_root(config_path) / "dist"
+    if out is None:
+        out = dist / "manifest.json"
+    previous_doc = None
+    if previous is not None:
+        try:
+            previous_doc = json.loads(previous.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise click.ClickException(f"--previous {previous}: {exc}") from exc
+    try:
+        doc = build_manifest(
+            cfg, dist, release, include_fixtures=include_fixtures, previous=previous_doc
+        )
+    except (ManifestError, SchemaError) as exc:
+        raise click.ClickException(str(exc)) from exc
+    write_manifest(out, doc)
+    click.echo(f"wrote {out} ({len(doc['regions'])} regions, {len(doc['base'])} base packs)")
