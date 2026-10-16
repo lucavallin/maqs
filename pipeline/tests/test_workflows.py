@@ -72,3 +72,24 @@ def test_steps_with_pipes_run_under_bash_pipefail(name):
         for step in job["steps"]:
             if "|" in step.get("run", ""):
                 assert step.get("shell") == "bash", step.get("name") or step["run"]
+
+
+def test_build_maps_checkouts_do_not_persist_credentials():
+    steps = [s for j in load("build-maps.yml")["jobs"].values() for s in j["steps"]]
+    checkouts = [s for s in steps if s.get("uses", "").startswith("actions/checkout@")]
+    assert len(checkouts) == 3
+    for step in checkouts:
+        assert step["with"]["persist-credentials"] is False
+
+
+def test_build_maps_run_bodies_take_matrix_values_through_env():
+    for job in load("build-maps.yml")["jobs"].values():
+        for step in job["steps"]:
+            assert "${{ matrix." not in step.get("run", ""), step.get("name")
+
+
+def test_build_restores_the_geofabrik_extract_strictly():
+    steps = load("build-maps.yml")["jobs"]["build"]["steps"]
+    restore = next(s for s in steps if s.get("name") == "Restore the Geofabrik extract")
+    assert restore["uses"].startswith("actions/cache/restore@")
+    assert restore["with"]["fail-on-cache-miss"] is True
