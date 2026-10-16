@@ -437,3 +437,19 @@ def test_manifest_command_fails_on_an_unreadable_previous(tmp_path):
         "--release", "data-2026-11", "--dist", str(dist), "--previous", str(broken)
     )
     assert result.exit_code == 1 and "--previous" in result.output
+
+
+def test_manifest_command_refuses_a_previous_that_fails_the_schema(tmp_path):
+    dist = full_dist(tmp_path)
+    previous = tmp_path / "previous.json"
+    first = manifest_cmd("--release", "data-2026-10", "--dist", str(dist), "--out", str(previous))
+    assert first.exit_code == 0, first.output
+    doc = json.loads(previous.read_text())
+    doc["regions"][0]["layers"]["trails"][0]["sha256"] = "not-a-digest"
+    previous.write_text(json.dumps(doc))
+    result = manifest_cmd(
+        "--release", "data-2026-11", "--dist", str(dist), "--previous", str(previous)
+    )
+    assert result.exit_code == 1
+    assert f"--previous {previous}: /regions/0/layers/trails/0/sha256: " in result.output
+    assert not (dist / "manifest.json").exists()
