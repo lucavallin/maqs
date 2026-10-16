@@ -217,10 +217,17 @@ jobs:
           if [[ -s "$GITHUB_WORKSPACE/previous/manifest.json" ]]; then args+=(--previous "$GITHUB_WORKSPACE/previous/manifest.json"); fi
           uv run maqs manifest "${args[@]}"
           uv run maqs check-config --manifest "$GITHUB_WORKSPACE/dist/manifest.json"
+      # Prints `<label>/<file> <bytes>` per file to upload (relative to dist/), then a total.
+      # With --previous, a file of this tag that an earlier run of the month uploaded and the
+      # new manifest still names (same sha256) is accepted without being in dist/.
       - name: Check the assets and write the notes
         shell: bash
-        run: uv run maqs release-check --dist "$GITHUB_WORKSPACE/dist" --manifest "$GITHUB_WORKSPACE/dist/manifest.json" --notes "$GITHUB_WORKSPACE/notes.md" | tee "$GITHUB_WORKSPACE/assets.txt"
         working-directory: pipeline
+        run: |
+          set -euo pipefail
+          args=(--dist "$GITHUB_WORKSPACE/dist" --manifest "$GITHUB_WORKSPACE/dist/manifest.json" --notes "$GITHUB_WORKSPACE/notes.md")
+          if [[ -s "$GITHUB_WORKSPACE/previous/manifest.json" ]]; then args+=(--previous "$GITHUB_WORKSPACE/previous/manifest.json"); fi
+          uv run maqs release-check "${args[@]}" | tee "$GITHUB_WORKSPACE/assets.txt"
       - name: Create the release if the tag is new
         shell: bash
         env:
@@ -239,11 +246,10 @@ jobs:
         run: |
           set -euo pipefail
           files=()
-          while read -r name _; do
-            [[ "$name" == total ]] && break
-            p=$(find dist -name "$name" -type f -print -quit)
-            [[ -n "$p" ]] || { echo "missing $name" >&2; exit 1; }
-            files+=("$p")
+          while read -r path _; do
+            [[ "$path" == total ]] && break
+            [[ -f "dist/$path" ]] || { echo "missing dist/$path" >&2; exit 1; }
+            files+=("dist/$path")
           done < assets.txt
           gh release upload "$RELEASE" "${files[@]}" --clobber
           gh release upload "$RELEASE" dist/manifest.json --clobber
@@ -251,4 +257,6 @@ jobs:
       - name: Summary
         shell: bash
         run: |
-          { echo "## $RELEASE"; echo; echo '```'; cat assets.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          carried=$(grep '^carried ' assets.txt)
+          { echo "## $RELEASE"; echo; echo "$carried"; echo; echo '```'; cat assets.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

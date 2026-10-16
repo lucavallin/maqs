@@ -11,7 +11,8 @@ from maqs.steps.base import StepResult
 from maqs.tools import ToolStatus
 from tests.helpers import write_pmtiles
 from tests.manifest_fixtures import base_report, region_report, write_dist
-from tests.test_release import rel
+from tests.test_release import bumped, rel, write_assets
+from tests.test_schemas import MANIFEST
 
 REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
 
@@ -336,8 +337,6 @@ def test_check_config_rejects_a_bad_sources_file(tmp_path):
 
 
 def test_check_config_validates_a_manifest(tmp_path):
-    from tests.test_schemas import MANIFEST
-
     good = tmp_path / "manifest.json"
     good.write_text(json.dumps(MANIFEST))
     assert check_config("--manifest", str(good)).exit_code == 0
@@ -537,53 +536,72 @@ def test_fetch_reports_a_download_failure(monkeypatch, tmp_path):
     assert result.exit_code == 1 and "md5 mismatch" in result.output
 
 
-def test_release_check_passes_and_writes_notes(tmp_path):
-    from tests.test_release import write_assets
-    from tests.test_schemas import MANIFEST
-
-    doc = json.loads(json.dumps(MANIFEST))
-    write_assets(tmp_path / "dist", doc)
+def release_check(tmp_path, doc: dict, *args: str):
     (tmp_path / "manifest.json").write_text(json.dumps(doc))
-    result = CliRunner().invoke(
+    return CliRunner().invoke(
         main,
         [
-            "--config",
-            str(REAL),
             "release-check",
             "--dist",
             str(tmp_path / "dist"),
             "--manifest",
             str(tmp_path / "manifest.json"),
-            "--notes",
-            str(tmp_path / "notes.md"),
+            *args,
         ],
     )
+
+
+def test_release_check_prints_paths_the_total_and_the_carried_count_then_notes(tmp_path):
+    doc = json.loads(json.dumps(MANIFEST))
+    write_assets(tmp_path / "dist", doc)
+    result = release_check(tmp_path, doc, "--notes", str(tmp_path / "notes.md"))
     assert result.exit_code == 0, result.output
-    assert "veneto-trails.v1.sqlite 1234" in result.output and "total " in result.output
+    lines = result.stdout.splitlines()
+    assert "veneto/veneto-trails.v1.sqlite 1234" in lines
+    assert "base/base-triveneto-basemap.v1.pmtiles 1234" in lines
+    assert all((tmp_path / "dist" / line.split()[0]).is_file() for line in lines[:7])
+    assert lines[7].startswith("total 7 assets, ")
+    assert lines[8] == "carried 0 entries from earlier releases"
+    assert lines[9] == f"wrote {tmp_path / 'notes.md'}"
     assert (tmp_path / "notes.md").read_text().startswith("# Map data 2026-11")
 
 
 def test_release_check_fails_on_a_missing_asset(tmp_path):
-    from tests.test_release import write_assets
-    from tests.test_schemas import MANIFEST
-
     doc = json.loads(json.dumps(MANIFEST))
     write_assets(tmp_path / "dist", doc)
     (tmp_path / "dist" / "base" / "base-triveneto-basemap.v1.pmtiles").unlink()
-    (tmp_path / "manifest.json").write_text(json.dumps(doc))
-    result = CliRunner().invoke(
-        main,
-        [
-            "--config",
-            str(REAL),
-            "release-check",
-            "--dist",
-            str(tmp_path / "dist"),
-            "--manifest",
-            str(tmp_path / "manifest.json"),
-        ],
-    )
+    result = release_check(tmp_path, doc)
     assert result.exit_code == 1 and "base-triveneto-basemap.v1.pmtiles: missing" in result.output
+
+
+def test_release_check_with_previous_skips_files_already_on_the_release(tmp_path):
+    doc, previous = bumped(json.loads(json.dumps(MANIFEST)), tmp_path / "dist")
+    assert release_check(tmp_path, doc).exit_code == 1  # v1 is not in dist
+    (tmp_path / "previous.json").write_text(json.dumps(previous))
+    result = release_check(tmp_path, doc, "--previous", str(tmp_path / "previous.json"))
+    assert result.exit_code == 0, result.output
+    assert "veneto/veneto-curvature.v2.sqlite 1234" in result.stdout.splitlines()
+    assert "curvature.v1" not in result.stdout
+    assert "total 7 assets, " in result.stdout
+
+
+def test_release_check_counts_entries_carried_from_earlier_releases(tmp_path):
+    doc = json.loads(json.dumps(MANIFEST))
+    write_assets(tmp_path / "dist", doc)
+    carried = json.loads(json.dumps(doc["regions"][0]["layers"]["curvature"][0]))
+    carried["url"] = carried["url"].replace("data-2026-11", "data-2026-10")
+    doc["regions"][0]["layers"]["curvature"].append(carried)
+    result = release_check(tmp_path, doc)
+    assert result.exit_code == 0, result.output
+    assert result.stdout.splitlines()[-1] == "carried 1 entries from earlier releases"
+
+
+def test_release_check_refuses_an_unreadable_previous(tmp_path):
+    doc = json.loads(json.dumps(MANIFEST))
+    write_assets(tmp_path / "dist", doc)
+    (tmp_path / "previous.json").write_text("{not json")
+    result = release_check(tmp_path, doc, "--previous", str(tmp_path / "previous.json"))
+    assert result.exit_code == 1 and "previous.json" in result.output
 
 
 def previous_manifest(tmp_path, releases, release="data-2026-11"):

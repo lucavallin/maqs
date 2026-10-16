@@ -495,6 +495,19 @@ def previous_manifest(releases_file: Path, release: str) -> None:
     click.echo(tag or "none")
 
 
+def _read_manifest(path: Path) -> dict:
+    """A manifest file that parses and passes the schema; anything else exits 1."""
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise click.ClickException(f"{path}: {exc}") from exc
+    try:
+        validate(doc, "manifest")
+    except SchemaError as exc:
+        raise click.ClickException(f"{path}: {exc.path}: {exc.message}") from exc
+    return doc
+
+
 @main.command("release-check")
 @click.option(
     "--dist", type=click.Path(path_type=Path, exists=True, file_okay=False), required=True
@@ -506,22 +519,33 @@ def previous_manifest(releases_file: Path, release: str) -> None:
     required=True,
 )
 @click.option(
+    "--previous",
+    type=click.Path(path_type=Path, exists=True, dir_okay=False),
+    default=None,
+    help="The manifest passed to `maqs manifest --previous`; files it already names under"
+    " this release with the same sha256 need not be in dist and are not uploaded.",
+)
+@click.option(
     "--notes", type=click.Path(path_type=Path), default=None, help="Write the release notes here."
 )
-def release_check(dist: Path, manifest_file: Path, notes: Path | None) -> None:
-    """Assert every asset the manifest names for its release is in dist with the right bytes."""
+def release_check(
+    dist: Path, manifest_file: Path, previous: Path | None, notes: Path | None
+) -> None:
+    """Assert every asset the manifest names for its release is in dist with the right bytes.
+
+    Prints one `<label>/<file> <bytes>` line per file to upload (relative to dist), a total
+    line, and how many entries were carried from earlier releases.
+    """
+    doc = _read_manifest(manifest_file)
+    previous_doc = None if previous is None else _read_manifest(previous)
     try:
-        doc = json.loads(manifest_file.read_text(encoding="utf-8"))
-    except (OSError, ValueError) as exc:
-        raise click.ClickException(f"{manifest_file}: {exc}") from exc
-    try:
-        validate(doc, "manifest")
-        assets = local_assets(doc, dist)
-    except (SchemaError, ReleaseError) as exc:
+        assets = local_assets(doc, dist, previous=previous_doc)
+    except ReleaseError as exc:
         raise click.ClickException(str(exc)) from exc
     for asset in assets:
-        click.echo(f"{asset.file} {asset.bytes}")
+        click.echo(f"{asset.label}/{asset.file} {asset.bytes}")
     click.echo(f"total {len(assets)} assets, {sum(a.bytes for a in assets)} bytes")
+    click.echo(f"carried {carried_count(doc)} entries from earlier releases")
     if notes is not None:
         notes.write_text(release_notes(doc, carried_count(doc)), encoding="utf-8")
         click.echo(f"wrote {notes}")
