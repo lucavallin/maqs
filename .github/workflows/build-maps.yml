@@ -67,6 +67,8 @@ jobs:
             targets=$(jq -c --arg r "$REGION" '[$r]' <<<"$json")
           fi
           if [[ "$full" == true ]]; then targets=$(jq -c '. + ["base"]' <<<"$targets"); fi
+          # Only main publishes; a run on another ref builds the same targets and stops there.
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then echo "not on main: build only"; full=false; fi
           echo "targets=$targets" >> "$GITHUB_OUTPUT"
           echo "release=data-$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
           echo "full=$full" >> "$GITHUB_OUTPUT"
@@ -163,7 +165,7 @@ jobs:
 
   release:
     needs: [prepare, build]
-    if: needs.prepare.outputs.full == 'true'
+    if: needs.prepare.outputs.full == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
