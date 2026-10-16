@@ -499,3 +499,38 @@ def test_regions_json_lists_regions_base_packs_and_extracts():
     assert doc["base_packs"] == [{"id": "triveneto", "regions": ["triveneto"], "max_zoom": 10}]
     assert doc["geofabrik_extracts"] == ["europe/italy/nord-est"]
     assert [r["id"] for r in doc["regions"] if not r["fixture"]] == ids[1:]
+
+
+def fetch(*args: str):
+    return CliRunner().invoke(main, ["--config", str(REAL), "fetch", *args])
+
+
+def test_fetch_downloads_the_named_extract(monkeypatch, tmp_path):
+    calls = []
+
+    def fake_fetch(cache, extract):
+        calls.append((cache, extract))
+        p = cache / "geofabrik" / "europe-italy-nord-est-latest.osm.pbf"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"pbf")
+        return p
+
+    monkeypatch.setattr(cli.extract, "fetch_extract", fake_fetch)
+    result = fetch("--extract", "europe/italy/nord-est", "--cache", str(tmp_path))
+    assert result.exit_code == 0, result.output
+    assert calls == [(tmp_path, "europe/italy/nord-est")]
+    assert "ok:" in result.output and "3 bytes" in result.output
+
+
+def test_fetch_rejects_an_unknown_extract(tmp_path):
+    result = fetch("--extract", "europe/nowhere", "--cache", str(tmp_path))
+    assert result.exit_code == 2 and "europe/italy/nord-est" in result.output
+
+
+def test_fetch_reports_a_download_failure(monkeypatch, tmp_path):
+    def boom(cache, extract):
+        raise cli.extract.FetchError("md5 mismatch for x")
+
+    monkeypatch.setattr(cli.extract, "fetch_extract", boom)
+    result = fetch("--extract", "europe/italy/nord-est", "--cache", str(tmp_path))
+    assert result.exit_code == 1 and "md5 mismatch" in result.output

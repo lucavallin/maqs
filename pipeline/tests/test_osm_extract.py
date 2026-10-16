@@ -123,6 +123,26 @@ def test_geofabrik_pbf_downloads_once_with_md5_check(veneto, monkeypatch):
     assert len(fetched) == 2  # reused, even with --force
 
 
+def test_fetch_extract_downloads_once_and_reuses(tmp_path, monkeypatch):
+    payload = b"pbf-bytes"
+    digest = hashlib.md5(payload).hexdigest()
+    fetched: list[str] = []
+
+    def fake_download(url, dest, **kw):
+        fetched.append(url)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        sidecar = f"{digest}  nord-est-latest.osm.pbf\n".encode()
+        dest.write_bytes(sidecar if url.endswith(".md5") else payload)
+
+    monkeypatch.setattr(extract, "download", fake_download)
+    cache = tmp_path / "cache"
+    path = extract.fetch_extract(cache, "europe/italy/nord-est")
+    assert path == cache / "geofabrik" / f"{NORD_EST}-latest.osm.pbf"
+    assert path.read_bytes() == payload and len(fetched) == 2  # sidecar + file
+    assert extract.fetch_extract(cache, "europe/italy/nord-est") == path
+    assert len(fetched) == 2  # reused, not downloaded again
+
+
 def test_geofabrik_pbf_rejects_md5_mismatch_and_caches_nothing(veneto, monkeypatch):
     def fake_download(url, dest, **kw):
         dest.parent.mkdir(parents=True, exist_ok=True)
