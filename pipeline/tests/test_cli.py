@@ -460,3 +460,26 @@ def test_manifest_command_rejects_a_month_outside_01_to_12(tmp_path, tag):
     dist = full_dist(tmp_path)
     result = manifest_cmd("--release", tag, "--dist", str(dist))
     assert result.exit_code == 2 and "--release must look like data-YYYY-MM" in result.output
+
+
+def test_manifest_command_says_how_many_entries_it_carried(tmp_path):
+    dist = full_dist(tmp_path)
+    previous = tmp_path / "previous.json"
+    first = manifest_cmd("--release", "data-2026-10", "--dist", str(dist), "--out", str(previous))
+    assert first.exit_code == 0 and "carried" not in first.output
+    same = manifest_cmd(
+        "--release", "data-2026-11", "--dist", str(dist), "--previous", str(previous)
+    )
+    assert same.exit_code == 0 and "carried 0 entries from data-2026-10" in same.output
+    report_file = dist / "veneto" / "build-report.json"
+    report = json.loads(report_file.read_text())
+    for s in report["steps"]:
+        if s["name"] == "trails":
+            for o in s["outputs"]:
+                o["layer_schema_version"] = 2
+                o["file"] = o["file"].replace(".v1.", ".v2.")
+    report_file.write_text(json.dumps(report))
+    bumped = manifest_cmd(
+        "--release", "data-2026-11", "--dist", str(dist), "--previous", str(previous)
+    )
+    assert bumped.exit_code == 0 and "carried 2 entries from data-2026-10" in bumped.output
