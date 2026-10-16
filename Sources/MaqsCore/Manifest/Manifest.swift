@@ -30,12 +30,21 @@ struct Manifest: Decodable, Sendable, Equatable {
     static let supportedVersion = 1
 
     /// Decodes and validates a manifest. Unknown fields, unknown layer keys and unknown roles pass through;
-    /// a wrong type, a missing required field, a malformed pack id, a non-HTTPS entry URL or a foreign host is an error.
+    /// a wrong type, a missing required field, a malformed id or file name, an out-of-range size, a duplicate,
+    /// a non-HTTPS entry URL or a foreign host is an error. Error messages name the field path, never content.
     static func decode(_ data: Data, manifestHost: String) throws -> Manifest {
-        struct Probe: Decodable { let manifest_version: Int }
+        struct Probe: Decodable {
+            let manifestVersion: Int
+            enum CodingKeys: String, CodingKey { case manifestVersion = "manifest_version" }
+        }
+        do {
+            _ = try JSONSerialization.jsonObject(with: data)
+        } catch {
+            throw ManifestError.invalid("not valid JSON")
+        }
         let version: Int
         do {
-            version = try JSONDecoder().decode(Probe.self, from: data).manifest_version
+            version = try JSONDecoder().decode(Probe.self, from: data).manifestVersion
         } catch {
             throw ManifestError.invalid("manifest_version missing or not an integer")
         }
@@ -48,30 +57,60 @@ struct Manifest: Decodable, Sendable, Equatable {
         } catch {
             throw ManifestError.invalid("not valid JSON")
         }
-        // Pack ids become directory names on disk, so they must be plain lowercase kebab-case.
-        for (index, region) in manifest.regions.enumerated() where !isValidID(region.id) {
-            throw ManifestError.invalid("regions.[\(index)].id: not a valid id")
-        }
-        for (index, pack) in manifest.base.enumerated() where !isValidID(pack.id) {
-            throw ManifestError.invalid("base.[\(index)].id: not a valid id")
-        }
-        for entry in manifest.allEntries {
-            guard entry.url.scheme?.lowercased() == "https" else {
-                throw ManifestError.insecureURL(entry.url.absoluteString)
-            }
-            guard entry.url.host()?.lowercased() == manifestHost.lowercased() else {
-                throw ManifestError.foreignHost(entry.url.absoluteString)
-            }
-        }
+        try manifest.validate(manifestHost: manifestHost)
         return manifest
     }
 
-    private static func isValidID(_ id: String) -> Bool {
-        id.wholeMatch(of: /[a-z0-9]+(-[a-z0-9]+)*/) != nil
+    /// Largest file a release may hold (1.9 GiB, the pipeline's asset limit).
+    private static let maxBytes: Int64 = 2_040_109_465
+
+    private func validate(manifestHost: String) throws {
+        for (index, item) in attribution.enumerated() where item.url.scheme?.lowercased() != "https" {
+            throw ManifestError.invalid("attribution.[\(index)].url: must be https")
+        }
+        // Pack ids become directory names on disk, so they must be plain lowercase kebab-case.
+        var seenIDs = Set<String>()
+        for (index, region) in regions.enumerated() {
+            try Self.checkID(region.id, path: "regions.[\(index)]", seen: &seenIDs)
+        }
+        seenIDs = []
+        for (index, pack) in base.enumerated() {
+            try Self.checkID(pack.id, path: "base.[\(index)]", seen: &seenIDs)
+        }
+        // File names become paths in the shared downloads directory: same rules, and no name twice.
+        var seenFiles = Set<String>()
+        let host = manifestHost.lowercased()
+        let groups = regions.enumerated().map { ("regions.[\($0.offset)]", $0.element.layers) }
+            + base.enumerated().map { ("base.[\($0.offset)]", $0.element.layers) }
+        for (groupPath, layers) in groups {
+            for key in layers.keys.sorted() {
+                for (index, entry) in (layers[key] ?? []).enumerated() {
+                    let path = "\(groupPath).layers.\(key).[\(index)]"
+                    guard entry.file.count <= 128,
+                          entry.file.wholeMatch(of: /[a-z0-9]+(-[a-z0-9]+)*\.v[1-9][0-9]*\.[a-z0-9]+/) != nil
+                    else { throw ManifestError.invalid("\(path).file: not a valid file name") }
+                    guard seenFiles.insert(entry.file).inserted else {
+                        throw ManifestError.invalid("\(path).file: duplicate file name")
+                    }
+                    guard (1...Self.maxBytes).contains(entry.bytes) else {
+                        throw ManifestError.invalid("\(path).bytes: out of range")
+                    }
+                    guard entry.url.scheme?.lowercased() == "https" else {
+                        throw ManifestError.insecureURL("\(path).url")
+                    }
+                    guard entry.url.host()?.lowercased() == host,
+                          entry.url.user() == nil, entry.url.password() == nil, entry.url.port == nil
+                    else { throw ManifestError.foreignHost("\(path).url") }
+                }
+            }
+        }
     }
 
-    var allEntries: [ManifestEntry] {
-        regions.flatMap { $0.layers.values.flatMap { $0 } } + base.flatMap { $0.layers.values.flatMap { $0 } }
+    private static func checkID(_ id: String, path: String, seen: inout Set<String>) throws {
+        guard id.count <= 64, id.wholeMatch(of: /[a-z0-9]+(-[a-z0-9]+)*/) != nil else {
+            throw ManifestError.invalid("\(path).id: not a valid id")
+        }
+        guard seen.insert(id).inserted else { throw ManifestError.invalid("\(path).id: duplicate id") }
     }
 }
 
@@ -129,11 +168,14 @@ struct ManifestEntry: Decodable, Sendable, Equatable {
         bytes = try c.decode(Int64.self, forKey: .bytes)
         sha256 = try c.decode(String.self, forKey: .sha256)
         let day = try c.decode(String.self, forKey: .dataDate)
-        do {
-            dataDate = try Date(day, strategy: .iso8601.year().month().day())
-        } catch {
+        let dayStyle = Date.ISO8601FormatStyle().year().month().day()
+        guard day.wholeMatch(of: /[0-9]{4}-[0-9]{2}-[0-9]{2}/) != nil,
+              let parsed = try? Date(day, strategy: dayStyle),
+              parsed.formatted(dayStyle) == day
+        else {
             throw DecodingError.dataCorruptedError(forKey: .dataDate, in: c, debugDescription: "not YYYY-MM-DD")
         }
+        dataDate = parsed
         osmTimestamp = try c.decodeIfPresent(ISO8601Seconds.self, forKey: .osmTimestamp)?.date
         role = try c.decodeIfPresent(String.self, forKey: .role)
     }
@@ -150,11 +192,12 @@ struct ISO8601Seconds: Decodable {
     let date: Date
     init(from decoder: any Decoder) throws {
         let text = try decoder.singleValueContainer().decode(String.self)
-        do {
-            date = try Date(text, strategy: .iso8601)
-        } catch {
+        guard text.wholeMatch(of: /[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z/) != nil,
+              let parsed = try? Date(text, strategy: .iso8601)
+        else {
             throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "not an ISO 8601 UTC timestamp"))
         }
+        date = parsed
     }
 }
 
