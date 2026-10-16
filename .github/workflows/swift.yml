@@ -72,9 +72,15 @@ jobs:
         with: { persist-credentials: false }
       - name: Test on the iOS Simulator
         run: |
-          set -o pipefail
+          set +e
           xcodebuild -scheme Maqs-Package \
             -destination 'platform=iOS Simulator,name=iPhone 17' \
-            -skipPackagePluginValidation test 2>&1 | tee xcodebuild.log | grep -E '": error:|Test run with|Test Suite|BUILD|TEST' || true
-          if grep -q '": error:' xcodebuild.log; then exit 1; fi
-          grep -q 'Test run with [0-9]* tests.* passed' xcodebuild.log
+            -skipPackagePluginValidation test > xcodebuild.log 2>&1
+          status=$?
+          set -e
+          grep -E '": error:|Test run with|TEST (SUCCEEDED|FAILED)' xcodebuild.log || true
+          if grep -q '": error:' xcodebuild.log || grep -qE 'Test run with .* failed|\*\* TEST FAILED \*\*' xcodebuild.log; then
+            echo 'xcodebuild reported errors or failed tests' >&2; exit 1
+          fi
+          grep -q 'Test run with [1-9][0-9]* tests.* passed' xcodebuild.log
+          exit "$status"
