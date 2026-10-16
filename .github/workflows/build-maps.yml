@@ -38,6 +38,7 @@ jobs:
       md5: ${{ steps.geofabrik.outputs.md5 }}
     steps:
       - uses: actions/checkout@v7
+        with: { persist-credentials: false }
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with: { enable-cache: true }
       - run: uv sync --frozen
@@ -54,6 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           json=$(uv run maqs regions --json)
+          jq -e '.geofabrik_extracts == ["europe/italy/nord-est"]' <<<"$json" >/dev/null || { echo "prepare only knows the nord-est extract; update build-maps.yml" >&2; exit 1; }
           if [[ -z "$REGION" && -z "$LAYERS" ]]; then full=true; else full=false; fi
           if [[ -z "$REGION" ]]; then
             targets=$(jq -c '[.regions[] | select(.fixture|not) | .id]' <<<"$json")
@@ -61,7 +63,7 @@ jobs:
             targets='["base"]'
           else
             known=$(jq -r '.regions[].id' <<<"$json")
-            grep -qx -- "$REGION" <<<"$known" || { echo "unknown region '$REGION'; valid: $(tr '\n' ' ' <<<"$known") base" >&2; exit 1; }
+            grep -qxF -- "$REGION" <<<"$known" || { echo "unknown region '$REGION'; valid: $(tr '\n' ' ' <<<"$known") base" >&2; exit 1; }
             targets=$(jq -c --arg r "$REGION" '[$r]' <<<"$json")
           fi
           if [[ "$full" == true ]]; then targets=$(jq -c '. + ["base"]' <<<"$targets"); fi
@@ -129,21 +131,28 @@ jobs:
       - run: uv run maqs check-tools
         working-directory: pipeline
       - name: Restore the Geofabrik extract
-        uses: actions/cache@v6
+        if: matrix.target != 'base'
+        uses: actions/cache/restore@v6
         with:
           path: .cache/geofabrik
           key: geofabrik-nord-est-${{ needs.prepare.outputs.md5 }}
+          fail-on-cache-miss: true
       - name: Build ${{ matrix.target }}
         shell: bash
         working-directory: pipeline
         env:
           LAYERS: ${{ needs.prepare.outputs.layers }}
+          TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          args=(--region "${{ matrix.target }}" --dist "$GITHUB_WORKSPACE/dist" --cache "$GITHUB_WORKSPACE/.cache")
+          args=(--region "$TARGET" --dist "$GITHUB_WORKSPACE/dist" --cache "$GITHUB_WORKSPACE/.cache")
           if [[ -n "$LAYERS" ]]; then args+=(--layers "$LAYERS"); fi
           uv run maqs build "${args[@]}"
-      - run: cat "dist/${{ matrix.target }}/build-report.json"
+      - name: Show the build report
+        if: ${{ !cancelled() }}
+        env:
+          TARGET: ${{ matrix.target }}
+        run: cat "dist/$TARGET/build-report.json"
       - uses: actions/upload-artifact@v7
         with:
           name: dist-${{ matrix.target }}
@@ -159,6 +168,7 @@ jobs:
     permissions:
       contents: write
     env:
+      GH_REPO: ${{ github.repository }}
       RELEASE: ${{ needs.prepare.outputs.release }}
     steps:
       - uses: actions/checkout@v7
@@ -184,11 +194,17 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p previous
-          if gh release download --pattern manifest.json --dir previous 2>/dev/null && [[ -s previous/manifest.json ]]; then
-            echo "previous manifest: $(jq -r .release previous/manifest.json)"
+          latest=$(gh release list --exclude-drafts --exclude-pre-releases --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName')
+          if [[ -n "$latest" ]]; then
+            assets=$(gh release view "$latest" --json assets --jq '.assets[].name')
+            if grep -qxF manifest.json <<<"$assets"; then
+              gh release download "$latest" --pattern manifest.json --dir previous
+              echo "previous manifest: $(jq -r .release previous/manifest.json) (release $latest)"
+            else
+              echo "latest release $latest has no manifest.json; treating as first release"
+            fi
           else
-            echo "no published manifest yet; first release"
-            rm -f previous/manifest.json
+            echo "no published release yet; first release"
           fi
       - name: Assemble the manifest
         shell: bash
@@ -200,6 +216,7 @@ jobs:
           uv run maqs manifest "${args[@]}"
           uv run maqs check-config --manifest "$GITHUB_WORKSPACE/dist/manifest.json"
       - name: Check the assets and write the notes
+        shell: bash
         run: uv run maqs release-check --dist "$GITHUB_WORKSPACE/dist" --manifest "$GITHUB_WORKSPACE/dist/manifest.json" --notes "$GITHUB_WORKSPACE/notes.md" | tee "$GITHUB_WORKSPACE/assets.txt"
         working-directory: pipeline
       - name: Create the release if the tag is new
@@ -222,7 +239,9 @@ jobs:
           files=()
           while read -r name _; do
             [[ "$name" == total ]] && break
-            files+=("$(find dist -name "$name" -type f | head -1)")
+            p=$(find dist -name "$name" -type f -print -quit)
+            [[ -n "$p" ]] || { echo "missing $name" >&2; exit 1; }
+            files+=("$p")
           done < assets.txt
           gh release upload "$RELEASE" "${files[@]}" --clobber
           gh release upload "$RELEASE" dist/manifest.json --clobber
