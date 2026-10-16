@@ -71,27 +71,27 @@ The data releases come from a second workflow, `build-maps.yml`, which runs mont
 
 **Cache and artifacts.**
 - The Geofabrik extract sits in `.cache/geofabrik`, cached under `geofabrik-nord-est-<md5>` with the MD5 Geofabrik publishes, the same key as the smoke job in `pipeline.yml`. `prepare` restores it; on a miss `maqs fetch --extract europe/italy/nord-est` downloads and checks it, and the cache is saved when `prepare` ends. Each region leg restores it with `fail-on-cache-miss`, so the extract is downloaded at most once per run and never per leg. The `base` leg reads no OSM data and skips it. `prepare` fails if `regions.yaml` names any extract other than `europe/italy/nord-est`: the key and the `maqs fetch` call name that one, so a region from another extract also needs the workflow changed.
-- The tool binaries come from the cache `pipeline.yml` fills, keyed by the pins (`TOOLS_KEY`); a miss runs `pipeline/bootstrap.sh`.
+- The tool binaries come from a cache both workflows fill, keyed by the pins (`TOOLS_KEY`); on a miss the leg runs `pipeline/bootstrap.sh` and saves the cache.
 - The artifact `dist-<target>` holds `dist/<target>/`, the outputs and `build-report.json`, kept 7 days. `release` downloads every `dist-*` into `artifacts/` and moves each to `dist/<target>/`, the layout `maqs manifest` reads.
 
 **The release job**, in order:
 1. Fetch the latest published manifest: from the release `gh release list` marks latest, and only if that release has a `manifest.json` asset. With no such release the run is a first release and `maqs manifest` gets no `--previous`. Any other `gh` error fails the job.
 2. `maqs manifest --release <tag> [--previous …]`, then `maqs check-config --manifest`. A full run has built every region and base pack the tag needs, so no `--regions` is passed.
 3. `maqs release-check --dist dist --manifest dist/manifest.json --notes notes.md` (`maqs/release.py`): every file the manifest names under this release's tag must be in `dist/<label>/` with the manifest's bytes and SHA-256. Entries carried from an older tag live on that release and are not checked here. It prints one `<file> <bytes>` line per asset and a total, the list the upload step reads, and writes the release notes: each region with its layers' OSM timestamps, the base packs, the number of carried entries and the attribution.
-4. `gh release create <tag> --target "$GITHUB_SHA" --latest=false --notes-file notes.md` if the tag does not exist yet. The tag points at the commit the run built from.
+4. `gh release create <tag> --target "$GITHUB_SHA" --latest=false --notes-file notes.md` if the release does not exist yet. The tag points at the commit the run built from.
 5. `gh release upload <tag> <files…> --clobber`, then `gh release upload <tag> dist/manifest.json --clobber`.
 6. `gh release edit <tag> --latest --notes-file notes.md`, which also replaces the notes with this run's.
 7. The asset list goes to the run summary.
 
 Nothing is uploaded until steps 1–3 pass, and when a leg fails, `release` does not run at all.
 
-**Re-runs.** `gh workflow run build-maps.yml` with no inputs rebuilds the current month. When the month's release exists, step 4 is skipped, same-named assets are replaced, `manifest.json` last, and the release is marked latest. If it already was latest, the previous manifest is the month's own, and `maqs manifest` keeps every lower-version entry that manifest lists (the same-month rule in [`data-format.md`](data-format.md#compatibility-rule)). Nothing is deleted, on this release or an older one, so every file a published manifest names stays online. A new month's release is created off latest and becomes latest only in step 6, so when that run fails, clients keep reading the previous month's manifest.
+**Re-runs.** `gh workflow run build-maps.yml` with no inputs rebuilds the current month. When the month's release exists, step 4 is skipped, same-named assets are replaced, `manifest.json` last, and the release is marked latest. If it already was latest, the previous manifest is the month's own, and `maqs manifest` keeps every lower-version entry that manifest lists (the same-month rule in [`data-format.md`](data-format.md#compatibility-rule)). Nothing on an older release is touched, so carried entries stay online. On this month's release `--clobber` replaces same-named files in place, and when the run succeeds every file the new manifest names is present. A new month's release is created off latest and becomes latest only in step 6, so when that run fails, clients keep reading the previous month's manifest.
 
 **What clients can rely on.** Phase 4 builds the client side on these guarantees:
 - `manifest.json` is uploaded after every file it names, and a new month's release becomes latest only after its manifest is up.
-- During a same-month re-run, or after one that failed midway, a file can already be the new build while the manifest still names the old SHA-256. A client verifies SHA-256 before installing; on a mismatch it discards the file, re-fetches the manifest, tries again later and keeps the data it has.
-- `--clobber` deletes an asset before it uploads the new one. If the manifest upload itself fails on a re-run, the latest release has no `manifest.json` until the next run. A client treats that as a failed update check.
-- No file a published manifest names is deleted, carried ones included.
+- During a same-month re-run, or after one that failed midway, the manifest can name a file that is gone, because `--clobber` deletes an asset before it uploads the new one (a 404), or a file that is already the new build (a SHA-256 mismatch). If the manifest upload itself fails, the latest release has no `manifest.json` until the next run.
+- In each of these cases the client keeps the data it has installed, never installs a file that fails its SHA-256, and re-fetches the manifest later.
+- Nothing on an older release is touched, so carried entries stay online. When a run succeeds, every file the new manifest names is present.
 
 ## Swift package
 
