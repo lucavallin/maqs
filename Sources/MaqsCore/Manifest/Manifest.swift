@@ -80,7 +80,8 @@ struct Manifest: Decodable, Sendable, Equatable {
         for (index, region) in regions.enumerated() where !Self.isValidBBox(region.bbox) {
             throw ManifestError.invalid("regions.[\(index)].bbox: not a valid bounding box")
         }
-        // File names become paths in the shared downloads directory: same rules, and no name twice.
+        // File names become paths in the shared downloads directory: same rules, and no name twice. `.resume` is the
+        // suffix of the download session's resume files, so a file may not end in it (`DownloadSession.Request`).
         var seenFiles = Set<String>()
         let host = manifestHost.lowercased()
         let groups = regions.enumerated().map { ("regions.[\($0.offset)]", $0.element.layers) }
@@ -90,7 +91,8 @@ struct Manifest: Decodable, Sendable, Equatable {
                 for (index, entry) in (layers[key] ?? []).enumerated() {
                     let path = "\(groupPath).layers.\(key).[\(index)]"
                     guard entry.file.count <= 128,
-                          entry.file.wholeMatch(of: /[a-z0-9]+(-[a-z0-9]+)*\.v[1-9][0-9]*\.[a-z0-9]+/) != nil
+                          entry.file.wholeMatch(of: /[a-z0-9]+(-[a-z0-9]+)*\.v[1-9][0-9]*\.[a-z0-9]+/) != nil,
+                          !entry.file.hasSuffix(".resume")
                     else { throw ManifestError.invalid("\(path).file: not a valid file name") }
                     guard seenFiles.insert(entry.file).inserted else {
                         throw ManifestError.invalid("\(path).file: duplicate file name")

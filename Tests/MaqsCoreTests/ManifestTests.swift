@@ -145,7 +145,7 @@ import MaqsTestSupport
     }
 
     @Test("a file name that is not a plain versioned name is invalid", arguments: [
-        "../x", "a/b.v1.sqlite", "UPPER.v1.sqlite", "noversion.sqlite", "x.v0.sqlite", "",
+        "../x", "a/b.v1.sqlite", "UPPER.v1.sqlite", "noversion.sqlite", "x.v0.sqlite", "", "x.v1.resume",
     ])
     func badFileName(name: String) throws {
         let data = try mutatingEntry("trails", 1) { $0["file"] = name }
