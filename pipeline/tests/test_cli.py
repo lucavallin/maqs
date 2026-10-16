@@ -483,3 +483,19 @@ def test_manifest_command_says_how_many_entries_it_carried(tmp_path):
         "--release", "data-2026-11", "--dist", str(dist), "--previous", str(previous)
     )
     assert bumped.exit_code == 0 and "carried 2 entries from data-2026-10" in bumped.output
+
+
+def test_regions_json_lists_regions_base_packs_and_extracts():
+    result = CliRunner().invoke(main, ["--config", str(REAL), "regions", "--json"])
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.output)
+    ids = [r["id"] for r in doc["regions"]]
+    assert ids == ["test", "triveneto", "veneto", "friuli-venezia-giulia", "trentino-alto-adige"]
+    test = doc["regions"][0]
+    assert test["fixture"] is True and test["geofabrik"] == "europe/italy/nord-est"
+    assert test["name"] == {"it": "Nevegal (test)", "en": "Nevegal (test)"}
+    assert test["bbox"] == [12.21, 46.08, 12.29, 46.13]
+    assert all(r["fixture"] is False for r in doc["regions"][1:])
+    assert doc["base_packs"] == [{"id": "triveneto", "regions": ["triveneto"], "max_zoom": 10}]
+    assert doc["geofabrik_extracts"] == ["europe/italy/nord-est"]
+    assert [r["id"] for r in doc["regions"] if not r["fixture"]] == ids[1:]
