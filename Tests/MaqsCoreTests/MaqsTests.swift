@@ -16,9 +16,9 @@ import MaqsTestSupport
         manifest = try Manifest.decode(try Fixtures.manifestData(), manifestHost: "github.com")
     }
 
-    func maqs(layers: Set<Layer> = [.trails, .places], onlineTiles: Bool = true) throws -> Maqs {
+    func maqs(layers: Set<Layer> = [.trails, .places], onlineTiles: Bool = true, root: URL? = nil) throws -> Maqs {
         var configuration = MaqsConfiguration(layers: layers, userAgent: "Test/1")
-        configuration.storageDirectory = tmp.url
+        configuration.storageDirectory = root ?? tmp.url
         configuration.urlSessionConfiguration = server.configuration
         configuration.onlineTiles = onlineTiles
         return try Maqs(configuration: configuration)
@@ -27,13 +27,14 @@ import MaqsTestSupport
     func entries(_ layer: Layer) throws -> [ManifestEntry] { try #require(manifest.regions[0].entries(for: layer)) }
     func main(_ layer: Layer) throws -> ManifestEntry { try #require(try entries(layer).first { $0.role == nil }) }
     func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) }
+    func fixture(_ entry: ManifestEntry) throws -> Data { try Data(contentsOf: try Fixtures.url("test/\(entry.file)")) }
     var downloads: URL { tmp.url.appending(path: "downloads", directoryHint: .isDirectory) }
 
-    /// Routes `entry` to a body of its listed size, delivered after `delay` seconds, and returns a stream that yields
-    /// each time a request for it reaches the stub.
-    func routeSlow(_ entry: ManifestEntry, delay: TimeInterval) -> AsyncStream<Void> {
+    /// Routes `entry` to `body` (default: zeros of its listed size), delivered after `delay` seconds, and returns a
+    /// stream that yields each time a request for it reaches the stub.
+    func routeSlow(_ entry: ManifestEntry, delay: TimeInterval, body: Data? = nil) -> AsyncStream<Void> {
         let (reached, continuation) = AsyncStream<Void>.makeStream()
-        let body = Data(repeating: 0, count: Int(entry.bytes))
+        let body = body ?? Data(repeating: 0, count: Int(entry.bytes))
         server.route(entry.url) { _ in
             continuation.yield()
             return StubResponse(status: 200, body: body, delay: delay)
@@ -119,6 +120,45 @@ import MaqsTestSupport
     }
 
     // MARK: Install
+
+    /// Ids that break the manifest's rule (lowercase kebab-case, at most 64 characters), path traversals first.
+    nonisolated static let invalidIDs = ["triveneto/../../victim", "triveneto/../../../victim", "../victim", "", "Triveneto", "a b",
+                             "-a", "a-", "a--b", "é", String(repeating: "a", count: 65)]
+
+    @Test("remove refuses an invalid pack id and deletes nothing outside the packs folder", arguments: invalidIDs)
+    func removeInvalidID(_ id: String) async throws {
+        let root = tmp.url.appending(path: "root", directoryHint: .isDirectory)
+        let maqs = try maqs(root: root)
+        // The folder a traversal starts from exists, as it does once the base pack is installed.
+        try FileManager.default.createDirectory(at: root.appending(path: "packs/base-triveneto"), withIntermediateDirectories: true)
+        let victims = [tmp.url.appending(path: "victim"), root.appending(path: "victim")]
+        for victim in victims {
+            try FileManager.default.createDirectory(at: victim, withIntermediateDirectories: true)
+            try Data("keep".utf8).write(to: victim.appending(path: "pack.json"))
+        }
+        await #expect(throws: MaqsError.storage(.invalidPackID(.base(id)))) { try await maqs.remove(.base(id)) }
+        for victim in victims { #expect(exists(victim.appending(path: "pack.json"))) }
+        #expect(maqs.state.packs[.base(id)] == nil)
+    }
+
+    @Test("install, registerBundledBasePack and installedPack refuse an invalid pack id", arguments: invalidIDs)
+    func invalidIDElsewhere(_ id: String) async throws {
+        let maqs = try maqs()
+        _ = try await maqs.refreshCatalog()
+        await #expect(throws: MaqsError.download(.notInCatalog(.base(id)))) { try await maqs.install(.base(id)) }
+        await #expect(throws: MaqsError.download(.notInCatalog(.region(id)))) { try await maqs.install(.region(id)) }
+        let file = try Fixtures.url("test/test-basemap.v1.pmtiles")
+        await #expect(throws: MaqsError.storage(.invalidPackID(.base(id)))) {
+            try await maqs.registerBundledBasePack(id: id, basemap: file)
+        }
+        // A record planted at the id's path is not read.
+        try FileManager.default.createDirectory(at: tmp.url.appending(path: "packs/base-triveneto"), withIntermediateDirectories: true)
+        try? PackStore(root: tmp.url).write(PackRecord(id: .base(id), release: "planted", files: [:]))
+        #expect(await maqs.installedPack(.base(id)) == nil)
+        #expect(maqs.state.packs[.base(id)] == nil)
+        #expect(maqs.state.packs[.region(id)] == nil)
+        #expect(server.requests.count == 1)
+    }
 
     @Test("install before any catalog is noCatalog; an unknown pack is notInCatalog")
     func installPreconditions() async throws {
@@ -229,6 +269,55 @@ import MaqsTestSupport
         #expect(grown.state.packs[test] == .installed(installed))
     }
 
+    @Test("an install called after cancelInstall, before the cancelled one has ended, starts afresh instead of joining it")
+    func retryAfterCancel() async throws {
+        let maqs = try maqs(layers: [.trails])
+        _ = try await maqs.refreshCatalog()
+        let entries = try entries(.trails)
+        let reached = entries.map { routeSlow($0, delay: 30) }
+        let first = Task { try await maqs.install(test) }
+        await waitForRequests(reached)
+        // New requests get the real files; the held ones stay held until they are cancelled.
+        for entry in entries { server.route(entry.url, body: try fixture(entry)) }
+        await maqs.cancelInstall(test)
+        try await maqs.install(test)
+        await #expect(throws: MaqsError.download(.cancelled)) { try await first.value }
+        let pack = try #require(await maqs.installedPack(test))
+        #expect(maqs.state.packs[test] == .installed(pack))
+    }
+
+    @Test("remove during an install cancels it and leaves no pack.json and no pack files")
+    func removeDuringInstall() async throws {
+        let maqs = try maqs(layers: [.trails])
+        _ = try await maqs.refreshCatalog()
+        // The real files, held for 0.3 s: an install that is not stopped finishes and writes its record.
+        let reached = try entries(.trails).map { routeSlow($0, delay: 0.3, body: try fixture($0)) }
+        let task = Task { try await maqs.install(test) }
+        await waitForRequests(reached)
+        try await maqs.remove(test)
+        await #expect(throws: MaqsError.download(.cancelled)) { try await task.value }
+        #expect(!exists(tmp.url.appending(path: "packs/region-test")))
+        #expect(await maqs.installedPack(test) == nil)
+        #expect(maqs.state.packs[test] == .notInstalled)
+    }
+
+    @Test("remove deletes the pack's downloads and their resume data, and keeps other files in downloads")
+    func removeDeletesDownloads() async throws {
+        let maqs = try maqs()
+        _ = try await maqs.refreshCatalog()
+        let entry = try main(.trails)
+        let key = "\(entry.sha256)-\(entry.file)"
+        let own = [downloads.appending(path: key), downloads.appending(path: key + ".resume")]
+        let baseEntry = try #require(manifest.base[0].entries(for: .basemap)?.first)
+        let other = downloads.appending(path: "\(baseEntry.sha256)-\(baseEntry.file)")
+        for url in own + [other] { try Data(repeating: 1, count: 1_000).write(to: url) }
+        let before = await maqs.diskUsage().downloadsBytes
+        try await maqs.remove(test)
+        for url in own { #expect(!exists(url)) }
+        #expect(exists(other))
+        #expect(await maqs.diskUsage().downloadsBytes == before - 2_000)
+    }
+
     @Test("remove deletes the pack and updates state and catalog")
     func remove() async throws {
         let maqs = try maqs()
@@ -258,19 +347,24 @@ import MaqsTestSupport
 
     // MARK: Progress
 
-    @Test("progress keeps the maximum, publishes at most every 256 KiB, and always publishes the final value")
+    @Test("progress keeps the maximum, publishes at most every 256 KiB and every 100 ms, and always the final value")
     func progressThrottle() {
-        func progress(_ bytes: Int64) -> DownloadProgress { DownloadProgress(bytesReceived: bytes, totalBytes: 1_000_000) }
+        let start = ContinuousClock.now
         var throttle = Maqs.ProgressThrottle()
-        #expect(throttle.accept(progress(100)) == nil)
-        #expect(throttle.accept(progress(300_000)) == progress(300_000))
-        #expect(throttle.accept(progress(200_000)) == nil)
-        #expect(throttle.accept(progress(400_000)) == nil)
-        #expect(throttle.accept(progress(350_000)) == nil)
-        #expect(throttle.accept(progress(600_000)) == progress(600_000))
-        #expect(throttle.accept(progress(1_000_000)) == progress(1_000_000))
-        #expect(throttle.accept(progress(1_000_000)) == nil)
-        #expect(throttle.accept(progress(900_000)) == nil)
+        func accept(_ bytes: Int64, at milliseconds: Int) -> Int64? {
+            throttle.accept(DownloadProgress(bytesReceived: bytes, totalBytes: 2_000_000),
+                            at: start.advanced(by: .milliseconds(milliseconds)))?.bytesReceived
+        }
+        #expect(accept(100, at: 0) == nil)                    // under 256 KiB
+        #expect(accept(300_000, at: 10) == 300_000)
+        #expect(accept(700_000, at: 50) == nil)               // 400 KB more, but only 40 ms later
+        #expect(accept(650_000, at: 200) == nil)              // enough bytes and time, but below the 700 KB seen
+        #expect(accept(750_000, at: 300) == 750_000)
+        #expect(accept(800_000, at: 500) == nil)              // 200 ms later, but only 50 KB more
+        #expect(accept(1_900_000, at: 600) == 1_900_000)
+        #expect(accept(2_000_000, at: 610) == 2_000_000)      // the final value: 10 ms and 100 KB after the last
+        #expect(accept(2_000_000, at: 900) == nil)
+        #expect(accept(1_500_000, at: 950) == nil)
     }
 
     // MARK: Online sources

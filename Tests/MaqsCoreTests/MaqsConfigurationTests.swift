@@ -26,6 +26,21 @@ import Testing
         #expect(PackID.base("triveneto").directoryName == "base-triveneto")
     }
 
+    @Test("pack ids that follow the manifest rule are valid",
+          arguments: ["test", "veneto", "friuli-venezia-giulia", "a", "a1-b2", String(repeating: "a", count: 64)])
+    func validIDs(_ id: String) {
+        #expect(PackID.region(id).isValid)
+        #expect(PackID.base(id).isValid)
+    }
+
+    @Test("pack ids that break the manifest rule are invalid",
+          arguments: ["triveneto/../../victim", "../victim", "..", ".", "", "Triveneto", "a b", "a_b", "a.b", "-a", "a-",
+                      "a--b", "é", "a\u{301}", String(repeating: "a", count: 65)])
+    func invalidIDs(_ id: String) {
+        #expect(!PackID.region(id).isValid)
+        #expect(!PackID.base(id).isValid)
+    }
+
     @Test("layer raw values are the manifest keys")
     func layerKeys() {
         #expect(Layer.terrainHD.rawValue == "terrain-hd")

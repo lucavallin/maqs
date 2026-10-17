@@ -19,7 +19,7 @@ public struct MaqsConfiguration: Sendable {
     public var sourcesURL = URL(string: "https://raw.githubusercontent.com/lucavallin/maqs/main/config/sources.json")!
     /// The storage root. `nil` means `Application Support/Maqs` in the app's container.
     public var storageDirectory: URL?
-    /// How old a cached manifest may be before ``Maqs/RefreshPolicy/ifStale`` fetches again.
+    /// How old a cached manifest may be before ``RefreshPolicy/ifStale`` fetches again.
     public var catalogMaxAge: Duration = .seconds(86_400)
 
     /// Test seam: a stub `URLProtocol` is injected through `protocolClasses`. Ignored for background sessions.

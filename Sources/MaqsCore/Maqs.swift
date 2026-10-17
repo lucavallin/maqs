@@ -2,12 +2,13 @@ import Foundation
 
 /// The entry point of `MaqsCore`: region discovery, downloads, installed packs, and the online sources.
 ///
-/// Create one instance per app with a ``MaqsConfiguration``, read ``state`` from SwiftUI, call
-/// ``refreshCatalog(policy:)`` to learn what the latest data release offers, and ``install(_:)`` to download a pack.
-/// `MaqsTerrain` and `MaqsData` open the files that ``installedPack(_:)`` returns.
+/// Create one instance per process with a ``MaqsConfiguration``, and never two with the same
+/// ``MaqsConfiguration/backgroundSessionIdentifier``: the system allows one background session per identifier. Read
+/// ``state`` from SwiftUI, call ``refreshCatalog(policy:)`` to learn what the latest data release offers, and
+/// ``install(_:)`` to download a pack. `MaqsTerrain` and `MaqsData` open the files that ``installedPack(_:)`` returns.
 ///
-/// Installs run one at a time, in call order. A pack waiting for its turn already shows
-/// ``PackState/downloading(_:)`` with no bytes received, so the app can offer to cancel it.
+/// Installs run one at a time, in call order. A pack waiting for its turn shows ``PackState/queued``, so the app can
+/// offer to cancel it.
 public actor Maqs {
     /// The configuration this instance was created with.
     public nonisolated let configuration: MaqsConfiguration
@@ -125,29 +126,42 @@ public actor Maqs {
     /// Downloads and installs every configured layer of `pack` that is missing or changed, then publishes
     /// ``PackState/installed(_:)`` and the updated catalog.
     ///
-    /// Installs run one at a time, in call order. A second call for a pack that is already queued or running joins
-    /// that install: both return or throw together. Cancelling the calling task does not stop the install; call
-    /// ``cancelInstall(_:)``.
+    /// Installs run one at a time, in call order; a pack waiting for its turn is ``PackState/queued``. A second call
+    /// for a pack that is already queued or running joins that install: both return or throw together. A call after
+    /// ``cancelInstall(_:)`` does not join the cancelled install: it waits for it to end and starts a new one.
+    /// Cancelling the calling task does not stop the install; call ``cancelInstall(_:)``. A pack registered with
+    /// ``registerBundledBasePack(id:basemap:)`` is already installed: the call returns at once.
     ///
     /// After an update the previous files of the changed layers are removed, so a URL from an earlier
     /// ``InstalledPack`` that was not opened yet may no longer exist: read ``installedPack(_:)`` again after this
     /// returns. A file that is already open stays readable until it is closed.
     ///
     /// - Throws: ``MaqsError/download(_:)``: `noCatalog` before any catalog is loaded; `notInCatalog` when the catalog
-    ///   does not list the pack or the pack offers none of the configured layers (nothing is written, the state is
-    ///   unchanged); `layerUnreadable`; a size, checksum or network failure (the pack becomes ``PackState/failed(_:)``);
-    ///   `cancelled` after ``cancelInstall(_:)`` (the pack returns to installed if it was, else not installed).
+    ///   does not list the pack, the pack offers none of the configured layers, or its id is not valid (nothing is
+    ///   written, the state is unchanged); `layerUnreadable`; a size, checksum or network failure (the pack becomes
+    ///   ``PackState/failed(_:)``); `cancelled` after ``cancelInstall(_:)`` (the pack returns to installed if it was,
+    ///   else not installed).
     ///   ``MaqsError/storage(_:)`` when the files cannot be moved into place. Whatever was installed before stays.
     public func install(_ pack: PackID) async throws {
-        if let running = installs[pack] {
-            try await running.value
-            return
+        // No manifest can list an invalid id, so this is the answer it would get anyway, before the id reaches a path.
+        guard pack.isValid else { throw MaqsError.download(.notInCatalog(pack)) }
+        while true {
+            // The app's own file is installed; there is nothing to download.
+            if bundled[pack] != nil { return }
+            guard let running = installs[pack] else { break }
+            guard running.isCancelled else {
+                try await running.value
+                return
+            }
+            // A cancelled install is not joined: wait for it to end, then look again.
+            _ = try? await running.value
         }
-        let queuedBytes = try makePlan(pack).totalBytes
+        // Fails fast on a missing catalog, an unknown pack or an unreadable layer; planned again when its turn comes.
+        _ = try makePlan(pack)
         let ticket = nextTicket
         nextTicket += 1
         line.append(QueuedInstall(ticket: ticket))
-        let task = Task { try await self.runInstall(pack, ticket: ticket, queuedBytes: queuedBytes) }
+        let task = Task { try await self.runInstall(pack, ticket: ticket) }
         installs[pack] = task
         try await task.value
     }
@@ -160,15 +174,19 @@ public actor Maqs {
     }
 
     /// Deletes a downloaded pack, or unregisters a bundled one without touching the app's file. An install of the
-    /// pack that is queued or running is cancelled first.
+    /// pack that is queued or running is cancelled first, and the pack's partial and completed downloads under the
+    /// current manifest are deleted with their resume data.
     ///
-    /// - Throws: ``MaqsError/storage(_:)`` when the files cannot be deleted; the state shows what is left.
+    /// - Throws: ``MaqsError/storage(_:)``: ``StorageError/invalidPackID(_:)`` for an id that is not valid (nothing is
+    ///   deleted); another storage error when the files cannot be deleted, and the state then shows what is left.
     public func remove(_ pack: PackID) async throws {
+        guard pack.isValid else { throw MaqsError.storage(.invalidPackID(pack)) }
         // Wait for the cancelled install to stop, so it cannot write `pack.json` after the files are gone.
         while let running = installs[pack] {
             running.cancel()
             _ = try? await running.value
         }
+        deleteDownloads(of: pack)
         var failure: MaqsError?
         if bundled.removeValue(forKey: pack) == nil {
             do {
@@ -190,12 +208,14 @@ public actor Maqs {
     /// downloaded, and is never reported as having an update. The file is recorded as `layer_schema_version` 1 with
     /// no SHA-256. Not persisted: call it on every launch.
     ///
-    /// - Throws: ``MaqsError/storage(_:)`` with ``StorageError/fileNotFound(_:)`` when `url` is not a regular file.
+    /// - Throws: ``MaqsError/storage(_:)``: ``StorageError/invalidPackID(_:)`` when `id` is not lowercase kebab-case
+    ///   of at most 64 characters, ``StorageError/fileNotFound(_:)`` when `url` is not a regular file.
     public func registerBundledBasePack(id: String, basemap url: URL) async throws {
+        let pack = PackID.base(id)
+        guard pack.isValid else { throw MaqsError.storage(.invalidPackID(pack)) }
         guard let values = try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
               values.isRegularFile == true, let size = values.fileSize
         else { throw MaqsError.storage(.fileNotFound(url.lastPathComponent)) }
-        let pack = PackID.base(id)
         let file = InstalledFile(url: url, role: nil, schemaVersion: 1, sha256: nil, bytes: Int64(size), dataDate: nil)
         let installed = InstalledPack(id: pack, release: "bundled", files: [.basemap: [file]], bundled: true)
         bundled[pack] = installed
@@ -207,11 +227,13 @@ public actor Maqs {
         logger.info("registered bundled base pack \(pack.directoryName, privacy: .public)")
     }
 
-    /// The installed files of a pack, or `nil` when it is not installed or its record is unreadable.
+    /// The installed files of a pack, or `nil` when it is not installed, its record is unreadable, or its id is not
+    /// valid.
     ///
     /// An update removes the files it replaces: read this again after ``install(_:)`` returns rather than keeping
     /// URLs from an earlier result that were not opened yet.
     public func installedPack(_ pack: PackID) -> InstalledPack? {
+        guard pack.isValid else { return nil }
         if let bundled = bundled[pack] { return bundled }
         do {
             guard let record = try store.record(for: pack) else { return nil }
@@ -273,20 +295,24 @@ public actor Maqs {
 
     /// One install, from its place in the line to its final state. Every state change of the pack happens here, in
     /// order, so the last thing published is the outcome.
-    private func runInstall(_ pack: PackID, ticket: Int, queuedBytes: Int64) async throws {
+    private func runInstall(_ pack: PackID, ticket: Int) async throws {
         defer {
             installs[pack] = nil
             leaveLine(ticket)
         }
-        await publish { $0.packs[pack] = .downloading(DownloadProgress(bytesReceived: 0, totalBytes: queuedBytes)) }
         do {
+            if line.first?.ticket != ticket { await publish { $0.packs[pack] = .queued } }
             try await waitForTurn(ticket)
             try Task.checkCancellation()
+            // Registered as bundled while it waited: the app's own file is installed, there is nothing to download.
+            if bundled[pack] != nil {
+                let settled = settledState(pack)
+                await publish { $0.packs[pack] = settled }
+                return
+            }
             // Planned again: a refresh may have replaced the manifest while this install waited.
             let plan = try makePlan(pack)
-            if plan.totalBytes != queuedBytes {
-                await publish { $0.packs[pack] = .downloading(DownloadProgress(bytesReceived: 0, totalBytes: plan.totalBytes)) }
-            }
+            await publish { $0.packs[pack] = .downloading(DownloadProgress(bytesReceived: 0, totalBytes: plan.totalBytes)) }
             try await download(plan, for: pack)
             let installed = bundled[pack] ?? store.installedPack(from: plan.record)
             let catalog = buildCatalog()
@@ -324,7 +350,7 @@ public actor Maqs {
                 guard case .downloading? = state.packs[pack] else { continue }
                 switch event {
                 case .progress(let progress):
-                    if let accepted = throttle.accept(progress) { state.packs[pack] = .downloading(accepted) }
+                    if let accepted = throttle.accept(progress, at: .now) { state.packs[pack] = .downloading(accepted) }
                 case .verifying:
                     state.packs[pack] = .verifying
                 }
@@ -426,6 +452,38 @@ public actor Maqs {
         if deleted > 0 { logger.info("deleted \(deleted) stale downloads") }
     }
 
+    /// Deletes the downloads, and their resume data, that an install of `pack` uses under the current manifest, except
+    /// those a queued or running install of another pack still plans to use. A file that is not there is no error;
+    /// one that cannot be deleted is logged and left for the next refresh's pruning.
+    private func deleteDownloads(of pack: PackID) {
+        let inUse = installs.keys.filter { $0 != pack }.reduce(into: Set<String>()) { $0.formUnion(downloadKeys(of: $1)) }
+        let fileManager = FileManager.default
+        for key in downloadKeys(of: pack).subtracting(inUse) {
+            for url in [store.layout.downloadURL(fileName: key), store.layout.resumeDataURL(fileName: key)]
+            where fileManager.fileExists(atPath: url.path(percentEncoded: false)) {
+                do {
+                    try fileManager.removeItem(at: url)
+                } catch {
+                    logger.error("could not delete the download \(url.lastPathComponent, privacy: .public)")
+                }
+            }
+        }
+    }
+
+    /// The download keys (`<sha256>-<file>`, as the installer names them) of every file an install of `pack` would
+    /// fetch under the current manifest; empty without a manifest.
+    private func downloadKeys(of pack: PackID) -> Set<String> {
+        guard let manifest,
+              let selections = CatalogBuilder.selections(manifest: manifest.manifest, pack: pack, layers: configuration.layers)
+        else { return [] }
+        var keys: Set<String> = []
+        for (layer, selection) in selections {
+            guard case .readable(_, let files) = selection else { continue }
+            keys.formUnion(files.map { Installer.FileJob(layer: layer, entry: $0).key })
+        }
+        return keys
+    }
+
     /// What a pack is when nothing runs for it: installed when a record or a bundled file says so, else not installed.
     private func settledState(_ pack: PackID) -> PackState {
         installedPack(pack).map(PackState.installed) ?? .notInstalled
@@ -474,19 +532,26 @@ public actor Maqs {
 
 extension Maqs {
     /// Decides which progress values reach ``MaqsState``: never one smaller than already seen (concurrent downloads
-    /// report slightly out of order), and at most one per 256 KiB, except a value that reaches the total.
+    /// report slightly out of order), and at most one per 256 KiB and per 100 ms, except a value that reaches the total.
     struct ProgressThrottle {
         static let step: Int64 = 262_144
+        static let interval: Duration = .milliseconds(100)
         private var highest: Int64 = 0
-        private var published: Int64 = 0
+        private var publishedBytes: Int64 = 0
+        private var publishedAt: ContinuousClock.Instant?
 
-        /// `progress` when it should be published, `nil` when it should be dropped.
-        mutating func accept(_ progress: DownloadProgress) -> DownloadProgress? {
+        /// `progress` when it should be published, `nil` when it should be dropped. `now` is a parameter so tests
+        /// can pass their own instants.
+        mutating func accept(_ progress: DownloadProgress, at now: ContinuousClock.Instant) -> DownloadProgress? {
             guard progress.bytesReceived > highest else { return nil }
             highest = progress.bytesReceived
             let complete = progress.bytesReceived >= progress.totalBytes
-            guard complete || progress.bytesReceived - published >= Self.step else { return nil }
-            published = progress.bytesReceived
+            if !complete {
+                guard progress.bytesReceived - publishedBytes >= Self.step else { return nil }
+                if let publishedAt, publishedAt.duration(to: now) < Self.interval { return nil }
+            }
+            publishedBytes = progress.bytesReceived
+            publishedAt = now
             return progress
         }
     }

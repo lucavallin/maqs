@@ -91,6 +91,8 @@ public enum StorageError: Error, LocalizedError, Sendable, Equatable {
     case corruptRecord(PackID)
     /// A file the app handed in does not exist or is not a regular file; the payload is its name, never its path.
     case fileNotFound(String)
+    /// A pack id is not lowercase kebab-case of at most 64 characters, so it cannot name a pack; nothing was read or deleted.
+    case invalidPackID(PackID)
 
     /// A message for the user that says what to do.
     public var errorDescription: String? {
@@ -99,6 +101,7 @@ public enum StorageError: Error, LocalizedError, Sendable, Equatable {
         case .writeFailed(let p): "Could not write \(p). Free disk space and try again."
         case .corruptRecord(let id): "The record of \(id) is unreadable. Reinstall the pack."
         case .fileNotFound(let name): "\(name) was not found or is not a file. Check that the app bundles it."
+        case .invalidPackID(let id): "\(id) is not a valid pack id. Use an id from the catalog."
         }
     }
 }

@@ -49,6 +49,19 @@ import MaqsTestSupport
         #expect(store.records().isEmpty)   // skipped, not thrown, when listing
     }
 
+    @Test("removePack refuses an invalid id and deletes nothing outside the packs folder")
+    func removeInvalid() throws {
+        let tmp = try TemporaryDirectory()
+        let store = try PackStore(root: tmp.url.appending(path: "root"))
+        try FileManager.default.createDirectory(at: store.layout.packDirectory(.base("triveneto")), withIntermediateDirectories: true)
+        let victim = tmp.url.appending(path: "victim")
+        try FileManager.default.createDirectory(at: victim, withIntermediateDirectories: true)
+        try Data("keep".utf8).write(to: victim.appending(path: "pack.json"))
+        let id = PackID.base("triveneto/../../../victim")
+        #expect(throws: StorageError.invalidPackID(id)) { try store.removePack(id) }
+        #expect(FileManager.default.fileExists(atPath: victim.appending(path: "pack.json").path(percentEncoded: false)))
+    }
+
     @Test("removing a pack deletes its directory")
     func remove() throws {
         let tmp = try TemporaryDirectory()
