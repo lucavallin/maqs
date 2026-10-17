@@ -129,7 +129,7 @@ import MaqsTestSupport
         let task = Task { try await session.download(self.request("slow.bin")) { _ in } }
         var iterator = reached.makeAsyncIterator()
         _ = await iterator.next()
-        session.cancel(url: request("slow.bin").url)
+        session.cancel(key: "slow.bin")
         await expectCancelled(task)
         #expect(!downloadExists("slow.bin"))
     }
@@ -176,7 +176,7 @@ import MaqsTestSupport
         let second = Task { try await session.download(self.request("sc.bin")) { joinedContinuation.yield($0) } }
         var joinedIterator = joined.makeAsyncIterator()
         _ = await joinedIterator.next()
-        session.cancel(url: request("sc.bin").url)
+        session.cancel(key: "sc.bin")
         await expectCancelled(first)
         await expectCancelled(second)
         #expect(server.requests.count == 1)

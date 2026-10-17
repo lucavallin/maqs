@@ -53,14 +53,25 @@ struct SourcesClient: Sendable {
         }
         switch response {
         case .notModified:
-            guard let cached else { throw SourcesError.network(statusCode: 304) }
+            guard let cached else {
+                logger.error("sources.json fetch failed: HTTP 304 with no cached copy")
+                throw SourcesError.network(statusCode: 304)
+            }
             try cache.touch(fetchedAt: started)
             logger.info("sources.json unchanged")
             return cached.sources
         case .status(let code):
+            logger.error("sources.json fetch failed: HTTP \(code)")
             throw SourcesError.network(statusCode: code)
         case .ok(let data, let etag):
-            let sources = try SourcesDocument.decode(data)
+            let sources: OnlineSources
+            do {
+                sources = try SourcesDocument.decode(data)
+            } catch let error as SourcesError {
+                // The case and its field path; a SourcesError carries no document content and no URL.
+                logger.error("sources.json rejected: \(String(describing: error), privacy: .public)")
+                throw error
+            }
             try cache.write(data: data, meta: .init(etag: etag, fetchedAt: started))
             logger.info("sources.json fetched, \(data.count) bytes")
             return sources

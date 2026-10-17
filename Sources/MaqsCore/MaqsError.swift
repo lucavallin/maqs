@@ -10,6 +10,9 @@ public enum MaqsError: Error, LocalizedError, Sendable, Equatable {
     case storage(StorageError)
     /// `sources.json` was not accepted.
     case sources(SourcesError)
+    /// The ``MaqsConfiguration`` cannot be used: today only a blank ``MaqsConfiguration/userAgent``. The payload
+    /// names the field and the reason.
+    case invalidConfiguration(String)
 
     /// A message for the user that says what to do.
     public var errorDescription: String? {
@@ -18,6 +21,8 @@ public enum MaqsError: Error, LocalizedError, Sendable, Equatable {
         case .download(let e): e.errorDescription
         case .storage(let e): e.errorDescription
         case .sources(let e): e.errorDescription
+        case .invalidConfiguration(let what):
+            "The package configuration was rejected (\(what)). Set an app-identifying User-Agent such as \"MyApp/1.2 (iOS)\"."
         }
     }
 }
@@ -42,8 +47,8 @@ public enum ManifestError: Error, LocalizedError, Sendable, Equatable {
         switch self {
         case .unsupportedVersion(let v): "This data release (manifest version \(v)) needs a newer app. Update the app."
         case .invalid(let what): "The map data index could not be read (\(what)). Try again later."
-        case .insecureURL(let path): "The map data index points at a non-HTTPS address at \(path) and was rejected."
-        case .foreignHost(let path): "The map data index points outside its own host at \(path) and was rejected."
+        case .insecureURL(let path): "The map data index points at a non-HTTPS address at \(path) and was rejected. Try again later."
+        case .foreignHost(let path): "The map data index points outside its own host at \(path) and was rejected. Try again later."
         case .network(let code): "The map data index could not be fetched\(code.map { " (HTTP \($0))" } ?? ""). Check the connection and try again."
         case .rateLimited: "Too many requests to the data host. Try again in a few minutes."
         }
@@ -73,9 +78,9 @@ public enum DownloadError: Error, LocalizedError, Sendable, Equatable {
         case .checksumMismatch(let f): "\(f) did not match its checksum and was discarded. Try the download again."
         case .sizeMismatch(let f): "\(f) had an unexpected size and was discarded. Try the download again."
         case .network(let code): "The download failed\(code.map { " (HTTP \($0))" } ?? ""). Check the connection and try again."
-        case .cancelled: "The download was cancelled."
+        case .cancelled: "The download was cancelled. Start it again to continue."
         case .layerUnreadable(let layer): "The \(layer.rawValue) layer needs a newer app. Update the app."
-        case .notInCatalog(let id): "\(id) is not in the current catalog. Refresh and try again."
+        case .notInCatalog(let id): "\(id.displayName) is not in the current catalog. Refresh and try again."
         case .noCatalog: "Load the catalog before installing."
         }
     }
@@ -99,9 +104,9 @@ public enum StorageError: Error, LocalizedError, Sendable, Equatable {
         switch self {
         case .cannotCreateDirectory(let p): "Could not create the map storage folder (\(p)). Free disk space or check permissions."
         case .writeFailed(let p): "Could not write \(p). Free disk space and try again."
-        case .corruptRecord(let id): "The record of \(id) is unreadable. Reinstall the pack."
+        case .corruptRecord(let id): "The record of \(id.displayName) is unreadable. Reinstall the pack."
         case .fileNotFound(let name): "\(name) was not found or is not a file. Check that the app bundles it."
-        case .invalidPackID(let id): "\(id) is not a valid pack id. Use an id from the catalog."
+        case .invalidPackID(let id): "\"\(id.displayName)\" is not a valid pack id. Use an id from the catalog."
         }
     }
 }
@@ -119,8 +124,10 @@ public enum SourcesError: Error, LocalizedError, Sendable, Equatable {
     public var errorDescription: String? {
         switch self {
         case .unsupportedVersion(let v): "The online sources file (version \(v)) needs a newer app. Update the app."
-        case .invalid(let what): "The online sources file could not be read (\(what))."
-        case .network(let code): "The online sources file could not be fetched\(code.map { " (HTTP \($0))" } ?? "")."
+        case .invalid(let what):
+            "The online sources file could not be read (\(what)). The last good copy stays in use; try again later."
+        case .network(let code):
+            "The online sources file could not be fetched\(code.map { " (HTTP \($0))" } ?? ""). The last good copy stays in use; check the connection and try again."
         }
     }
 }

@@ -134,7 +134,7 @@ struct Installer: Sendable {
             try await withTaskCancellationHandler {
                 try await session.download(request, progress: progress)
             } onCancel: { [session] in
-                session.cancel(url: job.entry.url)
+                session.cancel(key: job.key)
             }
         } catch let error as TransferError {
             throw Self.downloadError(error, file: job.entry.file)

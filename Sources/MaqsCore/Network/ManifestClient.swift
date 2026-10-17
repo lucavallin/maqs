@@ -40,16 +40,28 @@ struct ManifestClient: Sendable {
         }
         switch response {
         case .notModified:
-            guard let cached = stored?.cached else { throw ManifestError.network(statusCode: 304) }
+            guard let cached = stored?.cached else {
+                logger.error("manifest fetch failed: HTTP 304 with no cached copy")
+                throw ManifestError.network(statusCode: 304)
+            }
             try cache.touch(fetchedAt: started)
             logger.info("manifest unchanged")
             return (cached.manifest, started)
         case .status(429):
+            logger.error("manifest fetch failed: HTTP 429")
             throw ManifestError.rateLimited
         case .status(let code):
+            logger.error("manifest fetch failed: HTTP \(code)")
             throw ManifestError.network(statusCode: code)
         case .ok(let data, let newETag):
-            let manifest = try Manifest.decode(data, manifestHost: host)
+            let manifest: Manifest
+            do {
+                manifest = try Manifest.decode(data, manifestHost: host)
+            } catch let error as ManifestError {
+                // The case and its field path; a ManifestError carries no document content and no URL.
+                logger.error("manifest rejected: \(String(describing: error), privacy: .public)")
+                throw error
+            }
             try cache.write(data: data, meta: .init(etag: newETag, fetchedAt: started))
             logger.info("manifest fetched: \(manifest.release, privacy: .public), \(data.count) bytes")
             return (manifest, started)

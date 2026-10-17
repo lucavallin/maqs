@@ -13,6 +13,14 @@ public enum PackID: Hashable, Sendable, Codable {
         }
     }
 
+    /// The id as people read it in a message: `veneto` for a region, `base triveneto` for a base pack.
+    var displayName: String {
+        switch self {
+        case .region(let id): id
+        case .base(let id): "base \(id)"
+        }
+    }
+
     /// Whether the id follows the manifest's rule, so it can name a directory: lowercase kebab-case
     /// (`[a-z0-9]+(-[a-z0-9]+)*`), at most 64 characters. Every public entry point checks it before the id reaches a path.
     var isValid: Bool {

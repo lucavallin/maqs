@@ -5,7 +5,8 @@ public struct MaqsConfiguration: Sendable {
     /// The layers this app needs. Only these are shown in the catalog and downloaded.
     public var layers: Set<Layer>
     /// An app-identifying `User-Agent` prefix such as `"MyApp/1.2 (iOS)"`. The package appends its own token.
-    /// Free tile providers block generic agents; this is required.
+    /// Free tile providers block generic agents; this is required, and ``Maqs/init(configuration:)`` throws
+    /// ``MaqsError/invalidConfiguration(_:)`` when it is empty or only whitespace.
     public var userAgent: String
     /// `false` turns every online tile and DEM request off (ADR 0008): ``Maqs/onlineSources`` is then `nil`.
     /// `manifest.json` and `sources.json` fetches stay allowed; they carry no position.
@@ -13,6 +14,7 @@ public struct MaqsConfiguration: Sendable {
     /// A background `URLSession` identifier. Set it on iOS so downloads survive suspension;
     /// `nil` uses a foreground session (macOS, tests).
     public var backgroundSessionIdentifier: String?
+    // The two URL literals below are compile-time constants a test pins, and the only force unwraps in `Sources/`.
     /// Where the latest manifest is read from. Only this file is read through `latest`.
     public var manifestURL = URL(string: "https://github.com/lucavallin/maqs/releases/latest/download/manifest.json")!
     /// Where the online providers file is read from.
