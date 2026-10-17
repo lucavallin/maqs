@@ -72,8 +72,11 @@ jobs:
         with: { persist-credentials: false }
       - name: Test on the iOS Simulator
         run: |
+          # Xcode names the scheme Maqs while the package has one library product, Maqs-Package once it has several.
+          scheme=$(xcodebuild -list -json | jq -r '.workspace.schemes | if any(.[]; . == "Maqs-Package") then "Maqs-Package" else "Maqs" end')
+          echo "scheme: $scheme"
           set +e
-          xcodebuild -scheme Maqs-Package \
+          xcodebuild -scheme "$scheme" \
             -destination 'platform=iOS Simulator,name=iPhone 17' \
             -skipPackagePluginValidation test > xcodebuild.log 2>&1
           status=$?
