@@ -70,6 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with: { persist-credentials: false }
+      - run: xcodebuild -version
       - name: Test on the iOS Simulator
         run: |
           set -o pipefail
