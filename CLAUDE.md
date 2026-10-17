@@ -11,7 +11,7 @@ This file governs *how you work* in this repository. Section 1 and the Stack cus
 
 `docs/BRIEF.md` is the source of truth for *what* to build, in what order, and which decisions are already made; it was amended after Phase 0 and `docs/decisions.md` records why. The owner's standing rules sit at the top of the brief: one map provider online and offline, as few providers as possible, nothing unmaintained, trail data from more than one source. This file governs *how*. When the two disagree, say so; do not silently pick one.
 
-**Where we are:** Phases 0–3 are done and recorded in `docs/decisions.md` ADRs 0001–0013; the first data release, `data-2026-10`, is published. Phase 4 (the Swift package) is next. The brief's phases are strictly ordered; each ends with a summary and waits for the go-ahead. Commands, paths, and file names below describe the contract the brief defines; a command that does not run yet is not a bug, it is a phase that has not happened.
+**Where we are:** Phases 0–3 are done and recorded in `docs/decisions.md` ADRs 0001–0013; the first data release, `data-2026-10`, is published. Phase 4 (the Swift package) is in progress in four sub-projects: the first, the package skeleton and `MaqsCore`, is done (ADR 0014); `MaqsTerrain`, `MaqsData` and `MaqsUI` with the demo app come next, in that order. The brief's phases are strictly ordered; each ends with a summary and waits for the go-ahead. Commands, paths, and file names below describe the contract the brief defines; a command that does not run yet is not a bug, it is a phase that has not happened.
 
 ### Explicitly out of scope
 - Any reference to the consuming apps: their names, bundle ids, styles, or needs beyond what the public API expresses.
@@ -64,7 +64,7 @@ Pipeline: Python managed with `uv` in `pipeline/`, entry point `uv run maqs buil
 |---|---|---|---|
 | local (macOS) | package build/tests, `test`-region pipeline runs, the demo app | no | `swift build` / `swift test`, `uv run maqs build --region test`, Xcode for the demo |
 | CI `ubuntu-24.04` | the data pipeline per region | no (ephemeral) | `pipeline.yml` (lint, tests, `test`-region smoke build), `build-maps.yml` (monthly region builds and the data release; a dispatch with `region` or `layers` builds without publishing) |
-| CI `macos-latest` | package build + tests, iOS Simulator and macOS | no (ephemeral) | `swift.yml` (Phase 4) |
+| CI `macos-latest` | package build + tests, iOS Simulator and macOS | no (ephemeral) | `swift.yml` (jobs `macos` and `ios-simulator`; its `guards` job runs on `ubuntu-24.04`) |
 | GitHub Releases `data-YYYY-MM` | **the production data endpoint**: every installed app fetches `releases/latest/download/manifest.json` from here | **yes — public, consumed by shipped apps** | `gh release` from the workflow only; never hand-upload |
 | `main` | **also production**: clients fetch `config/sources.json` from `main` at runtime | **yes** | push |
 
@@ -80,7 +80,11 @@ Sources/MaqsCore/          # manifest, sources.json, region catalog, downloads, 
 Sources/MaqsData/          # SQLite3 readers: trails, places, curvature — read-only, async
 Sources/MaqsTerrain/       # PMTiles v3 reader, terrarium decoding, DEM sampling — no MapLibre
 Sources/MaqsUI/            # MapLibre integration, style assembly, overlays, attribution view — the ONLY `import MapLibre`
+Sources/MaqsCore/Resources/sources.json # byte copy of config/sources.json, the offline fallback; copied by scripts/update-fixtures.sh, checked by swift.yml
 Tests/<Module>Tests/       # one Swift Testing target per module; fixtures = test-region outputs, small
+Tests/MaqsTestSupport/     # test-only library target (not a product): fixture URLs, StubServer (URLProtocol stub), temporary directories
+Tests/MaqsTestSupport/Fixtures/ # the test region's data files and the data-ci manifest, committed, capped at 8 MB by swift.yml (ADR 0014)
+scripts/                   # update-fixtures.sh: regenerates the fixtures and the bundled sources.json
 Examples/MaqsDemo/         # minimal SwiftUI app to eyeball everything; not a product
 config/sources.json        # online providers, priority order — fetched by clients from main
 config/regions.yaml        # region id, names (it/en), bbox — adding a region is one entry here (a new Geofabrik extract also needs a build-maps.yml edit)
@@ -92,22 +96,24 @@ pipeline/src/maqs/osm/     # Geofabrik download, osmium cuts, terrain sampling
 pipeline/src/maqs/trails/  # trail record, source adapters (sources/osm.py), merge, trails step
 pipeline/src/maqs/places/  # places step and rank_score
 pipeline/src/maqs/curvature/ # curvature score, corners, curvature step
-.github/workflows/         # pipeline.yml (pipeline lint, tests and test-region smoke build), build-maps.yml (monthly region builds and the data release, ADR 0013) and swift.yml (package, Phase 4)
+.github/workflows/         # pipeline.yml (pipeline lint, tests and test-region smoke build), build-maps.yml (monthly region builds and the data release, ADR 0013) and swift.yml (package guards, build and tests on macOS and the iOS Simulator, ADR 0014)
 .cache/                    # downloaded inputs (gitignored, idempotent reuse)
 dist/<region>/             # build outputs (gitignored; Releases only, never git)
 ```
 
 ### Commands
-The pipeline commands are real; the Swift commands land in Phase 4 and do not exist yet.
 ```
 # Swift package — the "done" bar for Swift changes (build + all module tests)
 swift build
 swift test
-swift test --filter MaqsTerrainTests                      # one target
-swift test --filter MaqsTerrainTests/TerrariumTests        # one suite; append /testName for one case
+swift test --filter MaqsCoreTests                         # one target
+swift test --filter ManifestTests                         # one suite, by its name alone (MaqsCoreTests/ManifestTests matches nothing)
+swift test --filter ManifestTests/decodesFixture          # one test: suite/function
+scripts/update-fixtures.sh                                # rebuild the test region and base packs, copy their data files and the data-ci manifest into Tests/MaqsTestSupport/Fixtures/ and config/sources.json into the package; fails over 8 MB
 
-# iOS Simulator leg (what swift.yml runs; adjust the destination to an installed simulator)
-xcodebuild -scheme Maqs -destination 'platform=iOS Simulator,name=iPhone 17' build test
+# iOS Simulator leg (what swift.yml runs on iPhone 17; locally any installed simulator works)
+# the scheme is Maqs while the package has one library product, Maqs-Package once it has several: check xcodebuild -list
+xcodebuild -scheme Maqs -destination 'platform=iOS Simulator,name=iPhone 17' -skipPackagePluginValidation test
 
 # Pipeline
 pipeline/bootstrap.sh                                      # install pinned CLIs (macOS / Ubuntu)
@@ -153,7 +159,8 @@ Grep xcodebuild output for `": error:"`; a bare `error` matches unrelated tool p
 - Anything under `dist/` or `.cache/` — rerun the pipeline step
 - `manifest.json`, `build-report.json`, checksums — generated by the pipeline's release step; a hand-edited manifest is a corrupted release
 - Release assets — re-run the workflow for the month; never upload a file by hand
-- The bundled fallback copy of `sources.json` inside the package — it is a copy of `config/sources.json`, synced by the build; edit the source
+- `Sources/MaqsCore/Resources/sources.json`, the bundled fallback — a byte copy of `config/sources.json`, copied by `scripts/update-fixtures.sh` and checked by `cmp` in `swift.yml`; edit the source
+- `Tests/MaqsTestSupport/Fixtures/` — the `test` region's outputs and the `data-ci` manifest; regenerate with `scripts/update-fixtures.sh`, never edit or hand-copy a file
 - Bundled glyphs and sprite — generated from the chosen open font; regenerate with the documented command, never patch PBF glyph files
 - `docs/data-format.md` schema versions — a schema change bumps `layer_schema_version` and documents the compatibility rule in the same change; never edit a published version's description in place
 
@@ -165,7 +172,7 @@ Grep xcodebuild output for `": error:"`; a bare `error` matches unrelated tool p
 - Logging (Swift): `os.Logger`, subsystem `com.lucavallin.maqs`, one category per module (`core`, `data`, `terrain`, `ui`). Never log full URLs with query strings, file contents, or a user's coordinates (`privacy: .private` for anything position-derived).
 - Logging (pipeline): the standard `logging` module, one logger per step, machine-readable `build-report.json` as the durable record.
 - Validation at trust boundaries: `manifest.json` and `sources.json` are validated against `config/schemas/` on the pipeline side and parsed with strict `Codable` on the Swift side (unknown `manifest_version` → typed error, not a crash). Downloaded files are verified by SHA-256 before install. PMTiles headers and directories are bounds-checked before any read — the file may be truncated, corrupt, or hostile.
-- Vendor boundary: `import MapLibre` only inside `Sources/MaqsUI/`. `[ENFORCED: CI import check once Phase 4 lands]`
+- Vendor boundary: `import MapLibre` only inside `Sources/MaqsUI/`. `[ENFORCED: CI import check in swift.yml]`
 - Geometry storage: one encoding (encoded polyline, precision 6, ADR 0010) used by every layer. Do not add a second.
 - Identifiers: OSM ids are stored as-is with their type (`relation`/`way`/`node`) — never collapsed into one integer space. Region ids are lowercase kebab-case and are stable forever once released.
 - Accessibility target: the attribution view and anything else `MaqsUI` renders is VoiceOver-labelled and respects Dynamic Type; the map view itself is MapLibre's. Smallest supported viewport: whatever the app chooses — the package makes no layout assumptions.
@@ -240,7 +247,7 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **PMTiles sources cannot use MapLibre offline packs** (an ambient cache for remote PMTiles exists since 6.27, irrelevant to us). Offline is our PMTiles files plus bundled glyphs and sprite; a style that references remote glyphs or sprites breaks offline silently (labels disappear).
 - **`releases/latest/download/<asset>` resolves "latest" by GitHub's rules**: the most recent non-draft, non-prerelease release ordered by `created_at`, which is the tagged commit's date, not the publish date (ADR 0013). After re-uploading a month's assets, call `gh release edit <tag> --latest` explicitly. Re-running a month updates the existing release's assets with `--clobber`; it never creates a second release with the same tag or a prerelease.
 - **GitHub Release assets are capped at 2 GiB**; we enforce 1.9 GiB. A region that exceeds it needs a split or a lower max zoom — decided by ADR, never by raising the limit.
-- **No Git LFS, no generated data in git.** `dist/` and `.cache/` are gitignored; a `.pmtiles` or `.sqlite` in a commit is a mistake to revert, not to keep.
+- **No Git LFS, no generated data in git**, except `Tests/MaqsTestSupport/Fixtures/` (the `test` region's outputs, capped at 8 MB by `swift.yml`, ADR 0014). `dist/` and `.cache/` are gitignored; a `.pmtiles` or `.sqlite` anywhere else in a commit is a mistake to revert, not to keep.
 - **The GitHub REST API is 60 requests/hour unauthenticated.** One app checking for updates via the API would exhaust it across a few users. Clients never call `api.github.com`.
 - **Online and offline terrain are the same VersaTiles tiles** (terrarium, WebP, z0–12). A provider that serves Mapbox Terrain-RGB or PNG at other zooms is not a drop-in; the sampler has one decode path by design. z12 is ~13 m per pixel at 46° N (512 px tiles); higher zooms exist only in Mapterhorn's regional archives and would exceed the asset limit for a whole region.
 - **Not every zoom-6 tile has a Mapterhorn archive.** A missing `6-<x>-<y>.pmtiles` (for example `6-0-0`) answers 404, `pmtiles extract` exits 1, and `terrain-hd` fails instead of skipping it; a published archive with no tiles in the bbox is skipped (`fetching 0 tiles`). The launch regions' four archives exist (ADR 0009).
@@ -252,6 +259,14 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **Disk space on the Ubuntu runner is checked, not freed** (ADR 0013 has the measured figures); each `build` leg fails under 6 GB. The matrix legs must not download the PBF per region: they restore the cache `prepare` warms, with `fail-on-cache-miss` (ADR 0013).
 - **`swift test` on macOS does not exercise the iOS Simulator leg**; availability differences (`Network.framework`, background `URLSession` behaviour) only show there. Run the simulator leg before declaring Phase 4 work done.
 - **Swift Testing prints a fake XCTest summary** ("Executed 0 tests"); read `Test run with N tests`. Grep xcodebuild output for `": error:"`, not `error`.
+- **The Xcode scheme name depends on the product count:** `Maqs` while the package has one library product, `Maqs-Package` once it has several. `swift.yml` reads `xcodebuild -list -json` and picks whichever exists.
+- **`swift test --filter` takes the suite name** (`ManifestTests`, or `ManifestTests/decodesFixture` for one test). `MaqsCoreTests/ManifestTests` matches nothing and only warns "No matching test cases were run".
+- **Swift Testing runs suites in parallel.** Every stub route lives in its own `StubServer`, whose id travels in a request header; never register a stub in a global.
+- **Exit tests (`#expect(processExitsWith:)`) are unavailable on the iOS Simulator.** Keep them under `#if os(macOS)`; that is why the simulator leg reports fewer tests than `swift test`.
+- **`URL.path()` percent-encodes**, so `Application Support` becomes `Application%20Support` and a FileManager or POSIX call given it misses the real file. Use `path(percentEncoded: false)` or the URL-based APIs.
+- **Temporary paths are symlinked on macOS** (`/var` is `/private/var`). Resolve symlinks on both sides before comparing two paths.
+- **`URLSessionConfiguration` is a class.** `DownloadSession` mutates the one it is given (it adds the User-Agent header), so `Maqs` hands each session its own copy; pass a fresh one in tests too.
+- **`downloadTask(withResumeData:)` raises an Objective-C exception on malformed resume data**, which Swift cannot catch. `DownloadSession` deletes the blob and checks that it is a property-list dictionary before handing it over, so a bad blob crashes at most once.
 - **Ubuntu's apt ships old osmium-tool (1.16) and tippecanoe (2.49).** `bootstrap.sh` fetches or builds current versions on Linux; Homebrew is current on macOS.
 - **`gh release upload --clobber` deletes before it uploads.** If the upload fails, the old asset is gone, so on a same-month re-run the published manifest can name a file that is not there (a 404) as well as one whose SHA-256 no longer matches. `build-maps.yml` uploads `manifest.json` last; clients keep their installed data and re-fetch the manifest later (ADR 0013).
 - **`gh release create` tags the default branch head — pass `--target $GITHUB_SHA`.** Without `--target`, a missing tag is created from the latest state of the default branch, not from the commit the data was built from.

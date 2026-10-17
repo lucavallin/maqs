@@ -2,7 +2,7 @@
 
 Map data and a Swift package for native Apple apps: Shortbread basemap tiles, terrarium terrain, hiking trails, places and road curvature, per region. Online-first, offline optional, zero hosting cost: code in this repository, data as GitHub Release assets, compute in GitHub Actions. One map provider, [VersaTiles](https://versatiles.org), serves every tile online and offline.
 
-**Status:** the pipeline builds all five layers of a region (basemap, terrain, trails, places, curvature) and the bundled base packs, and writes `manifest.json` from the build reports. A GitHub Actions workflow builds every region each month and publishes the files as a release. The Swift package comes next. [`docs/BRIEF.md`](docs/BRIEF.md) has the plan and [`docs/decisions.md`](docs/decisions.md) has every decision and the numbers behind it.
+**Status:** the pipeline builds all five layers of a region (basemap, terrain, trails, places, curvature) and the bundled base packs, and writes `manifest.json` from the build reports. A GitHub Actions workflow builds every region each month and publishes the files as a release. The Swift package has its first product, `MaqsCore`, which discovers, downloads and installs region packs; the terrain, data and map products come next. [`docs/BRIEF.md`](docs/BRIEF.md) has the plan and [`docs/decisions.md`](docs/decisions.md) has every decision and the numbers behind it.
 
 ## Data releases
 
@@ -16,6 +16,41 @@ gh workflow run build-maps.yml -f region=test  # one region (or base): builds it
 ```
 
 A run in a month that already has a release deletes and re-uploads that release's files of the same name, the manifest last. It never touches an older release, and when it succeeds every file the new manifest names is there. Only a run on `main` publishes. A dispatch with `-f region=…` or `-f layers=…`, or one on another branch with `--ref`, only builds, and keeps its outputs as workflow artifacts for 7 days. [`docs/architecture.md`](docs/architecture.md#data-releases) explains the jobs, and ADR 0013 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
+
+## Swift package
+
+The `Maqs` Swift package (iOS 18, macOS 15) reads these releases on the device. It has four products, so an app links only what it uses:
+
+| Product | What it does | State |
+|---|---|---|
+| `MaqsCore` | the region catalog from the latest manifest, verified downloads and installs, the online tile sources | available |
+| `MaqsTerrain` | elevation from the terrain tiles, local or online, and elevation profiles | planned |
+| `MaqsData` | queries over the trails, places and curvature files | planned |
+| `MaqsUI` | a SwiftUI map view over MapLibre Native, iOS only | planned |
+
+`MaqsCore` uses system frameworks only. A minimal use, from the main actor:
+
+```swift
+import MaqsCore
+
+var configuration = MaqsConfiguration(layers: [.basemap, .terrain, .trails], userAgent: "MyApp/1.0 (iOS)")
+configuration.backgroundSessionIdentifier = "com.example.myapp.maqs"  // iOS: downloads go on in the background
+let maqs = try Maqs(configuration: configuration)                     // once per process, on the main actor
+
+let catalog = try await maqs.refreshCatalog()                         // what the latest data release offers
+for region in catalog.regions {
+    print(region.names["en"] ?? "", region.totalBytes, region.status)
+}
+try await maqs.install(.region("veneto"))                             // size and SHA-256 checked, then moved into place
+print(maqs.state.packs[.region("veneto")] ?? .notInstalled)           // the state SwiftUI observes
+if let pack = await maqs.installedPack(.region("veneto")) {
+    print(pack.files[.terrain]?.first?.url as Any)                    // a file URL to hand to MaqsTerrain
+}
+```
+
+The `userAgent` names your app; free tile providers block generic ones. On iOS, forward `application(_:handleEventsForBackgroundURLSession:completionHandler:)` to `maqs.handleEventsForBackgroundURLSession(identifier:completionHandler:)`. Set `onlineTiles` to `false` and the package hands out no online tile source, so no position leaves the device through it. [`docs/architecture.md`](docs/architecture.md#swift-package) explains discovery and installs, and ADR 0014 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
+
+`swift build` and `swift test` run from a clean checkout: the tests read the `test` region's files committed under `Tests/MaqsTestSupport/Fixtures/`. `scripts/update-fixtures.sh` rebuilds them with the pipeline and refreshes the copy of `sources.json` bundled in the package.
 
 ## Build a region locally
 
