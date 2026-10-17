@@ -50,7 +50,7 @@ if let pack = await maqs.installedPack(.region("veneto")) {
 }
 ```
 
-The `userAgent` names your app, because the free tile providers ask for an identifying User-Agent. On iOS, forward `application(_:handleEventsForBackgroundURLSession:completionHandler:)` to `maqs.handleEventsForBackgroundURLSession(identifier:completionHandler:)`. Set `onlineTiles` to `false` and the package hands out no online tile source, so no position leaves the device through it. [`docs/architecture.md`](docs/architecture.md#swift-package) explains discovery and installs, and ADR 0014 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
+The `userAgent` names your app, because the free tile providers ask for an identifying User-Agent. On iOS, forward `application(_:handleEventsForBackgroundURLSession:completionHandler:)` to `maqs.handleEventsForBackgroundURLSession(identifier:completionHandler:)`. After a relaunch, call `install` again for the packs the user had asked for, because the package does not remember them; the call joins a download that is still running, or reuses one that finished after a size and hash check, instead of downloading it again. Set `onlineTiles` to `false` and the package hands out no online tile source, so no position leaves the device through it. [`docs/architecture.md`](docs/architecture.md#swift-package) explains discovery and installs, and ADR 0014 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
 
 `swift build` and `swift test` run from a clean checkout: the tests read the `test` region's files committed under `Tests/MaqsTestSupport/Fixtures/`. `scripts/update-fixtures.sh` rebuilds them with the pipeline and refreshes the copy of `sources.json` bundled in the package.
 
