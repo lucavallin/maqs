@@ -189,6 +189,32 @@ def test_pipeline_workflow_runs_when_build_maps_changes():
         assert ".github/workflows/build-maps.yml" in doc[on_key][event]["paths"], event
 
 
+def test_pipeline_workflow_runs_when_swift_workflow_changes():
+    doc = load("pipeline.yml")
+    on_key = True if True in doc else "on"
+    for event in ("push", "pull_request"):
+        assert ".github/workflows/swift.yml" in doc[on_key][event]["paths"], event
+
+
+def test_ios_simulator_step_picks_the_scheme_and_checks_the_log_strictly():
+    steps = load("swift.yml")["jobs"]["ios-simulator"]["steps"]
+    run = next(s["run"] for s in steps if "xcodebuild -scheme" in s.get("run", ""))
+    # The scheme comes from the listing, and a failed listing or a missing scheme fails the step.
+    assert "set -o pipefail" in run
+    assert "xcodebuild -list -json | jq -e" in run
+    assert '"Maqs-Package"' in run and '"Maqs"' in run
+    assert 'xcodebuild -scheme "$scheme"' in run
+    # The test run's status is captured, not acted on by `set -e`.
+    test_call = run.index('xcodebuild -scheme "$scheme"')
+    assert run.rindex("set +e", 0, test_call) < test_call < run.index("status=$?")
+    # Compiler errors, failed tests and a missing passing summary each fail the step.
+    assert "grep -q '\": error:'" in run
+    assert "Test run with .* failed" in run and "TEST FAILED" in run
+    assert "Test run with [1-9][0-9]* tests.* passed" in run
+    assert "tail -50 xcodebuild.log" in run
+    assert run.rstrip().endswith('exit "$status"')
+
+
 def test_swift_workflow_is_read_only_and_path_filtered():
     doc = load("swift.yml")
     assert doc["permissions"] == {"contents": "read"}

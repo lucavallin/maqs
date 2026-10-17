@@ -3,10 +3,10 @@ name: pipeline
 on:
   push:
     branches: [main]
-    # build-maps.yml is listed because tests/test_workflows.py checks it.
-    paths: ["pipeline/**", "config/**", ".github/workflows/pipeline.yml", ".github/workflows/build-maps.yml"]
+    # build-maps.yml and swift.yml are listed because tests/test_workflows.py checks them.
+    paths: ["pipeline/**", "config/**", ".github/workflows/pipeline.yml", ".github/workflows/build-maps.yml", ".github/workflows/swift.yml"]
   pull_request:
-    paths: ["pipeline/**", "config/**", ".github/workflows/pipeline.yml", ".github/workflows/build-maps.yml"]
+    paths: ["pipeline/**", "config/**", ".github/workflows/pipeline.yml", ".github/workflows/build-maps.yml", ".github/workflows/swift.yml"]
   workflow_dispatch:
 
 permissions:

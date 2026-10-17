@@ -109,7 +109,7 @@ swift test
 swift test --filter MaqsCoreTests                         # one target
 swift test --filter ManifestTests                         # one suite, by its name alone (MaqsCoreTests/ManifestTests matches nothing)
 swift test --filter ManifestTests/decodesFixture          # one test: suite/function
-scripts/update-fixtures.sh                                # rebuild the test region and base packs, copy their data files and the data-ci manifest into Tests/MaqsTestSupport/Fixtures/ and config/sources.json into the package; fails over 8 MB
+scripts/update-fixtures.sh                                # rebuild the test region and base packs, copy the test region's data files and the data-ci manifest into Tests/MaqsTestSupport/Fixtures/ and config/sources.json into the package; fails over 8 MB
 
 # iOS Simulator leg (what swift.yml runs on iPhone 17; locally any installed simulator works)
 # the scheme is Maqs while the package has one library product, Maqs-Package once it has several: check xcodebuild -list
@@ -567,7 +567,7 @@ This file is code. When Claude misbehaves, find the rule that allowed it and pat
 When something in this codebase surprises you — a quirk, a trap, a behaviour the docs did not predict — add it to §1 *Things that will bite you* as part of the same change. When a domain term is used loosely and causes a wrong change, add it to §1 *Domain vocabulary*.
 
 ### What CI and pre-commit must back
-- Pre-commit (to be added in Phase 1/4 as the matching code lands): `swift-format` or SwiftLint for Swift; `ruff check` + `ruff format --check` for the pipeline; a guard that rejects `.pmtiles`, `.sqlite`, `.pbf`, and anything under `dist/` or `.cache/`.
+- Pre-commit (to be added in Phase 1/4 as the matching code lands): `swift-format` or SwiftLint for Swift; `ruff check` + `ruff format --check` for the pipeline; a guard that rejects `.pmtiles`, `.sqlite`, `.pbf` (except under `Tests/MaqsTestSupport/Fixtures/`, ADR 0014), and anything under `dist/` or `.cache/`.
 - CI on every push/PR, from a clean checkout: `swift.yml` — build and test on iOS Simulator and macOS with warnings as errors, plus an import check that `MapLibre` appears only under `Sources/MaqsUI/`; `build-maps.yml` (PR mode) — `test` region end to end, JSON Schema validation of `manifest.json` and `sources.json`, the 1.9 GiB asset check, checksums, `build-report.json`; OSS file presence.
 - The rest of the template's enforcement list (secret scanning, dependency/licence scan, mutation testing, migration-apply, IaC plan) is aspirational here — add a check when it earns its place; until then the matching rules are judgment, not `[ENFORCED]`. Note that "migrations" and "IaC" in §13 reduce here to: `layer_schema_version` bumps with a documented compatibility rule, and the workflows themselves.
 - Test files: changes reviewed deliberately; deletions or removed assertions require a stated reason in the commit.
@@ -623,7 +623,7 @@ Everything below is maqs-specific engineering law. It has the same force as §14
 - Don't add a Swift package other than MapLibre, or import MapLibre outside `MaqsUI`.
 - Don't hardcode a provider URL in Swift; it goes in `config/sources.json`.
 - Don't call `api.github.com` from client code, ever.
-- Don't download the planet, commit generated data, use LFS, or upload a release asset by hand.
+- Don't download the planet, commit generated data (except `Tests/MaqsTestSupport/Fixtures/`, ADR 0014), use LFS, or upload a release asset by hand.
 - Don't send no-cache headers or a generic User-Agent to any provider.
 - Don't fail a monthly build on bad OSM data — flag it in the report and keep going; do fail it on a size, checksum, or schema violation.
 - Don't start the next phase without the go-ahead the brief requires.
