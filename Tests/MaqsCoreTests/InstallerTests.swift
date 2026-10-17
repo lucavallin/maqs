@@ -54,6 +54,11 @@ import MaqsTestSupport
     func exists(_ url: URL) -> Bool { FileManager.default.fileExists(atPath: url.path(percentEncoded: false)) }
     func fixture(_ entry: ManifestEntry) throws -> Data { try Data(contentsOf: try Fixtures.url("test/\(entry.file)")) }
 
+    /// Every file and directory under `directory`, as paths relative to it, sorted.
+    func paths(under directory: URL) -> [String] {
+        (FileManager.default.enumerator(atPath: directory.path(percentEncoded: false))?.allObjects as? [String] ?? []).sorted()
+    }
+
     /// A first install that failed must leave no record and no pack directory.
     func expectNothingInstalled() throws {
         #expect(try store.record(for: id) == nil)
@@ -220,6 +225,34 @@ import MaqsTestSupport
             #expect(try FileHash.sha256(of: installedURL(job.layer, job.entry)) == job.entry.sha256)
         }
         #expect(server.requests.count - requestsBefore == 2)
+    }
+
+    @Test("an update whose second file fails its hash leaves the old record and files untouched and adds no directory")
+    func updateFailsOnSecondFile() async throws {
+        try await run(try plan([.places]))
+        var existing = try #require(try store.record(for: id))
+        let oldSHA = String(repeating: "0", count: 64)
+        let name = main(.trails).file
+        existing.files[.trails] = [RecordFile(fileName: name, role: nil, schemaVersion: 1, sha256: oldSHA, bytes: 3,
+                                              dataDate: Date(timeIntervalSince1970: 0))]
+        try store.write(existing)
+        let oldURL = store.layout.fileURL(id, layer: .trails, sha256: oldSHA, fileName: name)
+        try FileManager.default.createDirectory(at: oldURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: oldURL)
+        let before = paths(under: store.layout.packDirectory(id))
+
+        let bad = overlay(.trails)
+        server.route(bad.url, body: Data(repeating: 0, count: Int(bad.bytes)))
+        let plan = try plan([.trails, .places], existing: existing)
+        #expect(plan.jobs.map(\.entry) == [main(.trails), bad])
+        await #expect(throws: DownloadError.checksumMismatch(file: bad.file)) { try await run(plan) }
+        #expect(try store.record(for: id) == existing)
+        #expect(paths(under: store.layout.packDirectory(id)) == before)
+        #expect(try String(contentsOf: oldURL, encoding: .utf8) == "old")
+        for file in try #require(existing.files[.places]) {
+            let url = store.layout.fileURL(id, layer: .places, sha256: file.sha256, fileName: file.fileName)
+            #expect(try FileHash.sha256(of: url) == file.sha256)
+        }
     }
 
     @Test("an update that keeps a layer unchanged leaves that layer's files in place and named by the record")
