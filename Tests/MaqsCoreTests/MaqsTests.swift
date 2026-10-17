@@ -16,8 +16,9 @@ import MaqsTestSupport
         manifest = try Manifest.decode(try Fixtures.manifestData(), manifestHost: "github.com")
     }
 
-    func maqs(layers: Set<Layer> = [.trails, .places], onlineTiles: Bool = true, root: URL? = nil) throws -> Maqs {
-        var configuration = MaqsConfiguration(layers: layers, userAgent: "Test/1")
+    func maqs(layers: Set<Layer> = [.trails, .places], onlineTiles: Bool = true, root: URL? = nil,
+              userAgent: String = "Test/1") throws -> Maqs {
+        var configuration = MaqsConfiguration(layers: layers, userAgent: userAgent)
         configuration.storageDirectory = root ?? tmp.url
         configuration.urlSessionConfiguration = server.configuration
         configuration.onlineTiles = onlineTiles
@@ -48,6 +49,17 @@ import MaqsTestSupport
             var iterator = stream.makeAsyncIterator()
             _ = await iterator.next()
         }
+    }
+
+    // MARK: Configuration
+
+    @Test("a blank userAgent is refused before anything is written", arguments: ["", "   "])
+    func blankUserAgent(_ userAgent: String) {
+        let root = tmp.url.appending(path: "root", directoryHint: .isDirectory)
+        #expect(throws: MaqsError.invalidConfiguration("userAgent: must not be blank")) {
+            _ = try maqs(root: root, userAgent: userAgent)
+        }
+        #expect(!exists(root))
     }
 
     // MARK: Discovery
@@ -143,7 +155,10 @@ import MaqsTestSupport
 
     @Test("install, registerBundledBasePack and installedPack refuse an invalid pack id", arguments: invalidIDs)
     func invalidIDElsewhere(_ id: String) async throws {
-        let maqs = try maqs()
+        // A pack folder sits three levels below the temporary directory, as deep as the longest traversal in
+        // `invalidIDs` climbs, so no path this test computes leaves it.
+        let root = tmp.url.appending(path: "root", directoryHint: .isDirectory)
+        let maqs = try maqs(root: root)
         _ = try await maqs.refreshCatalog()
         await #expect(throws: MaqsError.download(.notInCatalog(.base(id)))) { try await maqs.install(.base(id)) }
         await #expect(throws: MaqsError.download(.notInCatalog(.region(id)))) { try await maqs.install(.region(id)) }
@@ -152,8 +167,8 @@ import MaqsTestSupport
             try await maqs.registerBundledBasePack(id: id, basemap: file)
         }
         // A record planted at the id's path is not read.
-        try FileManager.default.createDirectory(at: tmp.url.appending(path: "packs/base-triveneto"), withIntermediateDirectories: true)
-        try? PackStore(root: tmp.url).write(PackRecord(id: .base(id), release: "planted", files: [:]))
+        try FileManager.default.createDirectory(at: root.appending(path: "packs/base-triveneto"), withIntermediateDirectories: true)
+        try? PackStore(root: root).write(PackRecord(id: .base(id), release: "planted", files: [:]))
         #expect(await maqs.installedPack(.base(id)) == nil)
         #expect(maqs.state.packs[.base(id)] == nil)
         #expect(maqs.state.packs[.region(id)] == nil)
@@ -286,6 +301,48 @@ import MaqsTestSupport
         #expect(maqs.state.packs[test] == .installed(pack))
     }
 
+    /// Starts an install of the `test` region whose requests are held, waits until they reach the stub, and routes
+    /// the real files for every later request, so an install that is not stopped installs the pack.
+    func startHeldInstall(_ maqs: Maqs) async throws -> Task<Void, any Error> {
+        let entries = try entries(.trails)
+        let reached = entries.map { routeSlow($0, delay: 30) }
+        let first = Task { try await maqs.install(test) }
+        await waitForRequests(reached)
+        for entry in entries { server.route(entry.url, body: try fixture(entry)) }
+        return first
+    }
+
+    @Test("a retry cancelled while the cancelled install before it is still settling throws cancelled and fetches nothing")
+    func cancelRetryWhileSettling() async throws {
+        let maqs = try maqs(layers: [.trails])
+        _ = try await maqs.refreshCatalog()
+        let first = try await startHeldInstall(maqs)
+        let requests = server.requests.count
+        let pack = test
+        let retry = try await retryWhileSettling(pack, on: maqs) { $0.cancelInstall(pack) }
+        await #expect(throws: MaqsError.download(.cancelled)) { try await retry.value }
+        await #expect(throws: MaqsError.download(.cancelled)) { try await first.value }
+        #expect(server.requests.count == requests)
+        #expect(await maqs.installedPack(test) == nil)
+        #expect(maqs.state.packs[test] == .notInstalled)
+    }
+
+    @Test("remove after cancelInstall and a retry, while the cancelled install is settling, leaves nothing installed")
+    func removeRetryWhileSettling() async throws {
+        let maqs = try maqs(layers: [.trails])
+        _ = try await maqs.refreshCatalog()
+        let first = try await startHeldInstall(maqs)
+        let retry = try await retryWhileSettling(test, on: maqs)
+        try await maqs.remove(test)
+        let directory = tmp.url.appending(path: "packs/region-test")
+        #expect(!exists(directory))
+        _ = try? await retry.value
+        await #expect(throws: MaqsError.download(.cancelled)) { try await first.value }
+        #expect(!exists(directory))
+        #expect(await maqs.installedPack(test) == nil)
+        #expect(maqs.state.packs[test] == .notInstalled)
+    }
+
     @Test("remove during an install cancels it and leaves no pack.json and no pack files")
     func removeDuringInstall() async throws {
         let maqs = try maqs(layers: [.trails])
@@ -387,4 +444,15 @@ import MaqsTestSupport
         #expect(!server.requests.isEmpty)
         #expect(server.requests.allSatisfy { $0.value(forHTTPHeaderField: "User-Agent") == "Test/1 Maqs/\(MaqsVersion.string)" })
     }
+}
+
+/// Cancels the install of `pack`, calls `install` again and runs `then`, all in one turn of the actor: the cancelled
+/// install needs the actor to end, so it is still settling throughout. Returns the new install.
+private func retryWhileSettling(_ pack: PackID, on maqs: isolated Maqs,
+                                then: @Sendable (isolated Maqs) async throws -> Void = { _ in }) async throws
+    -> Task<Void, any Error> {
+    maqs.cancelInstall(pack)
+    let retry = try #require(try maqs.startInstall(pack))
+    try await then(maqs)
+    return retry
 }

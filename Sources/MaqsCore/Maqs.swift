@@ -3,9 +3,12 @@ import Foundation
 /// The entry point of `MaqsCore`: region discovery, downloads, installed packs, and the online sources.
 ///
 /// Create one instance per process with a ``MaqsConfiguration``, and never two with the same
-/// ``MaqsConfiguration/backgroundSessionIdentifier``: the system allows one background session per identifier. Read
-/// ``state`` from SwiftUI, call ``refreshCatalog(policy:)`` to learn what the latest data release offers, and
-/// ``install(_:)`` to download a pack. `MaqsTerrain` and `MaqsData` open the files that ``installedPack(_:)`` returns.
+/// ``MaqsConfiguration/backgroundSessionIdentifier``: the system allows one background session per identifier. With a
+/// background session, downloads go on while the app is suspended or not running, but after a relaunch a pack is
+/// installed only when the app calls ``install(_:)`` again for it; the package does not remember which packs the
+/// user asked for. Read ``state`` from SwiftUI, call ``refreshCatalog(policy:)`` to learn what the latest data release
+/// offers, and ``install(_:)`` to download a pack. `MaqsTerrain` and `MaqsData` open the files that
+/// ``installedPack(_:)`` returns.
 ///
 /// Installs run one at a time, in call order. A pack waiting for its turn shows ``PackState/queued``, so the app can
 /// offer to cancel it.
@@ -24,11 +27,18 @@ public actor Maqs {
     private var manifest: (manifest: Manifest, fetchedAt: Date)?
     /// Base packs the app registered from its own bundle in this process.
     private var bundled: [PackID: InstalledPack] = [:]
-    /// The install of every pack that is queued or running; a second ``install(_:)`` of the pack joins it.
-    private var installs: [PackID: Task<Void, any Error>] = [:]
+    /// The newest install of every pack that is queued, running, or waiting for a cancelled install of the pack to
+    /// end. A second ``install(_:)`` of the pack joins it unless it is cancelled.
+    private var installs: [PackID: RegisteredInstall] = [:]
     /// Installs in call order: the first one runs, the others wait for their turn.
     private var line: [QueuedInstall] = []
     private var nextTicket = 0
+
+    private struct RegisteredInstall {
+        /// Its ticket in the line, which also tells an ending install whether it is still the registered one.
+        let ticket: Int
+        let task: Task<Void, any Error>
+    }
 
     private struct QueuedInstall {
         let ticket: Int
@@ -44,8 +54,13 @@ public actor Maqs {
     /// Creates the storage root (excluded from backup), sweeps files no record names, and restores the installed
     /// packs and the catalog of the cached manifest. No request is made.
     ///
-    /// - Throws: ``MaqsError/storage(_:)`` when the storage root cannot be created.
+    /// - Throws: ``MaqsError/invalidConfiguration(_:)`` when ``MaqsConfiguration/userAgent`` is empty or only
+    ///   whitespace, before anything is created; ``MaqsError/storage(_:)`` when the storage root cannot be created.
     @MainActor public init(configuration: MaqsConfiguration) throws {
+        // Free tile providers block generic agents, so a request without the app's name must never leave.
+        guard !configuration.userAgent.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw MaqsError.invalidConfiguration("userAgent: must not be blank")
+        }
         let store: PackStore
         do {
             store = try PackStore(root: configuration.storageDirectory ?? StorageLayout.defaultRoot())
@@ -128,9 +143,14 @@ public actor Maqs {
     ///
     /// Installs run one at a time, in call order; a pack waiting for its turn is ``PackState/queued``. A second call
     /// for a pack that is already queued or running joins that install: both return or throw together. A call after
-    /// ``cancelInstall(_:)`` does not join the cancelled install: it waits for it to end and starts a new one.
-    /// Cancelling the calling task does not stop the install; call ``cancelInstall(_:)``. A pack registered with
-    /// ``registerBundledBasePack(id:basemap:)`` is already installed: the call returns at once.
+    /// ``cancelInstall(_:)`` does not join the cancelled install: it starts a new one at once, which waits for the
+    /// cancelled one to end before it takes its place in the line, and which ``cancelInstall(_:)`` and ``remove(_:)``
+    /// reach meanwhile. Cancelling the calling task does not stop the install; call ``cancelInstall(_:)``. A pack
+    /// registered with ``registerBundledBasePack(id:basemap:)`` is already installed: the call returns at once.
+    ///
+    /// After a relaunch, call this again for every pack the user had asked for that is not installed yet: nothing
+    /// installs it otherwise. The call joins a transfer of the background session that is still running, or reuses a
+    /// file it finished while the app was not running after a size and hash check, instead of downloading it again.
     ///
     /// After an update the previous files of the changed layers are removed, so a URL from an earlier
     /// ``InstalledPack`` that was not opened yet may no longer exist: read ``installedPack(_:)`` again after this
@@ -143,46 +163,50 @@ public actor Maqs {
     ///   else not installed).
     ///   ``MaqsError/storage(_:)`` when the files cannot be moved into place. Whatever was installed before stays.
     public func install(_ pack: PackID) async throws {
+        try await startInstall(pack)?.value
+    }
+
+    /// The install ``install(_:)`` waits for: the pack's install to join, or a new one, registered before this
+    /// returns; `nil` for a bundled pack. Synchronous, so no other call runs between the look at `installs` and the
+    /// registration, and `installs[pack]` always names the newest install, the one ``cancelInstall(_:)`` and
+    /// ``remove(_:)`` reach.
+    func startInstall(_ pack: PackID) throws -> Task<Void, any Error>? {
         // No manifest can list an invalid id, so this is the answer it would get anyway, before the id reaches a path.
         guard pack.isValid else { throw MaqsError.download(.notInCatalog(pack)) }
-        while true {
-            // The app's own file is installed; there is nothing to download.
-            if bundled[pack] != nil { return }
-            guard let running = installs[pack] else { break }
-            guard running.isCancelled else {
-                try await running.value
-                return
-            }
-            // A cancelled install is not joined: wait for it to end, then look again.
-            _ = try? await running.value
-        }
+        // The app's own file is installed; there is nothing to download.
+        if bundled[pack] != nil { return nil }
+        let current = installs[pack]?.task
+        // A queued or running install is joined. A cancelled one is not: the new install waits for it to end.
+        if let current, !current.isCancelled { return current }
         // Fails fast on a missing catalog, an unknown pack or an unreadable layer; planned again when its turn comes.
         _ = try makePlan(pack)
         let ticket = nextTicket
         nextTicket += 1
-        line.append(QueuedInstall(ticket: ticket))
-        let task = Task { try await self.runInstall(pack, ticket: ticket) }
-        installs[pack] = task
-        try await task.value
+        // A place in the line in call order; after a cancelled install, once that one has ended.
+        if current == nil { line.append(QueuedInstall(ticket: ticket)) }
+        let task = Task { try await self.runInstall(pack, ticket: ticket, after: current) }
+        installs[pack] = RegisteredInstall(ticket: ticket, task: task)
+        return task
     }
 
-    /// Cancels the install of `pack`, queued or running; its ``install(_:)`` throws `cancelled`. Resume data is kept
-    /// where the server allows it, so the next install continues where this one stopped. Does nothing when no
-    /// install of `pack` is queued or running.
+    /// Cancels the install of `pack`, queued, running, or waiting for a cancelled one to end; its ``install(_:)``
+    /// throws `cancelled`. Resume data is kept where the server allows it, so the next install continues where this
+    /// one stopped. Does nothing when no install of `pack` is registered.
     public func cancelInstall(_ pack: PackID) {
-        installs[pack]?.cancel()
+        installs[pack]?.task.cancel()
     }
 
     /// Deletes a downloaded pack, or unregisters a bundled one without touching the app's file. An install of the
-    /// pack that is queued or running is cancelled first, and the pack's partial and completed downloads under the
-    /// current manifest are deleted with their resume data.
+    /// pack that is queued, running or waiting for a cancelled one is cancelled first, and the pack's partial and
+    /// completed downloads under the current manifest are deleted with their resume data.
     ///
     /// - Throws: ``MaqsError/storage(_:)``: ``StorageError/invalidPackID(_:)`` for an id that is not valid (nothing is
     ///   deleted); another storage error when the files cannot be deleted, and the state then shows what is left.
     public func remove(_ pack: PackID) async throws {
         guard pack.isValid else { throw MaqsError.storage(.invalidPackID(pack)) }
-        // Wait for the cancelled install to stop, so it cannot write `pack.json` after the files are gone.
-        while let running = installs[pack] {
+        // Wait for the cancelled install to stop, so it cannot write `pack.json` after the files are gone. The newest
+        // install ends only after the one it waited for, and one registered meanwhile is cancelled on the next pass.
+        while let running = installs[pack]?.task {
             running.cancel()
             _ = try? await running.value
         }
@@ -294,13 +318,20 @@ public actor Maqs {
     // MARK: Install queue
 
     /// One install, from its place in the line to its final state. Every state change of the pack happens here, in
-    /// order, so the last thing published is the outcome.
-    private func runInstall(_ pack: PackID, ticket: Int) async throws {
+    /// order, so the last thing published is the outcome. After `predecessor`, a cancelled install of the same pack,
+    /// it takes its place in the line only once that one has ended, so their state changes never interleave.
+    private func runInstall(_ pack: PackID, ticket: Int, after predecessor: Task<Void, any Error>?) async throws {
         defer {
-            installs[pack] = nil
+            // A newer install registered after this one was cancelled stays registered.
+            if installs[pack]?.ticket == ticket { installs[pack] = nil }
             leaveLine(ticket)
         }
         do {
+            if let predecessor {
+                _ = try? await predecessor.value
+                try Task.checkCancellation()
+                line.append(QueuedInstall(ticket: ticket))
+            }
             if line.first?.ticket != ticket { await publish { $0.packs[pack] = .queued } }
             try await waitForTurn(ticket)
             try Task.checkCancellation()

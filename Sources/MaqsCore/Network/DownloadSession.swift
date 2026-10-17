@@ -45,7 +45,6 @@ final class DownloadSession: NSObject, URLSessionDownloadDelegate, Sendable {
     /// The running task for one key and every caller waiting for it.
     private struct Transfer {
         let task: URLSessionDownloadTask
-        let url: URL
         /// Created from resume data, or restored after a relaunch (unknown), so a `206 Partial Content` is accepted.
         let resumed: Bool
         var waiters: [Waiter]
@@ -136,12 +135,12 @@ final class DownloadSession: NSObject, URLSessionDownloadDelegate, Sendable {
                 let completed = state.completedTaskIDs
                 if let restored = running.first(where: { $0.state != .completed && !completed.contains($0.taskIdentifier) }) {
                     let bytesWritten = restored.countOfBytesReceived
-                    state.transfers[request.key] = Transfer(task: restored, url: request.url, resumed: true,
+                    state.transfers[request.key] = Transfer(task: restored, resumed: true,
                                                             waiters: [waiter], bytesWritten: bytesWritten)
                     return .joined(restored, bytesWritten: bytesWritten)
                 }
                 let (task, resumed) = makeTask(for: request)
-                state.transfers[request.key] = Transfer(task: task, url: request.url, resumed: resumed,
+                state.transfers[request.key] = Transfer(task: task, resumed: resumed,
                                                         waiters: [waiter], bytesWritten: 0)
                 return .started(task)
             }
@@ -162,14 +161,11 @@ final class DownloadSession: NSObject, URLSessionDownloadDelegate, Sendable {
         }
     }
 
-    /// Cancels the transfer for `url`, keeping resume data at its key's resume URL when the server allows it; every
-    /// caller waiting on it gets `.cancelled`. Does nothing when no transfer for `url` is running.
-    func cancel(url: URL) {
-        let found = state.withLock { state in
-            state.transfers.first { $0.value.url.absoluteString == url.absoluteString }.map { (task: $0.value.task, key: $0.key) }
-        }
-        guard let found else { return }
-        cancelKeepingResumeData(found.task, key: found.key)
+    /// Cancels the transfer for `key`, keeping resume data at the key's resume URL when the server allows it; every
+    /// caller waiting on it gets `.cancelled`. Does nothing when no transfer for `key` is running.
+    func cancel(key: String) {
+        guard let task = state.withLock({ $0.transfers[key]?.task }) else { return }
+        cancelKeepingResumeData(task, key: key)
     }
 
     /// iOS: the app delegate's completion handler, run once on the main thread after the session has delivered all
