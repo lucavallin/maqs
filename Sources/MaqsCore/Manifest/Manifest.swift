@@ -125,7 +125,7 @@ struct Manifest: Decodable, Sendable, Equatable {
     }
 
     private static func checkID(_ id: String, path: String, seen: inout Set<String>) throws {
-        guard id.count <= 64, id.wholeMatch(of: /[a-z0-9]+(-[a-z0-9]+)*/) != nil else {
+        guard PackID.isValidID(id) else {
             throw ManifestError.invalid("\(path).id: not a valid id")
         }
         guard seen.insert(id).inserted else { throw ManifestError.invalid("\(path).id: duplicate id") }

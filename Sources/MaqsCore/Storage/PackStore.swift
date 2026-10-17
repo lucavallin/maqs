@@ -77,8 +77,10 @@ struct PackStore: Sendable {
         }
     }
 
-    /// Deletes `pack.json` first, so no reader finds a half-deleted pack, then the directory.
+    /// Deletes `pack.json` first, so no reader finds a half-deleted pack, then the directory. Refuses an id that is not
+    /// valid (``PackID/isValid``), which could point the deletion outside `packs/`.
     func removePack(_ id: PackID) throws {
+        guard id.isValid else { throw StorageError.invalidPackID(id) }
         let record = layout.recordURL(id)
         let directory = layout.packDirectory(id)
         do {

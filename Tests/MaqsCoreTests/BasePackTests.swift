@@ -84,6 +84,62 @@ import MaqsTestSupport
         #expect(exists(file))
     }
 
+    @Test("install of a pack registered as bundled returns at once: no request, no record, state unchanged")
+    func installBundled() async throws {
+        let maqs = try maqs()
+        _ = try await maqs.refreshCatalog()
+        try await maqs.registerBundledBasePack(id: "triveneto", basemap: try Fixtures.url("test/test-basemap.v1.pmtiles"))
+        let before = maqs.state.packs[base]
+        try await maqs.install(base)
+        #expect(!server.requests.contains { $0.url?.lastPathComponent.hasPrefix("base-") == true })
+        #expect(!exists(tmp.url.appending(path: "packs/base-triveneto/pack.json")))
+        #expect(maqs.state.packs[base] == before)
+    }
+
+    @Test("an install queued before a refresh uses the refreshed manifest's entries when its turn comes")
+    func replansAtTurn() async throws {
+        let maqs = try maqs()
+        _ = try await maqs.refreshCatalog()
+        let regionEntry = try #require(manifest.regions[0].entries(for: .basemap)?.first)
+        let oldBase = try #require(manifest.base[0].entries(for: .basemap)?.first)
+        let (reached, signal) = AsyncStream<Void>.makeStream()
+        server.route(regionEntry.url) { _ in
+            signal.yield()
+            return StubResponse(status: 200, body: Data(repeating: 0, count: Int(regionEntry.bytes)), delay: 30)
+        }
+        let first = Task { try await maqs.install(region) }
+        var iterator = reached.makeAsyncIterator()
+        _ = await iterator.next()
+        let queued = Task { try await maqs.install(base) }
+        await waitUntil { maqs.state.packs[base] == .queued }
+
+        // The next release renames the base file; the queued install must fetch the new one.
+        let digest = try Fixtures.digest("test/test-basemap.v1.pmtiles")
+        let newFile = "base-triveneto-next.v1.pmtiles"
+        let next = try Fixtures.manifestJSON { object in
+            object["release"] = "data-next"
+            var packs = object["base"] as! [[String: Any]]
+            var layers = packs[0]["layers"] as! [String: [[String: Any]]]
+            layers["basemap"]![0]["sha256"] = digest.sha256
+            layers["basemap"]![0]["bytes"] = digest.bytes
+            layers["basemap"]![0]["file"] = newFile
+            layers["basemap"]![0]["url"] = "https://github.com/lucavallin/maqs/releases/download/data-next/\(newFile)"
+            packs[0]["layers"] = layers
+            object["base"] = packs
+        }
+        try Fixtures.serveRelease(on: server, manifest: next, etag: "\"next\"")
+        #expect(try await maqs.refreshCatalog(policy: .always).release == "data-next")
+        await maqs.cancelInstall(region)
+        await #expect(throws: MaqsError.download(.cancelled)) { try await first.value }
+        try await queued.value
+
+        let pack = try #require(await maqs.installedPack(base))
+        #expect(pack.release == "data-next")
+        #expect(pack.files[.basemap]?.first?.url.lastPathComponent == newFile)
+        #expect(server.requests.contains { $0.url?.lastPathComponent == newFile })
+        #expect(!server.requests.contains { $0.url == oldBase.url })
+    }
+
     @Test("registering a missing file is a typed storage error")
     func missingFile() async throws {
         let maqs = try maqs()
@@ -146,7 +202,7 @@ import MaqsTestSupport
 
         // Queued behind the running install: no request, and a cancel ends it without waiting for the first.
         let queued = Task { try await maqs.install(base) }
-        await waitUntil { isDownloading(base) }
+        await waitUntil { maqs.state.packs[base] == .queued }
         await maqs.cancelInstall(base)
         await #expect(throws: MaqsError.download(.cancelled)) { try await queued.value }
         #expect(maqs.state.packs[base] == .notInstalled)
@@ -155,7 +211,7 @@ import MaqsTestSupport
 
         // Queued again; it runs once the first install ends.
         let next = Task { try await maqs.install(base) }
-        await waitUntil { isDownloading(base) }
+        await waitUntil { maqs.state.packs[base] == .queued }
         #expect(!server.requests.contains { $0.url == baseEntry.url })
         await maqs.cancelInstall(region)
         await #expect(throws: MaqsError.download(.cancelled)) { try await first.value }
