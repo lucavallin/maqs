@@ -55,7 +55,7 @@ The formats and formulas are in [`docs/data-format.md`](data-format.md); the con
 
 Measured on 2026-10-15, before the base-pack and manifest steps were added, with the tool cache hit: when the Geofabrik cache missed, the smoke job took 3 min 22 s, with 2 min 4 s for the test-region build (the 625 MB download included) and 39 s for the network test. With the Geofabrik cache hit, the job took about 2 min 6 s: 6 s to restore the extract, 55 s for the build and 40 s for the network test. A tool-cache miss adds about 2 min of bootstrap.
 
-The data releases come from a second workflow, `build-maps.yml`, which runs monthly and on dispatch, never on pull requests ([Data releases](#data-releases)). The package has its own workflow, `swift.yml` ([Swift package](#swift-package)). All three workflows pin third-party actions to a full commit SHA with the version in a comment, and GitHub's own `actions/*` to a major tag; `pipeline/tests/test_workflows.py` checks the pins, the token scope, the main-branch gate and the order of the release steps, and `pipeline.yml` runs when `pipeline.yml` or `build-maps.yml` changes.
+The data releases come from a second workflow, `build-maps.yml`, which runs monthly and on dispatch, never on pull requests ([Data releases](#data-releases)). The package has its own workflow, `swift.yml` ([Swift package](#swift-package)). All three workflows pin third-party actions to a full commit SHA with the version in a comment, and GitHub's own `actions/*` to a major tag; `pipeline/tests/test_workflows.py` checks the pins, the token scope, the main-branch gate and the order of the release steps, and `pipeline.yml` runs when any of the three workflows changes.
 
 ## Data releases
 
@@ -104,7 +104,7 @@ The package `Maqs` is Swift 6 (tools version 6.2) for iOS 18 and macOS 15; `Maqs
 | `MaqsData` | planned (sub-project 3) | SQLite3 and system frameworks |
 | `MaqsUI` | planned (sub-project 4), iOS only | MapLibre Native, the one target that imports it |
 
-No product imports another. `MaqsTerrain` and `MaqsData` never import `MaqsCore`: the app hands them the file URLs of an installed pack and, for online terrain, the values of a `TileSource`. An app that needs only elevation links `MaqsTerrain` alone and never pulls in MapLibre.
+`MaqsTerrain` and `MaqsData` import nothing from `MaqsCore`: the app hands them the file URLs of an installed pack. Whether `MaqsUI` depends on `MaqsCore`, and how `MaqsTerrain` and `MaqsUI` receive the online provider values (`TileSource` is a `MaqsCore` type today), is open and decided in their sub-projects. An app that needs only elevation links `MaqsTerrain` alone and never pulls in MapLibre.
 
 Clients read two files from GitHub, neither through the REST API. `manifest.json` comes from `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json`, and its tag-pinned URLs lead to the files it lists. `config/sources.json` comes from `https://raw.githubusercontent.com/lucavallin/maqs/main/config/sources.json`, cached, with a copy bundled in the package as the fallback. How a client picks the files it can read is the compatibility rule in [`docs/data-format.md`](data-format.md#compatibility-rule); what it can assume about a release while one is being published is under [Data releases](#data-releases).
 
@@ -114,7 +114,7 @@ Clients read two files from GitHub, neither through the REST API. `manifest.json
 
 The catalog lists the regions and base packs with only the layers the app configured. For each layer it takes the newest entries whose `layer_schema_version` the package reads, the client half of the compatibility rule; a layer offered only in newer versions is `unreadable`. Each pack's status compares the installed SHA-256s with the release: `notInstalled`, `installed`, `updateAvailable` with the bytes an update downloads, or `partiallyInstalled` when the app's layer set grew since the install.
 
-`refreshOnlineSources(policy:)` does the same for `sources.json`. `onlineSources` returns the cached copy, else the bundled one, and is `nil` when the app sets `onlineTiles` to false (the opt-out of ADR 0008); then no tile URL reaches `MaqsUI` or `MaqsTerrain`.
+`refreshOnlineSources(policy:)` fetches `sources.json` with the same policy, conditional request and no retry, but it reports a failure only by throwing: it does not set `lastRefreshError` or change `MaqsState`, and the last good copy stays in use. `onlineSources` returns the cached copy, else the bundled one, and is `nil` when the app sets `onlineTiles` to false (the opt-out of ADR 0008); then no tile URL reaches `MaqsUI` or `MaqsTerrain`.
 
 ### Install
 

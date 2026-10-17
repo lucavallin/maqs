@@ -23,10 +23,12 @@ The `Maqs` Swift package (iOS 18, macOS 15) reads these releases on the device. 
 
 | Product | What it does | State |
 |---|---|---|
-| `MaqsCore` | the region catalog from the latest manifest, verified downloads and installs, the online tile sources | available |
+| `MaqsCore` | the region catalog from the latest manifest, verified downloads and installs, the online tile sources | built and tested, unreleased |
 | `MaqsTerrain` | elevation from the terrain tiles, local or online, and elevation profiles | planned |
 | `MaqsData` | queries over the trails, places and curvature files | planned |
 | `MaqsUI` | a SwiftUI map view over MapLibre Native, iOS only | planned |
+
+No package version is tagged yet; the first tag comes once all four products are built.
 
 `MaqsCore` uses system frameworks only. A minimal use, from the main actor:
 
@@ -48,7 +50,7 @@ if let pack = await maqs.installedPack(.region("veneto")) {
 }
 ```
 
-The `userAgent` names your app; free tile providers block generic ones. On iOS, forward `application(_:handleEventsForBackgroundURLSession:completionHandler:)` to `maqs.handleEventsForBackgroundURLSession(identifier:completionHandler:)`. Set `onlineTiles` to `false` and the package hands out no online tile source, so no position leaves the device through it. [`docs/architecture.md`](docs/architecture.md#swift-package) explains discovery and installs, and ADR 0014 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
+The `userAgent` names your app, because the free tile providers ask for an identifying User-Agent. On iOS, forward `application(_:handleEventsForBackgroundURLSession:completionHandler:)` to `maqs.handleEventsForBackgroundURLSession(identifier:completionHandler:)`. Set `onlineTiles` to `false` and the package hands out no online tile source, so no position leaves the device through it. [`docs/architecture.md`](docs/architecture.md#swift-package) explains discovery and installs, and ADR 0014 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
 
 `swift build` and `swift test` run from a clean checkout: the tests read the `test` region's files committed under `Tests/MaqsTestSupport/Fixtures/`. `scripts/update-fixtures.sh` rebuilds them with the pipeline and refreshes the copy of `sources.json` bundled in the package.
 

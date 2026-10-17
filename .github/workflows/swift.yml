@@ -72,8 +72,14 @@ jobs:
         with: { persist-credentials: false }
       - name: Test on the iOS Simulator
         run: |
+          set -o pipefail
           # Xcode names the scheme Maqs while the package has one library product, Maqs-Package once it has several.
-          scheme=$(xcodebuild -list -json | jq -r '.workspace.schemes | if any(.[]; . == "Maqs-Package") then "Maqs-Package" else "Maqs" end')
+          # Use Maqs-Package when it is listed, else Maqs; fail when the listing fails or the chosen scheme is not listed.
+          scheme=$(xcodebuild -list -json | jq -er '
+            .workspace.schemes as $schemes
+            | (if any($schemes[]; . == "Maqs-Package") then "Maqs-Package" else "Maqs" end) as $chosen
+            | if any($schemes[]; . == $chosen) then $chosen else error("no Maqs or Maqs-Package scheme") end') \
+            || { echo 'could not pick the Xcode scheme: xcodebuild -list -json failed or lists neither Maqs-Package nor Maqs' >&2; exit 1; }
           echo "scheme: $scheme"
           set +e
           xcodebuild -scheme "$scheme" \
@@ -81,9 +87,14 @@ jobs:
             -skipPackagePluginValidation test > xcodebuild.log 2>&1
           status=$?
           set -e
+          fail() { echo "$1" >&2; tail -50 xcodebuild.log; exit 1; }
           grep -E '": error:|Test run with|TEST (SUCCEEDED|FAILED)' xcodebuild.log || true
           if grep -q '": error:' xcodebuild.log || grep -qE 'Test run with .* failed|\*\* TEST FAILED \*\*' xcodebuild.log; then
-            echo 'xcodebuild reported errors or failed tests' >&2; exit 1
+            fail 'xcodebuild reported errors or failed tests'
           fi
-          grep -q 'Test run with [1-9][0-9]* tests.* passed' xcodebuild.log
+          grep -q 'Test run with [1-9][0-9]* tests.* passed' xcodebuild.log || fail 'no passing "Test run with N tests" line'
+          if [ "$status" -ne 0 ]; then
+            echo "xcodebuild exited with status $status" >&2
+            tail -50 xcodebuild.log
+          fi
           exit "$status"
