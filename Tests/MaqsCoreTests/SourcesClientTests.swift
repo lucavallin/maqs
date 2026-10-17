@@ -28,7 +28,7 @@ import MaqsTestSupport
         return try JSONSerialization.data(withJSONObject: object)
     }
 
-    @Test("with nothing cached the bundled copy is served and matches config/sources.json")
+    @Test("with nothing cached the bundled copy is served, without a request")
     func bundledFallback() throws {
         let sources = try #require(client().current())
         #expect(sources.version == 1)
