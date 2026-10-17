@@ -215,6 +215,15 @@ def test_ios_simulator_step_picks_the_scheme_and_checks_the_log_strictly():
     assert run.rstrip().endswith('exit "$status"')
 
 
+def test_swift_jobs_print_the_toolchain_before_building():
+    jobs = load("swift.yml")["jobs"]
+    macos = [s.get("run", "") for s in jobs["macos"]["steps"]]
+    assert macos.index("swift --version") < macos.index("swift build")
+    ios = [s.get("run", "") for s in jobs["ios-simulator"]["steps"]]
+    scheme_step = next(i for i, run in enumerate(ios) if "xcodebuild -list" in run)
+    assert ios.index("xcodebuild -version") < scheme_step
+
+
 def test_swift_workflow_is_read_only_and_path_filtered():
     doc = load("swift.yml")
     assert doc["permissions"] == {"contents": "read"}
