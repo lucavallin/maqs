@@ -255,7 +255,7 @@ OSM tagging in South Tyrol (live Overpass, IT-BZ): 4,239 `route=hiking` relation
 
 ## 0008 — Requirements from the consuming apps' corner alert, elevation, and privacy needs
 
-**Date:** 2026-10-08 · **Status:** accepted (owner decision); the empty-`sources.json` opt-out of decision 3 is open in 0012
+**Date:** 2026-10-08 · **Status:** accepted (owner decision); the opt-out of decision 3 is the `onlineTiles` setting of 0014, not an empty `sources.json`
 
 **Context.** A survey of the consuming apps' plans (kept outside this repo) shows what they need from maqs: not rendering or routing, but **offline data** for a free-drive tight-corner alert (map-match position and heading to the road, look ahead over precomputed corners, sensitivity bands, cards like "tight left · R 64 m · 400 m"), offline elevation for ride profiles and spot elevations, and mountain passes for crossing events. One app has a strict "no coordinates leave the device" privacy stance; another already defines corners and a twist score on recorded GPS tracks. The owner decided that maqs's requirements supersede the apps' existing internal rules where they conflict.
 
@@ -272,7 +272,7 @@ OSM tagging in South Tyrol (live Overpass, IT-BZ): 4,239 `route=hiking` relation
 
 ## 0009 — Regions as the smallest pack unit, the `triveneto` region, and the test-region fixtures
 
-**Date:** 2026-10-15 · **Status:** accepted
+**Date:** 2026-10-15 · **Status:** accepted; decision 5 replaced by 0014 (the Swift fixtures are committed)
 
 **Context.** The owner needs Veneto, Trentino-Alto Adige and Friuli-Venezia Giulia together and will not use anything smaller than a region (owner rule, 2026-10-08). Tile extracts are cut by bbox, and the three regional bboxes overlap heavily (Veneto's already contains most of the other two), so three separate packs would cost an estimated 1 GB where the one combined pack measured about 720 MB (only Veneto and Triveneto were measured). The Swift tests need realistic fixtures, but nothing generated may be committed, and the `test` region's basemap plus terrain should stay under about 5 MB.
 
@@ -404,7 +404,7 @@ How the bytes split between tables and indexes has not been measured. The decisi
 
 ## 0012 — Manifest, sources and the compatibility rule
 
-**Date:** 2026-10-16 · **Status:** accepted (owner decision 2026-10-16); open: the online opt-out of ADR 0008 (the schema requires one source per layer, so an app-side setting would replace the empty-file opt-out)
+**Date:** 2026-10-16 · **Status:** accepted (owner decision 2026-10-16); the open question on the online opt-out of ADR 0008 is closed by 0014 (an app-side setting, `onlineTiles`)
 
 **Context.** Phase 2 of the brief defines the two files every client reads: `manifest.json`, one per data release, and `config/sources.json` on `main`. Shipped apps parse both, and an app on someone's phone keeps reading new releases for months without an update, so the two formats are a public API. Each layer's schema will change on its own schedule, and some changes will come before the Swift package (Phase 4) exists. The manifest also has to list the base pack (ADR 0007) and give each layer's OSM date separately, because the VersaTiles basemap lags Geofabrik by months (ADR 0004).
 
@@ -525,3 +525,84 @@ How the bytes split between tables and indexes has not been measured. The decisi
 The legs ran in parallel. The REST API then returned release `data-2026-10` as not draft, not prerelease, target commit 7fb4694, marked latest, with 30 assets (the 29 files and `manifest.json`) and 2,074,036,371 bytes. `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json` answered 302, 302, 200, its `created_at` was 2026-10-16T14:15:17Z, and `maqs check-config --manifest` accepted it.
 
 **Same-month re-run.** The same dispatch ran again (run 38914494150, 12 min 00 s). `prepare` took 19 s; the legs took base 41 s, veneto 4 min 06 s, triveneto 6 min 06 s, friuli-venezia-giulia 7 min 01 s and trentino-alto-adige 9 min 18 s, slower than the first run (runner variance); `release` took 2 min 17 s for the artifact download, the hashing and the 2 GB `--clobber` upload. `maqs previous-manifest` chose the month's own release, `data-2026-10`, and the log said "release data-2026-10 exists; assets will be replaced". `release-check` again saw 29 assets and none carried. Afterwards the release still had 30 assets and was still latest, and the manifest's `created_at` had moved to 2026-10-16T14:27:56Z. Both runs hit the Geofabrik cache, so the one download per run held.
+
+---
+
+## 0014 — `MaqsCore`: one entry point, manifest-driven discovery, verified installs
+
+**Date:** 2026-10-16 · **Status:** accepted (owner decisions 2026-10-16)
+
+**Context.** Phase 4 of the brief is the Swift package. It is built in four sub-projects, in this order: the package skeleton with `MaqsCore`, then `MaqsTerrain`, then `MaqsData`, then `MaqsUI` with the demo app. This ADR covers the first: `Package.swift`, `swift.yml`, the test fixtures and `MaqsCore`. Besides downloads and storage, the package discovers regions. It reads what the latest data release offers from `releases/latest/download/manifest.json`, never through the GitHub REST API, and tells the app. Two documents cross a trust boundary on the way in: the manifest decides which files land on the user's disk, and `sources.json` decides which hosts the app talks to.
+
+**Decisions.**
+1. Discovery is data and observable state only. `MaqsCore` publishes a `Catalog` of regions and base packs, each with its names, bbox, per-layer bytes and schema versions and an install status, and apps draw their own list. There is no region picker view, now or in `MaqsUI`.
+2. Base packs work both ways. An app can register a base pack it bundles itself (ADR 0007) with `registerBundledBasePack(id:basemap:)`, and `MaqsCore` can download a base pack the manifest lists, on the same code path as a region. A registration lasts one launch and is not persisted, because the app bundle's path changes across app updates. A bundled pack is always `installed`, never `updateAvailable`. `install` of it downloads nothing, `remove` only unregisters it, and its `InstalledFile` has no SHA-256 and no data date.
+3. The online opt-out of ADR 0008 is the configuration flag `onlineTiles`. When it is false, `onlineSources` is nil and `refreshOnlineSources` makes no request, so `MaqsUI` and `MaqsTerrain` never get a tile URL. Fetching the manifest and `sources.json` stays allowed, because those requests carry no position; an app that wants no network at all never calls a refresh. This closes the question ADR 0012 left open: an empty `sources.json` is not the opt-out, and the schema keeps requiring one source per layer.
+4. The `test` region's outputs are committed under `Tests/MaqsTestSupport/Fixtures/`: its seven data files and the `data-ci` manifest, 3,584 KB today. `swift.yml` fails above 8,192 KB. This is the one place binary data may live in git, and it replaces decision 5 of ADR 0009, under which the Swift workflow would have downloaded the pipeline's artifact. `swift test` runs from a clean checkout with no Python, and `scripts/update-fixtures.sh` regenerates the fixtures and the bundled `sources.json`. Build reports are left out because they hold absolute local paths. So is the 13 MB base pack: the base-pack tests serve the test basemap under the base pack's name. Invalid manifests are derived in code from the fixture manifest, not committed as files.
+5. One public `actor Maqs` sits over internal parts: the manifest and sources clients, the pack store, the download session and the installer. `MaqsTerrain` and `MaqsData` take file URLs and plain values, never `MaqsCore` types, so each product can be used alone.
+
+**Package.** `swift-tools-version: 6.2`, Swift 6 language mode, iOS 18 and macOS 15. There is one library product, `MaqsCore`. `MaqsTestSupport` is a test-only library target at `Tests/MaqsTestSupport`, with its sources in `Sources/` and the fixtures as a copied resource, because SwiftPM resources must sit under the target's own path. `MaqsCoreTests` is the test target. Every target treats warnings as errors through `SwiftSetting.treatAllWarnings(as: .error)`. Nothing uses `unsafeFlags`, which would stop the package from being used as a dependency. `MaqsCore` imports Foundation, CryptoKit, Observation, Synchronization and os, nothing else.
+
+**Refinements of the API.** `Maqs.init` is synchronous, runs on the main actor because it creates `MaqsState`, and throws `MaqsError.storage`. `RefreshPolicy` is a top-level type. `PackState` has a `queued` case for an install waiting its turn, next to `notInstalled`, `downloading`, `verifying`, `installed` and `failed`. `StorageError` adds `fileNotFound` and `invalidPackID`, and `DownloadError` adds `noCatalog` for an install before any catalog is loaded.
+
+**Trust boundaries.** The client asks more of the manifest than that it decodes ([`Manifest.swift`](../Sources/MaqsCore/Manifest/Manifest.swift)):
+- `manifest_version` must be 1. Another number is `unsupportedVersion` and a body that is not JSON is `invalid`; either way the cached manifest stays.
+- Every entry URL is HTTPS on the manifest URL's own host, compared without case, with no user, password or port. A manifest that points anywhere else is rejected whole.
+- Ids and file names become paths on disk, so their shape is checked. Region and base pack ids are lowercase kebab-case of at most 64 characters, unique among regions and among base packs. File names are kebab-case with a `.v<N>.` version and an extension, at most 128 characters, unique across the manifest, and never end in `.resume`. `bytes` lies between 1 and the 1.9 GiB asset limit, `sha256` is 64 lowercase hex digits, `data_date` is a real calendar date, a bbox is four finite numbers in range with its minimum below its maximum, and attribution URLs are HTTPS.
+- Error messages name a field path, never document content or a URL.
+- Unknown fields, unknown layer keys and entries with an unknown `role` are ignored, as the compatibility rule says. The schema versions the package reads are one table, `ReadableVersions.table`, today `[1]` for every layer ([`ReadableVersions.swift`](../Sources/MaqsCore/Manifest/ReadableVersions.swift)). It is the client half of ADR 0012's rule.
+
+For `sources.json` ([`SourcesDocument.swift`](../Sources/MaqsCore/Network/SourcesDocument.swift)), `sources_version` must be 1, every URL is HTTPS with a host and no credentials, the tile template holds `{z}`, `{x}` and `{y}`, and each layer has at least one source in a form the package decodes: Shortbread 1.0 MVT for the basemap, terrarium WebP or PNG at 256 or 512 px for terrain. A rejected file leaves the last good copy in use, the cached copy first and then the one bundled in the package (`Sources/MaqsCore/Resources/sources.json`, a byte copy of `config/sources.json` that `swift.yml` checks with `cmp`).
+
+**Refresh.** `.ifStale` uses the cached manifest while it is less than `catalogMaxAge` old, 24 hours by default. A cache stamped in the future, after the clock moved back, counts as stale. `.always` sends `If-None-Match` with the cached ETag, and a 304 renews the fetch date. The package never fetches on a timer and never retries inside a call. A 429 is `rateLimited`, another status is `network(statusCode:)`, a transport error is `network(statusCode: nil)`, and the app decides when to try again. A cancelled refresh throws `CancellationError` and leaves `lastRefreshError` alone. After a successful refresh, while no install is queued or running, downloads whose SHA-256 the new manifest no longer lists are deleted.
+
+**Storage.** The root is `Application Support/Maqs/`, excluded from backup:
+
+```
+manifest.json  manifest.meta.json             # cached manifest; its ETag and fetch date
+sources.json   sources.meta.json
+packs/region-<id>/pack.json                   # or base-<id>; readers trust only the files it names
+packs/region-<id>/<layer>/<sha256>/<file>     # installed files, addressed by content
+downloads/<sha256>-<file>                     # partial and completed downloads
+downloads/<sha256>-<file>.resume              # resume data
+```
+
+An update never overwrites a file the live `pack.json` names. New files go to new `<sha256>` directories, and `pack.json` is written last, atomically, as JSON with sorted keys, ISO 8601 dates and layers keyed by name (a golden test pins the format). A crash leaves either the old record and its files or the new record and its files. The launch sweep runs in `Maqs.init` only. It deletes a pack directory that has no `pack.json`, which is an interrupted first install or removal. It keeps one whose `pack.json` exists but cannot be read, because iOS data protection can hide a file before the first unlock. Otherwise it deletes the files the record does not name. After an install only that pack is swept. Pack ids are checked with the manifest's rule at every public entry point, so an invalid id never becomes a path. There is no `fsync`: `rename(2)` covers a process crash, but not a power loss or a kernel panic on APFS, and that is accepted.
+
+**Downloads and install.** Installs run one pack at a time, in call order. A second `install` of a pack that is queued or running joins it, and an install plans again when its turn comes, because a refresh may have replaced the manifest meanwhile. Each pack downloads at most two files at once. `DownloadSession` is delegate-driven, so it works with a background session. Downloads are keyed by content (`<sha256>-<file>`): the destination, the resume data and the task description all derive from the key, a second request for a running key joins it (also a task the system reconnected after a relaunch), and a completed leftover is reused after a size and hash check. Resume data is kept on cancel and on failure and used once, only for the same URL. A fresh task must answer 200, a resumed one 200 or 206, and an error body never lands on disk. Every file is checked for its size, then its SHA-256 in 1 MiB reads, before any file moves; a mismatch deletes the download and installs nothing. Progress reaches `MaqsState` at most once per 256 KiB and per 100 ms, always with the final value, and never goes backwards. `cancelInstall` restores the pack's previous state and the install throws `cancelled`. `remove` cancels a running install, waits for it, then deletes the pack and its leftover downloads. A 429 fails the install, and the package does not retry it.
+
+On iOS the app forwards `application(_:handleEventsForBackgroundURLSession:completionHandler:)` to `Maqs.handleEventsForBackgroundURLSession(identifier:completionHandler:)`. The package calls the handler once, on the main thread, when it has both the handler and the session's "events finished" callback, in whichever order they arrive. A process creates one `Maqs`, never two with the same background identifier, because the system allows one background session per identifier. Unsandboxed macOS processes share `~/Library/Application Support/Maqs` unless they set `storageDirectory`.
+
+**Verified on 2026-10-16 and 2026-10-17.**
+
+| Fact | Verified value | Source |
+|---|---|---|
+| Tools version and warnings | `swift-tools-version: 6.2` and `.treatAllWarnings(as: .error)` work with Xcode 27 and Swift 6.4; an unused variable fails the build | local build |
+| Resources outside `Sources/` | a target with `path: "Tests/MaqsTestSupport"`, `sources: ["Sources"]` and `resources: [.copy("Fixtures")]` builds, and `Bundle.module` finds the files | local build |
+| `releases/latest/download/manifest.json` | 302, 302, then 200 from `release-assets.githubusercontent.com` with a strong `ETag`; a repeat with `If-None-Match` answers 304 | `curl -sIL` |
+| `macos-latest` runner | macOS 26 arm64, Xcode 26.6 by default, simulators include `iPhone 17` | actions/runner-images README and its macos-26-arm64 readme |
+| Xcode scheme | `Maqs` while the package has one library product, `Maqs-Package` once it has several; `swift.yml` picks the one `xcodebuild -list -json` shows | `xcodebuild -list`, Xcode 27 |
+| `swift test --filter` | the suite name alone selects a suite (`ManifestTests`, or `ManifestTests/decodesFixture` for one test); `MaqsCoreTests/ManifestTests` matches nothing | local run |
+| Swift Testing count | a parametrized test counts once in "Test run with N tests" | local run |
+| Exit tests | `#expect(processExitsWith:)` is unavailable on the iOS Simulator, so the one exit test is `#if os(macOS)` | local simulator build |
+| iOS Simulator leg | `iPhone 18 Pro` with Xcode 27: 162 tests pass; `swift test` on macOS runs 163, the extra one being the exit test | local `xcodebuild test`, 2026-10-17 |
+| Resume data | `downloadTask(withResumeData:)` raises an Objective-C exception that Swift cannot catch on bytes it cannot parse (not a property list, or a value of the wrong type), so `DownloadSession` checks the blob and deletes it before use | local tests |
+| Background `URLSession` | delegate-based tasks only; move the file before `didFinishDownloadingTo` returns; resume data is in the error's `NSURLSessionDownloadTaskResumeData`; call the stored completion handler from `urlSessionDidFinishEvents` on the main thread | Apple, "Downloading files in the background", via Context7 |
+
+**Rejected.**
+- Separate public components wired by the app: more public types to keep stable, and every app rebuilding the install invariants.
+- Building the fixtures in CI, or downloading the pipeline's artifact as ADR 0009 planned: a Python toolchain or a download before every `swift test`, and no test run from a clean checkout.
+- Persisting the bundled base pack registration: a stale path after an app update.
+- Retrying inside the package: the app decides when to try again, and a 429 must never become a tight loop.
+- An empty `sources.json` as the opt-out: it fails the schema, and it would be a file on `main` shared by every app, where the opt-out is one app's choice.
+
+**CONTRADICTS CLAUDE.md (minor):** CLAUDE.md said that generated data never goes in git and that the bundled `sources.json` is "synced by the build". The fixtures are the one exception to the first. The bundled copy is made by `scripts/update-fixtures.sh` and checked by CI, because SwiftPM cannot copy a file from outside a target at build time. CLAUDE.md now says both.
+
+**Consequences.**
+- Apps call `refreshCatalog()` when they want fresh data, read `MaqsState` and show the catalog statuses themselves.
+- `MaqsTerrain` (sub-project 2) and `MaqsData` (sub-project 3) open `InstalledFile.url`s and never import `MaqsCore`. `MaqsData` must open SQLite files read-only and immutable, so no `-wal` or `-shm` file appears for the sweep to delete.
+- An update deletes the files it replaces at once. An app reads `installedPack(_:)` again after `install` returns, because a URL it has not opened yet may be gone; an open file stays readable until it is closed.
+- The package is not tagged until sub-project 4, and `v0.1.0` will be a git tag or a release created with `--latest=false` (ADR 0013).
+- `swift.yml` runs only on package changes, so data-only and docs-only pushes spend no macOS minutes. The runner facts above come from the image documentation; the workflow's first run on GitHub checks them.
+- Not verified: whether `URLSession` sends `If-None-Match` again after GitHub's redirect (at worst every `.always` refresh downloads the whole manifest, about 16 KB); whether GitHub's asset host answers a resumed download with 206; and whether resume data survives the signed redirect URL. If it does not, the blob is discarded and the download starts over, never with wrong data.
+- Deferred to later sub-projects: power-loss durability (no `fsync`); a public `MaqsState` initializer for SwiftUI previews; a `downloading` state for a background transfer the system reconnects after a relaunch, which today shows only when `install` is called again; and caching in `onlineSources`, which reads the `sources.json` file on every call, so `MaqsUI` should read it once rather than per tile.
