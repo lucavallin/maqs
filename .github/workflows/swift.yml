@@ -43,6 +43,16 @@ jobs:
           fi
       - name: Bundled sources.json matches config/sources.json
         run: cmp config/sources.json Sources/MaqsCore/Resources/sources.json
+      - name: MaqsTerrain and MaqsCore carry the same version
+        run: |
+          # Both modules send Maqs/<version> in their User-Agent; MaqsTerrain keeps its own copy because it never imports MaqsCore.
+          core=$(grep -o 'static let string = "[^"]*"' Sources/MaqsCore/MaqsVersion.swift | cut -d '"' -f 2 || true)
+          terrain=$(grep -o 'static let string = "[^"]*"' Sources/MaqsTerrain/TerrainVersion.swift | cut -d '"' -f 2 || true)
+          if [ -z "$core" ] || [ -z "$terrain" ] || [ "$core" != "$terrain" ]; then
+            echo "MaqsVersion.string is '$core' and TerrainVersion.string is '$terrain': both must be set and equal" >&2
+            exit 1
+          fi
+          echo "version: $core"
       - name: Fixtures stay under the cap
         run: |
           size_kb=$(du -sk Tests/MaqsTestSupport/Fixtures | cut -f1)

@@ -138,6 +138,18 @@ import UniformTypeIdentifiers
         #expect(abs(value - expected) < 1e-6)
     }
 
+    @Test func aCancelledCallThrowsCancellationError() async throws {
+        let provider = SyntheticTerrain(tileSize: 256, zoomRange: 0...12) { _, _ in 5 }
+        let terrain = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
+        let point = CLLocationCoordinate2D(latitude: 46.1, longitude: 12.2)
+        let call = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await terrain.samples(at: [point], zoomLimits: [12])
+        }
+        await #expect(throws: CancellationError.self) { try await call.value }
+        #expect(provider.loads.isEmpty)
+    }
+
     @Test func theOnlineBudgetStopsAt128() async throws {
         let online = SyntheticTerrain(tileSize: 256, zoomRange: 0...12, isOnline: true) { _, _ in 5 }
         let terrain = Terrain(providers: [online], memoryCacheBytes: 64 << 20)
