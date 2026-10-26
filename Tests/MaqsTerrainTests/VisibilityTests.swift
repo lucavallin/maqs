@@ -169,6 +169,24 @@ import Testing
         }
     }
 
+    @Test(arguments: ProfileTests.unusableEarths)
+    func anUnusableEarthModelIsInvalidInputBeforeAnyTileIsRead(_ earth: EarthModel) async throws {
+        let provider = SyntheticTerrain(tileSize: 512, zoomRange: 0...12, elevation: { _, _ in 0 })
+        let terrain = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
+        let grounded = Observer(coordinate: observer.coordinate)
+        let error = await #expect(throws: TerrainError.self) {
+            try await terrain.visibility(of: [east(20_000, elevation: 1000)], from: grounded, options: VisibilityOptions(earth: earth))
+        }
+        guard case .invalidInput = error else { Issue.record("expected invalidInput, got \(String(describing: error))"); return }
+        #expect(provider.loads.isEmpty)
+    }
+
+    @Test func aFlatEarthIsAccepted() async throws {
+        let result = try await terrain().visibility(of: [east(20_000, elevation: 1000)], from: Observer(coordinate: observer.coordinate),
+                                                   options: VisibilityOptions(earth: .none))
+        guard case .visible = result[0] else { Issue.record("\(result[0])"); return }
+    }
+
     // MARK: Several chunks
 
     private func ring(_ bearings: [Double], distance: Double, elevation: Double? = 1200) -> [SightTarget] {

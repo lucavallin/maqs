@@ -37,7 +37,7 @@ extension Terrain {
     /// A target whose coordinate is not a valid latitude and longitude is unknown at the target.
     /// - Returns: One result per target, in the order given.
     /// - Throws: ``TerrainError/invalidInput(_:)`` for more than 5,000 targets, an observer or option that is not finite (or a negative distance, margin or clearance),
-    ///   or a sight line of more than 100,000 samples; `CancellationError` when the calling task is cancelled; ``PMTilesError`` for a damaged archive.
+    ///   an ``EarthModel`` whose radius is not above 0 or whose refraction is not finite, or a sight line of more than 100,000 samples; `CancellationError` when the calling task is cancelled; ``PMTilesError`` for a damaged archive.
     public func visibility(of targets: [SightTarget], from observer: Observer, options: VisibilityOptions = VisibilityOptions()) async throws -> [Visibility] {
         guard targets.count <= Self.maxVisibilityTargets else {
             throw TerrainError.invalidInput("a visibility look has at most \(Self.maxVisibilityTargets) targets, not \(targets.count)")
@@ -54,6 +54,7 @@ extension Terrain {
               options.maxDistance.isFinite, options.margin.isFinite, options.targetClearance.isFinite else {
             throw TerrainError.invalidInput("a visibility look needs a finite eye height and non-negative, finite distance, margin and clearance")
         }
+        try options.earth.validate()
 
         var results = [Visibility?](repeating: nil, count: targets.count)
         var lines: [(index: Int, distance: Double, bearing: Double)] = []
