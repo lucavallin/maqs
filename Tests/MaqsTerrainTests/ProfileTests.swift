@@ -82,6 +82,21 @@ import Testing
         }
     }
 
+    static let unusableEarths = [
+        EarthModel(radius: 0), EarthModel(radius: -1), EarthModel(radius: .nan),
+        EarthModel(refraction: .nan), EarthModel(refraction: .infinity),
+    ]
+
+    @Test(arguments: unusableEarths)
+    func rejectsAnUnusableEarthModelBeforeReadingATile(_ earth: EarthModel) async throws {
+        let (terrain, provider) = terrain()
+        let error = await #expect(throws: TerrainError.self) {
+            try await terrain.profile(from: point(46, 12), to: point(46.01, 12), options: ProfileOptions(earth: earth))
+        }
+        guard case .invalidInput = error else { Issue.record("expected invalidInput, got \(String(describing: error))"); return }
+        #expect(provider.loads.isEmpty)
+    }
+
     @Test func rejectsMoreThanOneHundredThousandPoints() async {
         let (terrain, _) = terrain()
         let start = point(46, 12)

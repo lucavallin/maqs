@@ -271,7 +271,8 @@ extension Terrain {
     ///
     /// Samples start at distance 0 and are `options.step` apart (by default one tile pixel of the zoom used at that distance) up to and including the end.
     /// Tiles are read at the zoom `options.bands` gives for the distance, so far samples use coarser tiles.
-    /// - Throws: ``TerrainError/invalidInput(_:)`` for a non-finite endpoint, a `step` under 1 m or a profile of more than 100,000 points, otherwise as ``elevation(at:)``.
+    /// - Throws: ``TerrainError/invalidInput(_:)`` for a non-finite endpoint, a `step` under 1 m, an ``EarthModel`` whose radius is not above 0
+    ///   or whose refraction is not finite, or a profile of more than 100,000 points, otherwise as ``elevation(at:)``.
     public func profile(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D, options: ProfileOptions = ProfileOptions()) async throws -> ElevationProfile {
         guard [from.latitude, from.longitude, to.latitude, to.longitude].allSatisfy(\.isFinite),
               abs(from.latitude) <= 90, abs(to.latitude) <= 90 else {
@@ -280,6 +281,7 @@ extension Terrain {
         if let step = options.step, !(step >= 1) {
             throw TerrainError.invalidInput("a profile step is at least 1 metre, not \(step)")
         }
+        try options.earth.validate()
         let total = Geodesy.distance(from, to)
         var distances: [Double] = [0]
         var distance = 0.0

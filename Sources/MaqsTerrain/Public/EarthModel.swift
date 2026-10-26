@@ -1,10 +1,13 @@
 import Foundation
 
 /// How far the Earth's surface falls away from a straight sight line, with atmospheric refraction folded in.
+///
+/// ``Terrain`` rejects a model whose radius is not above 0 or whose refraction is not finite with
+/// ``TerrainError/invalidInput(_:)``.
 public struct EarthModel: Sendable, Equatable {
-    /// Earth radius in metres; `.infinity` means a flat Earth.
+    /// Earth radius in metres, above 0; `.infinity` means a flat Earth.
     public var radius: Double
-    /// The refraction coefficient `k`; light bends over the curve, so the apparent drop is scaled by `1 - k`.
+    /// The refraction coefficient `k`, finite; light bends over the curve, so the apparent drop is scaled by `1 - k`.
     public var refraction: Double
 
     /// The mean Earth radius and the usual terrestrial refraction coefficient of 0.13.
@@ -15,6 +18,16 @@ public struct EarthModel: Sendable, Equatable {
 
     /// No curvature and no refraction.
     public static let none = EarthModel(radius: .infinity, refraction: 0)
+
+    /// A radius above 0 (NaN is not; `.infinity` is) and a finite refraction coefficient.
+    var isUsable: Bool { radius > 0 && refraction.isFinite }
+
+    /// Throws ``TerrainError/invalidInput(_:)`` unless the model ``isUsable``.
+    func validate() throws(TerrainError) {
+        guard isUsable else {
+            throw .invalidInput("an Earth model needs a radius above 0 and a finite refraction, not \(radius) and \(refraction)")
+        }
+    }
 
     /// The apparent drop in metres of the surface at `distance` metres: `d² / (2R) × (1 − k)`, and 0 for a flat Earth.
     public func drop(atDistance distance: Double) -> Double {
