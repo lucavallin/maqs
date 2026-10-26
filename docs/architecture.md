@@ -162,7 +162,7 @@ downloads/<sha256>-<file>.resume              # resume data
 | `tileSize`, always set for a terrain source | `tileSize` |
 | `minZoom`, `maxZoom` | `minZoom`, `maxZoom` |
 
-`OnlineTerrainSource` checks them again: an HTTPS template with `{z}`, `{x}` and `{y}`, `webp` or `png`, 256 or 512 px, zooms from 0 to 22. The attribution stays in `TileSource`, for the app to show.
+`OnlineTerrainSource` checks them again: an HTTPS template with `{z}`, `{x}` and `{y}` outside its host and port, `webp` or `png`, 256 or 512 px, zooms from 0 to 22. The attribution stays in `TileSource`, for the app to show.
 
 ### Tests and CI
 
