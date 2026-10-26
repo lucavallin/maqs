@@ -99,29 +99,39 @@ extension Terrain {
         var chunkTiles: Set<SourceTile> = []
         for line in lines.sorted(by: { $0.bearing < $1.bearing }) {
             try Task.checkCancellation()
-            let target = targets[line.index]
-            let end = line.distance - options.targetClearance
-            let rungs = ladder.firstIndex { $0 > end } ?? ladder.count
-            var path: [SamplePoint] = []
-            path.reserveCapacity(rungs)
-            for distance in ladder[..<rungs] {
-                let coordinate = Geodesy.destination(from: origin, bearing: line.bearing, distance: distance)
-                path.append(try locate(coordinate, zoomLimit: options.bands.zoom(atDistance: distance)))
-            }
-            let known = target.elevation.flatMap { $0.isFinite ? $0 : nil }
-            let targetPoint = known == nil ? try locate(target.coordinate, zoomLimit: options.bands.zoom(atDistance: line.distance)) : nil
-            let prepared = PreparedLine(index: line.index, distance: line.distance, bearing: line.bearing, elevation: known, targetPoint: targetPoint, path: path)
-            let tiles = prepared.tiles
+            var prepared = try prepare(line, target: targets[line.index], origin: origin, ladder: ladder, options: options)
+            var tiles = prepared.tiles
             if !chunk.isEmpty, chunk.count >= Self.maxTargetsPerChunk || chunkTiles.union(tiles).count > tileLimit {
                 try await settle(chunk, tiles: chunkTiles, into: &results, budget: &budget, origin: origin, eyeHeight: eyeHeight, ladder: ladder, options: options)
                 chunk = []
                 chunkTiles = []
+                // The actor may have run setArchives while the chunk loaded, which makes the provider indexes located above stale.
+                prepared = try prepare(line, target: targets[line.index], origin: origin, ladder: ladder, options: options)
+                tiles = prepared.tiles
             }
             chunk.append(prepared)
             chunkTiles.formUnion(tiles)
         }
         try await settle(chunk, tiles: chunkTiles, into: &results, budget: &budget, origin: origin, eyeHeight: eyeHeight, ladder: ladder, options: options)
         return results.compactMap { $0 }
+    }
+
+    /// Locates the points of one sight line under the current providers.
+    private func prepare(
+        _ line: (index: Int, distance: Double, bearing: Double), target: SightTarget, origin: CLLocationCoordinate2D,
+        ladder: [Double], options: VisibilityOptions
+    ) throws -> PreparedLine {
+        let end = line.distance - options.targetClearance
+        let rungs = ladder.firstIndex { $0 > end } ?? ladder.count
+        var path: [SamplePoint] = []
+        path.reserveCapacity(rungs)
+        for distance in ladder[..<rungs] {
+            let coordinate = Geodesy.destination(from: origin, bearing: line.bearing, distance: distance)
+            path.append(try locate(coordinate, zoomLimit: options.bands.zoom(atDistance: distance)))
+        }
+        let known = target.elevation.flatMap { $0.isFinite ? $0 : nil }
+        let targetPoint = known == nil ? try locate(target.coordinate, zoomLimit: options.bands.zoom(atDistance: line.distance)) : nil
+        return PreparedLine(index: line.index, distance: line.distance, bearing: line.bearing, elevation: known, targetPoint: targetPoint, path: path)
     }
 
     /// Loads one chunk's tiles and decides each of its lines.
