@@ -9,6 +9,10 @@ struct SamplePoint: Sendable {
 }
 
 /// Elevation lookups over installed archives and, where they have nothing, an online source.
+///
+/// Create one `Terrain` and share it across the app. The provider etiquette belongs to an instance: each has its own
+/// 429 cool-down, its own limit of four requests at once and its own HTTP cache over the one cache directory, so a
+/// second instance doubles the requests a free server sees and does not pause when the first one does.
 public actor Terrain {
     /// Online tile fetches allowed per call.
     static let fetchCap = 128
