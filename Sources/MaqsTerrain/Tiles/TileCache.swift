@@ -28,6 +28,12 @@ final class TileCache {
         return entry.tile
     }
 
+    /// Drops every tile.
+    func removeAll() {
+        entries.removeAll()
+        byteCount = 0
+    }
+
     /// Keeps the tile, evicting least recently used ones until the cache is within its limit; a tile larger than the limit is not kept.
     func insert(_ tile: ElevationTile, for key: SourceTile) {
         if let old = entries.removeValue(forKey: key) { byteCount -= old.tile.byteCount }
