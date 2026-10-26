@@ -10,6 +10,8 @@ from maqs.terrain_golden import build_golden, main
 from tests.helpers import write_pmtiles
 from tests.test_terrain_sampler import terrarium_tile
 
+FIXTURES = Path(__file__).resolve().parents[2] / "Tests" / "MaqsTestSupport" / "Fixtures" / "test"
+
 TILE_IDS = [
     (0, 0, 0),
     (1, 0, 0),
@@ -62,3 +64,10 @@ def test_main_writes_sorted_json(archive: Path, tmp_path: Path) -> None:
     assert json.loads(text) == build_golden(archive)
     assert text.endswith("\n")
     assert text == json.dumps(json.loads(text), sort_keys=True, indent=1) + "\n"
+
+
+def test_the_committed_golden_file_matches_the_committed_fixture() -> None:
+    # A sampler or reader change without a run of scripts/update-terrain-golden.sh fails here,
+    # instead of leaving the Swift tests comparing against stale values.
+    committed = json.loads((FIXTURES / "terrain-golden.json").read_text(encoding="utf-8"))
+    assert build_golden(FIXTURES / "test-terrain.v1.pmtiles") == committed
