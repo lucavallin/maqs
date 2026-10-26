@@ -168,4 +168,94 @@ import Testing
             try await terrain().visibility(of: targets, from: observer, options: flat)
         }
     }
+
+    // MARK: Several chunks
+
+    private func ring(_ bearings: [Double], distance: Double, elevation: Double? = 1200) -> [SightTarget] {
+        bearings.enumerated().map { offset, bearing in
+            SightTarget(coordinate: Geodesy.destination(from: observer.coordinate, bearing: bearing, distance: distance + Double(offset) * 10), elevation: elevation)
+        }
+    }
+
+    @Test func aLookSplitIntoChunksAnswersLikeOneChunk() async throws {
+        let bumpy: @Sendable (Double, Double) -> Double = { lon, lat in 1000 + 500 * sin(lon * 300) * cos(lat * 300) }
+        let targets = ring((0..<40).map { 50 + Double($0) * 1.5 }, distance: 9_000) + ring((0..<40).map { 200 + Double($0) * 3 }, distance: 25_000)
+        let whole = SyntheticTerrain(tileSize: 512, zoomRange: 0...12, elevation: bumpy)
+        let split = SyntheticTerrain(tileSize: 512, zoomRange: 0...12, elevation: bumpy)
+        let expected = try await Terrain(providers: [whole], memoryCacheBytes: 64 << 20).visibility(of: targets, from: observer, options: flat)
+        let actual = try await Terrain(providers: [split], memoryCacheBytes: 2 << 20).visibility(of: targets, from: observer, options: flat)
+        #expect(actual.map { "\($0)" } == expected.map { "\($0)" })
+        #expect(expected.count == targets.count)
+        #expect(split.loads.count > whole.loads.count)
+    }
+
+    @Test func theOnlineCapHoldsAcrossChunks() async throws {
+        let provider = SyntheticTerrain(tileSize: 512, zoomRange: 0...12, isOnline: true, elevation: { _, _ in 0 })
+        let terrain = Terrain(providers: [provider], memoryCacheBytes: 3 << 20)
+        let everywhere = VisibilityOptions(earth: .none, bands: try ZoomBands([ZoomBand(upTo: .infinity, zoom: 12)]))
+        let targets = ring((0..<48).map { Double($0) * 7.5 }, distance: 50_000, elevation: 1000)
+        let results = try await terrain.visibility(of: targets, from: observer, options: everywhere)
+        #expect(provider.loads.count == 128)
+        let capped = results.filter {
+            if case .unknown(.path, .requestCap, _) = $0 { return true }
+            return false
+        }
+        #expect(!capped.isEmpty)
+    }
+
+    @Test func replacingArchivesDuringALookDoesNotTrap() async throws {
+        let gate = Gate()
+        let provider = GatedTerrain(gate: gate)
+        let terrain = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
+        let targets = ring((0..<70).map { 80 + Double($0) * 0.2 }, distance: 20_000, elevation: 1000)
+        let observer = observer
+        let options = flat
+        let look = Task { try await terrain.visibility(of: targets, from: observer, options: options) }
+        await gate.waitUntilBlocked()
+        try await terrain.setArchives([])
+        await gate.open()
+        let results = try await look.value
+        #expect(results.count == targets.count)
+    }
+}
+
+/// Lets a test hold a provider's first load until it opens the gate.
+private actor Gate {
+    private var isOpen = false
+    private var blocked = false
+    private var loaders: [CheckedContinuation<Void, Never>] = []
+    private var watchers: [CheckedContinuation<Void, Never>] = []
+
+    func pass() async {
+        guard !isOpen else { return }
+        blocked = true
+        watchers.forEach { $0.resume() }
+        watchers = []
+        await withCheckedContinuation { loaders.append($0) }
+    }
+
+    func waitUntilBlocked() async {
+        guard !blocked else { return }
+        await withCheckedContinuation { watchers.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        loaders.forEach { $0.resume() }
+        loaders = []
+    }
+}
+
+private final class GatedTerrain: TileProvider {
+    private let inner = SyntheticTerrain(tileSize: 512, zoomRange: 0...12, elevation: { _, _ in 0 })
+    private let gate: Gate
+    init(gate: Gate) { self.gate = gate }
+    var zoomRange: ClosedRange<Int> { inner.zoomRange }
+    var tileSize: Int { inner.tileSize }
+    var isOnline: Bool { false }
+    func covers(_ key: TileKey) throws -> Bool { try inner.covers(key) }
+    func load(_ key: TileKey) async throws -> TileLoad {
+        await gate.pass()
+        return try await inner.load(key)
+    }
 }
