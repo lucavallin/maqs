@@ -18,8 +18,9 @@ struct CoolDown: Sendable {
         nextLength = min(nextLength * 2, Self.maximumLength)
     }
 
-    /// A tile arrived: the next pause is 60 s again. A pause already running still runs out, because the success
-    /// answers a request sent before the 429 and says nothing about the server's limit now.
+    /// A tile arrived: the next pause is 60 s again. A pause already running still runs out. Callers report only a
+    /// success outside a pause: one during a pause answers a request sent before the 429 and says nothing about the
+    /// server's limit now, so it must not undo the doubling either.
     mutating func succeeded() {
         nextLength = Self.initialLength
     }

@@ -151,6 +151,31 @@ private final class Counter: Sendable {
         #expect(server.requests.count == 2)
     }
 
+    /// A 200 for a request sent before the 429 came back says nothing about the server's limit now.
+    @Test func aTileFromTheSameBurstDoesNotUndoTheDoubling() async throws {
+        let limited = TileKey(z: 12, x: 2186, y: 1455)
+        server.route(try Self.url(of: limited)) { _ in StubResponse(status: 429, delay: 0.1) }
+        let tile = try Self.fixtureTile()
+        server.route(try Self.url(of: Self.key)) { _ in StubResponse(status: 200, body: tile, delay: 0.3) }
+        let clock = TestClock()
+        let terrain = Terrain(providers: [try provider(clock: clock)], memoryCacheBytes: 64 << 20)
+        let samples = try await terrain.samples(at: [Self.centre(of: limited), Self.centre(of: Self.key)], zoomLimits: [12, 12])
+        // Both requests were out before the 429 came back: one burst, and the tile arrived during the pause.
+        #expect(server.requests.count == 2)
+        #expect(samples[0] == .missing(.rateLimited))
+        #expect(Self.isElevation(samples[1]))
+        clock.advance(by: .seconds(61))
+        #expect(try await Self.sample(terrain, at: Self.centre(of: limited)) == .missing(.rateLimited))
+        #expect(server.requests.count == 3)
+        // That second 429 starts a 120 s pause, not 60 s.
+        clock.advance(by: .seconds(119))
+        #expect(try await Self.sample(terrain, at: Self.centre(of: limited)) == .missing(.rateLimited))
+        #expect(server.requests.count == 3)
+        clock.advance(by: .seconds(2))
+        _ = try await Self.sample(terrain, at: Self.centre(of: limited))
+        #expect(server.requests.count == 4)
+    }
+
     @Test func requestsQueuedBehindA429AreNotSent() async throws {
         let keys = (0..<12).map { TileKey(z: 12, x: 2000 + $0, y: 1400) }
         for key in keys { server.route(try Self.url(of: key), status: 429, body: Data()) }
@@ -199,6 +224,39 @@ private final class Counter: Sendable {
         let later = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
         #expect(try await Self.sample(later, at: point) == first)
         #expect(server.requests.count <= 2)
+    }
+
+    /// Ruling R7: a queued fetch whose callers have all left sends no request, and a later caller starts afresh.
+    @Test func aTileNobodyWaitsForAnyMoreIsNotRequested() async throws {
+        // Four tiles answered after 0.3 s hold every limiter slot.
+        let blockers = (0..<4).map { TileKey(z: 12, x: 2000 + $0, y: 1400) }
+        for key in blockers { server.route(try Self.url(of: key)) { _ in StubResponse(status: 404, delay: 0.3) } }
+        let tileURL = try Self.url(of: Self.key)
+        server.route(tileURL, body: try Self.fixtureTile())
+        let provider = try provider()
+        let terrain = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
+        let holding = Task { try await terrain.samples(at: blockers.map(Self.centre), zoomLimits: blockers.map { _ in 12 }) }
+        while server.requests.count < 4 {
+            try Task.checkCancellation()
+            await Task.yield()
+        }
+        let abandoned = Task { try await Self.sample(terrain, at: Self.centre(of: Self.key)) }
+        while await provider.waiters(for: Self.key) < 1 {
+            try Task.checkCancellation()
+            await Task.yield()
+        }
+        abandoned.cancel()
+        await #expect(throws: CancellationError.self) { try await abandoned.value }
+        _ = try await holding.value
+        // The slots are free now; the abandoned fetch gets its turn and ends without a request.
+        while await provider.isFetching(Self.key) {
+            try Task.checkCancellation()
+            await Task.yield()
+        }
+        #expect(!server.requests.contains { $0.url == tileURL })
+        // A caller arriving afterwards starts a fresh flight and gets the tile.
+        #expect(Self.isElevation(try await Self.sample(terrain, at: Self.centre(of: Self.key))))
+        #expect(server.requests.filter { $0.url == tileURL }.count == 1)
     }
 
     @Test func thePerCallCapIs128() async throws {
