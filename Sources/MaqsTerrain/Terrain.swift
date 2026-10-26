@@ -29,6 +29,7 @@ public actor Terrain {
 
     /// Opens every archive and, when `online` is set, prepares the online source.
     ///
+    /// An archive that fails to open is logged with its file name before the error is thrown.
     /// - Throws: ``TerrainError/invalidConfiguration(_:)`` when `online` is set and the User-Agent is blank,
     ///   ``TerrainError/notTerrain(_:)`` for an archive that holds something other than terrarium tiles, and
     ///   ``PMTilesError`` for one that cannot be read.
@@ -45,8 +46,22 @@ public actor Terrain {
         self.init(providers: providers, memoryCacheBytes: configuration.memoryCacheBytes)
     }
 
+    /// Opens every archive. One that fails is logged with its file name and the error case, and the error is thrown.
     private static func localProviders(_ urls: [URL]) throws -> [any TileProvider] {
-        try urls.map { try LocalTileProvider(url: $0) }
+        try urls.map { url throws -> any TileProvider in
+            do {
+                return try LocalTileProvider(url: url)
+            } catch {
+                logger.error("terrain archive \(url.lastPathComponent, privacy: .public) did not open: \(Self.errorCase(error), privacy: .public)")
+                throw error
+            }
+        }
+    }
+
+    /// The error's case for the log, without the URL `notTerrain` carries: it holds the app's container path.
+    private static func errorCase(_ error: any Error) -> String {
+        if case TerrainError.notTerrain = error { return "notTerrain" }
+        return String(describing: error)
     }
 
     private static func ordered(_ providers: [any TileProvider]) -> [any TileProvider] {
