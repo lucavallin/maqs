@@ -142,12 +142,11 @@ final class PMTilesArchive: Sendable {
     /// `length` bytes at `offset`. A short read means the file shrank or was cut: `truncated`, unless `allowShort`.
     private static func read(_ file: OpenFile, offset: UInt64, length: Int, allowShort: Bool = false) throws(PMTilesError) -> Data {
         guard offset <= UInt64(Int64.max) else { throw .truncated }
-        var buffer = [UInt8](repeating: 0, count: length)
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: max(length, 1))
+        defer { buffer.deallocate() }
         var done = 0
         while done < length {
-            let count = buffer.withUnsafeMutableBytes { pointer in
-                pread(file.descriptor, pointer.baseAddress! + done, length - done, off_t(offset) + off_t(done))
-            }
+            let count = pread(file.descriptor, buffer + done, length - done, off_t(offset) + off_t(done))
             if count < 0 {
                 if errno == EINTR { continue }
                 throw .unreadableFile
@@ -156,6 +155,6 @@ final class PMTilesArchive: Sendable {
             done += count
         }
         guard done == length || allowShort else { throw .truncated }
-        return Data(buffer.prefix(done))
+        return Data(bytes: buffer, count: done)
     }
 }
