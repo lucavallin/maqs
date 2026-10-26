@@ -101,18 +101,16 @@ enum Gzip {
         defer { compression_stream_destroy(&stream) }
         stream.src_ptr = base.assumingMemoryBound(to: UInt8.self) + start
         stream.src_size = remaining
-        var chunk = [UInt8](repeating: 0, count: chunkSize)
+        let chunk = UnsafeMutablePointer<UInt8>.allocate(capacity: chunkSize)
+        defer { chunk.deallocate() }
         while true {
             let produced: Int
-            let status: compression_status = chunk.withUnsafeMutableBufferPointer { buffer in
-                stream.dst_ptr = buffer.baseAddress!
-                stream.dst_size = buffer.count
-                let status = compression_stream_process(&stream, 0)
-                return status
-            }
+            stream.dst_ptr = chunk
+            stream.dst_size = chunkSize
+            let status = compression_stream_process(&stream, 0)
             produced = chunkSize - stream.dst_size
             guard output.count + produced <= limit else { throw .sectionTooLarge }
-            output.append(contentsOf: chunk.prefix(produced))
+            output.append(chunk, count: produced)
             switch status {
             case COMPRESSION_STATUS_END:
                 return
