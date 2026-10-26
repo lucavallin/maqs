@@ -2,7 +2,7 @@
 
 Map data and a Swift package for native Apple apps: Shortbread basemap tiles, terrarium terrain, hiking trails, places and road curvature, per region. Online-first, offline optional, zero hosting cost: code in this repository, data as GitHub Release assets, compute in GitHub Actions. One map provider, [VersaTiles](https://versatiles.org), serves every tile online and offline.
 
-**Status:** the pipeline builds all five layers of a region (basemap, terrain, trails, places, curvature) and the bundled base packs, and writes `manifest.json` from the build reports. A GitHub Actions workflow builds every region each month and publishes the files as a release. The Swift package has its first product, `MaqsCore`, which discovers, downloads and installs region packs; the terrain, data and map products come next. [`docs/BRIEF.md`](docs/BRIEF.md) has the plan and [`docs/decisions.md`](docs/decisions.md) has every decision and the numbers behind it.
+**Status:** the pipeline builds all five layers of a region (basemap, terrain, trails, places, curvature) and the bundled base packs, and writes `manifest.json` from the build reports. A GitHub Actions workflow builds every region each month and publishes the files as a release. The Swift package has two of its four products: `MaqsCore`, which discovers, downloads and installs region packs, and `MaqsTerrain`, which reads elevations and tells which peaks the user can see; the data and map products come next. [`docs/BRIEF.md`](docs/BRIEF.md) has the plan and [`docs/decisions.md`](docs/decisions.md) has every decision and the numbers behind it.
 
 ## Data releases
 
@@ -24,7 +24,7 @@ The `Maqs` Swift package (iOS 18, macOS 15) reads these releases on the device. 
 | Product | What it does | State |
 |---|---|---|
 | `MaqsCore` | the region catalog from the latest manifest, verified downloads and installs, the online tile sources | built and tested, unreleased |
-| `MaqsTerrain` | elevation from the terrain tiles, local or online, and elevation profiles | planned |
+| `MaqsTerrain` | elevation at a point, along a route, on a grid or along a profile, and line of sight, from installed packs or online tiles | built and tested, unreleased |
 | `MaqsData` | queries over the trails, places and curvature files | planned |
 | `MaqsUI` | a SwiftUI map view over MapLibre Native, iOS only | planned |
 
@@ -52,7 +52,41 @@ if let pack = await maqs.installedPack(.region("veneto")) {
 
 The `userAgent` names your app, because the free tile providers ask for an identifying User-Agent. On iOS, forward `application(_:handleEventsForBackgroundURLSession:completionHandler:)` to `maqs.handleEventsForBackgroundURLSession(identifier:completionHandler:)`. After a relaunch, call `install` again for the packs the user had asked for, because the package does not remember them; the call joins a download that is still running, or reuses one that finished after a size and hash check, instead of downloading it again. Set `onlineTiles` to `false` and the package hands out no online tile source, so no position leaves the device through it. [`docs/architecture.md`](docs/architecture.md#swift-package) explains discovery and installs, and ADR 0014 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
 
-`swift build` and `swift test` run from a clean checkout: the tests read the `test` region's files committed under `Tests/MaqsTestSupport/Fixtures/`. `scripts/update-fixtures.sh` rebuilds them with the pipeline and refreshes the copy of `sources.json` bundled in the package.
+`MaqsTerrain` also uses system frameworks only, and it never imports `MaqsCore`: the app hands it the terrain files of the installed packs and, for everywhere else, the online terrain source. Continuing the example:
+
+```swift
+import CoreLocation
+import MaqsTerrain
+
+let pack = await maqs.installedPack(.region("veneto"))
+let archives = [Layer.terrain, .terrainHD].flatMap { pack?.files[$0] ?? [] }.map(\.url)
+
+// nil when onlineTiles is false: then MaqsTerrain never makes a request
+let online = try await maqs.onlineSources?.terrain.first.map { source in
+    try OnlineTerrainSource(tiles: source.tiles, format: source.format, tileSize: source.tileSize ?? 512,
+                            minZoom: source.minZoom, maxZoom: source.maxZoom)
+}
+let terrain = try Terrain(configuration: TerrainConfiguration(archives: archives, online: online,
+                                                              userAgent: "MyApp/1.0 (iOS)"))
+
+let here = CLLocationCoordinate2D(latitude: 46.10, longitude: 12.25)
+print(try await terrain.elevation(at: here))                      // .elevation(metres) or .missing(reason)
+
+let peak = SightTarget(coordinate: CLLocationCoordinate2D(latitude: 46.21, longitude: 12.18),
+                       elevation: 2_145)                           // the summit's OSM ele, when known
+for result in try await terrain.visibility(of: [peak], from: Observer(coordinate: here)) {
+    switch result {
+    case .visible(let distance, let bearing, let angle): print("visible", distance, bearing, angle)
+    case .hidden(_, _, let blockedDistance, _): print("hidden by ground", blockedDistance, "m away")
+    case .unknown(_, let reason, _): print("unknown", reason)      // ground missing, or online tiles failed
+    case .outOfRange: print("too far")
+    }
+}
+```
+
+Inside an installed region the elevations come from the pack, and a look fetches online only the ground beyond the pack's border. Elsewhere the package fetches VersaTiles' tiles through the HTTP cache, at most four at a time and 128 per call, and pauses after a 429. A missing value carries its reason, so an app can tell "no data here" from "try again later". The tiles of one online look give away roughly where the user stands, to about 500 m; an app that must not reveal that sets `onlineTiles` to `false`, and `onlineSources` is then nil. After an install, an update or a removal, pass the new file URLs to `terrain.setArchives(_:)`. [`docs/architecture.md`](docs/architecture.md#terrain) describes the sources, the results and the online path, and ADR 0015 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
+
+`swift build` and `swift test` run from a clean checkout: the tests read the `test` region's files committed under `Tests/MaqsTestSupport/Fixtures/`. `scripts/update-fixtures.sh` rebuilds them with the pipeline, writes the pipeline's terrain values that the Swift terrain tests compare against, and refreshes the copy of `sources.json` bundled in the package.
 
 ## Build a region locally
 
