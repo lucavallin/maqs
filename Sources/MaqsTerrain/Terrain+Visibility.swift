@@ -91,9 +91,7 @@ extension Terrain {
         }
 
         let ladder = try Self.ladder(upTo: farthest - options.targetClearance, latitude: origin.latitude, bands: options.bands)
-        let tileSide = providers.map(\.tileSize).max() ?? 512
-        let tileBytes = tileSide * tileSide * MemoryLayout<Float>.size
-        let tileLimit = max(1, memoryCacheBytes / tileBytes)
+        let tileLimit = tilesPerBatch
 
         var chunk: [PreparedLine] = []
         var chunkTiles: Set<SourceTile> = []
@@ -161,14 +159,6 @@ extension Terrain {
                 throw TerrainError.invalidInput("a sight line has at most \(maxSamplesPerLine) samples; use a shorter maximum distance")
             }
             distances.append(distance)
-        }
-    }
-
-    private static func resolve(_ point: SamplePoint, _ loaded: [SourceTile: TileLoad]) -> ElevationSample {
-        guard let source = point.tile, let result = loaded[source] else { return .missing(.noData) }
-        switch result {
-        case .tile(let tile): return .elevation(tile.elevation(pixelX: point.pixelX, pixelY: point.pixelY))
-        case .missing(let reason): return .missing(reason)
         }
     }
 

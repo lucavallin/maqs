@@ -11,6 +11,9 @@ public struct TerrainConfiguration: Sendable {
     /// ``TerrainError/invalidConfiguration(_:)`` when ``online`` is set and this is empty or only whitespace.
     public var userAgent: String
     /// The most bytes of decoded tiles kept in memory. Defaults to 64 MiB.
+    ///
+    /// A call reads its tiles in batches of about this size and samples each batch before reading the next, so while it
+    /// runs it holds the cache and one batch: about twice this value at most.
     public var memoryCacheBytes: Int = 64 << 20
     /// The size of the on-disk HTTP cache for online tiles. Defaults to 64 MiB.
     ///

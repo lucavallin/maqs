@@ -15,7 +15,7 @@ public actor Terrain {
 
     private(set) var providers: [any TileProvider]
     private let cache: TileCache
-    /// The cache bound; a visibility look sizes its chunks by it.
+    /// The cache bound; every call sizes its batches of tiles by it.
     let memoryCacheBytes: Int
     /// Bumped by `setArchives`; a load that started under an older value does not cache its tiles, whose provider indexes are stale.
     private var generation = 0
@@ -134,24 +134,63 @@ public actor Terrain {
         return loaded
     }
 
-    /// One sample per coordinate; each distinct tile is loaded once. `zoomLimits[i]` bounds the zoom used for `coordinates[i]`.
+    /// Tiles one batch of a call loads at once: as many decoded tiles of the largest tile size as fit the cache bound, at
+    /// least one. A call samples each batch before it loads the next, so it holds at most this many tiles beyond the cache.
+    var tilesPerBatch: Int {
+        let side = providers.map(\.tileSize).max() ?? 512
+        return max(1, memoryCacheBytes / (side * side * MemoryLayout<Float>.size))
+    }
+
+    /// One sample per coordinate, in input order. `zoomLimits[i]` bounds the zoom used for `coordinates[i]`.
+    ///
+    /// The points are grouped by tile and the tiles loaded in batches of `tilesPerBatch`, in the order the input first
+    /// needs them, so neighbouring points of a route share a batch and each distinct tile is loaded once. Every batch
+    /// draws on the one online budget of the call.
     func samples(at coordinates: [CLLocationCoordinate2D], zoomLimits: [Int]) async throws -> [ElevationSample] {
         guard coordinates.count == zoomLimits.count else {
             throw TerrainError.invalidInput("\(coordinates.count) coordinates with \(zoomLimits.count) zoom limits")
         }
-        var points: [SamplePoint] = []
-        points.reserveCapacity(coordinates.count)
-        for (coordinate, limit) in zip(coordinates, zoomLimits) {
-            points.append(try locate(coordinate, zoomLimit: limit))
-        }
+        var results = [ElevationSample](repeating: .missing(.noData), count: coordinates.count)
         var budget = Self.fetchCap
-        let loaded = try await load(Set(points.compactMap(\.tile)), budget: &budget)
-        return points.map { point in
-            guard let source = point.tile, let result = loaded[source] else { return .missing(.noData) }
-            switch result {
-            case .tile(let tile): return .elevation(tile.elevation(pixelX: point.pixelX, pixelY: point.pixelY))
-            case .missing(let reason): return .missing(reason)
+        var unsampled = Array(coordinates.indices)
+        while !unsampled.isEmpty {
+            let locatedUnder = generation
+            var tiles: [SourceTile] = []
+            var pointsByTile: [SourceTile: [(index: Int, point: SamplePoint)]] = [:]
+            for index in unsampled {
+                let point = try locate(coordinates[index], zoomLimit: zoomLimits[index])
+                // A point no provider covers keeps its `.noData`.
+                guard let tile = point.tile else { continue }
+                if pointsByTile[tile] == nil { tiles.append(tile) }
+                pointsByTile[tile, default: []].append((index, point))
             }
+            unsampled = []
+            let batchSize = tilesPerBatch
+            var next = 0
+            while next < tiles.count {
+                let batch = tiles[next..<min(next + batchSize, tiles.count)]
+                let loaded = try await load(Set(batch), budget: &budget)
+                for tile in batch {
+                    for (index, point) in pointsByTile[tile] ?? [] { results[index] = Self.resolve(point, loaded) }
+                }
+                next = batch.endIndex
+                // setArchives may have run while the batch loaded; the points still to sample were located with the old
+                // providers, whose indexes are stale, so they are located again.
+                if generation != locatedUnder, next < tiles.count {
+                    unsampled = tiles[next...].flatMap { pointsByTile[$0]?.map(\.index) ?? [] }.sorted()
+                    break
+                }
+            }
+        }
+        return results
+    }
+
+    /// The sample at a located point, from the tiles a batch loaded.
+    static func resolve(_ point: SamplePoint, _ loaded: [SourceTile: TileLoad]) -> ElevationSample {
+        guard let source = point.tile, let result = loaded[source] else { return .missing(.noData) }
+        switch result {
+        case .tile(let tile): return .elevation(tile.elevation(pixelX: point.pixelX, pixelY: point.pixelY))
+        case .missing(let reason): return .missing(reason)
         }
     }
 
@@ -174,6 +213,9 @@ extension Terrain {
 
     /// The elevations along a route, in the order given. Each distinct tile is read once; at most 128 online tiles are fetched per call,
     /// and positions beyond that come back as ``MissingReason/requestCap``.
+    ///
+    /// Tiles are decoded in batches that fit ``TerrainConfiguration/memoryCacheBytes``, and each batch is sampled before the
+    /// next is read, so a long list of scattered positions holds at most one batch of tiles beyond the cache.
     /// - Throws: as ``elevation(at:)``.
     public func elevations(at coordinates: [CLLocationCoordinate2D]) async throws -> [ElevationSample] {
         try await samples(at: coordinates, zoomLimits: coordinates.map { _ in Int.max })
