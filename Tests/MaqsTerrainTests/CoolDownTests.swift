@@ -41,6 +41,9 @@ import Testing
         coolDown.rateLimited(at: start)
         coolDown.rateLimited(at: start + .seconds(61))
         coolDown.succeeded()
+        // The pause running since +61 s (120 s long) is not ended by the success.
+        #expect(coolDown.isActive(at: start + .seconds(62)))
+        #expect(coolDown.isActive(at: start + .seconds(180)))
         let third = start + .seconds(200)
         coolDown.rateLimited(at: third)
         #expect(coolDown.isActive(at: third + .seconds(59)))

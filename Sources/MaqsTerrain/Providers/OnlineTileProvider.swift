@@ -2,7 +2,8 @@ import Foundation
 
 /// Elevation tiles from an online terrarium source, with the etiquette a free demo server needs: an identifying
 /// User-Agent, the HTTP cache honoured, at most four requests at once, one request per tile however many callers want
-/// it, and no request at all during a 429 cool-down. Every failure is a `TileLoad.missing` value, never thrown.
+/// it, none for a tile nobody waits for any more, and none at all during a 429 cool-down. Every failure is a
+/// `TileLoad.missing` value, never thrown.
 actor OnlineTileProvider: TileProvider {
     private static let concurrentRequests = 4
 
@@ -12,6 +13,21 @@ actor OnlineTileProvider: TileProvider {
         case undecodable(bytes: Int)
         case status(Int, bytes: Int)
         case transportFailure(code: Int?)
+    }
+
+    /// One fetch of one tile and the callers waiting for it, by waiter id. The id tells a fetch its own flight from a
+    /// later one for the same tile.
+    private struct Flight {
+        let id: UInt64
+        var waiters: [UInt64: CheckedContinuation<TileLoad, any Error>]
+    }
+
+    /// What a fetch does when its limiter slot comes up.
+    private enum Turn {
+        case send
+        case coolingDown
+        /// Every caller left while the fetch waited; the flight has ended.
+        case abandoned
     }
 
     nonisolated let zoomRange: ClosedRange<Int>
@@ -26,9 +42,10 @@ actor OnlineTileProvider: TileProvider {
     private var coolDown = CoolDown()
     /// Whether a cool-down has started whose end is not logged yet.
     private var coolDownRunning = false
-    /// The callers waiting on each tile being fetched, by waiter id. A key is present exactly while its fetch runs.
-    private var flights: [TileKey: [UInt64: CheckedContinuation<TileLoad, any Error>]] = [:]
-    private var nextWaiter: UInt64 = 0
+    /// The flight of each tile being fetched. A key is present from the first caller until its fetch ends or is abandoned.
+    private var flights: [TileKey: Flight] = [:]
+    /// Source of waiter and flight ids.
+    private var nextID: UInt64 = 0
 
     /// `userAgent` is sent as given, so it already carries the package token. `cacheDirectory` nil keeps the
     /// configuration's own `urlCache`.
@@ -58,20 +75,20 @@ actor OnlineTileProvider: TileProvider {
     }
 
     /// Joins the fetch of `key` already running, or starts one. A cancelled caller throws `CancellationError` at once;
-    /// the fetch carries on for the other callers.
+    /// the fetch carries on for the other callers, and sends no request if none is left when its turn comes.
     func load(_ key: TileKey) async throws -> TileLoad {
         try Task.checkCancellation()
         guard !isCoolingDown(at: now()) else { return .missing(.rateLimited) }
-        let waiter = nextWaiter
-        nextWaiter &+= 1
+        let waiter = takeID()
         let result = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
                 if flights[key] == nil {
-                    flights[key] = [waiter: continuation]
+                    let flight = takeID()
+                    flights[key] = Flight(id: flight, waiters: [waiter: continuation])
                     // Unstructured on purpose: cancelling the caller that started it must not cancel it.
-                    Task { await self.fetch(key) }
+                    Task { await self.fetch(key, flight: flight) }
                 } else {
-                    flights[key]?[waiter] = continuation
+                    flights[key]?.waiters[waiter] = continuation
                 }
             }
         } onCancel: {
@@ -85,39 +102,72 @@ actor OnlineTileProvider: TileProvider {
 
     /// Callers waiting on the fetch of `key`, for tests; 0 when none runs.
     func waiters(for key: TileKey) -> Int {
-        flights[key]?.count ?? 0
+        flights[key]?.waiters.count ?? 0
+    }
+
+    /// Whether a flight for `key` exists, for tests.
+    func isFetching(_ key: TileKey) -> Bool {
+        flights[key] != nil
+    }
+
+    private func takeID() -> UInt64 {
+        defer { nextID &+= 1 }
+        return nextID
     }
 
     private func leave(_ key: TileKey, waiter: UInt64) {
-        flights[key]?.removeValue(forKey: waiter)?.resume(throwing: CancellationError())
+        flights[key]?.waiters.removeValue(forKey: waiter)?.resume(throwing: CancellationError())
     }
 
     /// Fetches one tile through the limiter, then hands the result to every caller still waiting and ends the flight.
-    private func fetch(_ key: TileKey) async {
+    /// A request already sent completes even when nobody waits any more; its result is dropped.
+    private func fetch(_ key: TileKey, flight: UInt64) async {
         let result: TileLoad
         if let url = source.url(for: key) {
             var request = URLRequest(url: url, cachePolicy: .useProtocolCachePolicy)
             request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
             let (session, tileSize) = (session, tileSize)
+            let outcome: TileLoad?
             do {
-                result = try await limiter.run { [request] in
-                    // A 429 may have arrived while this request waited for its turn.
-                    guard await self.mayRequest() else { return .missing(.rateLimited) }
+                outcome = try await limiter.run { [request] () async -> TileLoad? in
+                    switch await self.turn(of: key, flight: flight) {
+                    case .abandoned: return nil
+                    case .coolingDown: return .missing(.rateLimited)
+                    case .send: break
+                    }
                     let response = await Self.perform(request, on: session, tileSize: tileSize)
                     // Settled before the slot is given back, so a request queued behind a 429 sees the cool-down.
                     return await self.settle(response, for: key)
                 }
             } catch {
                 // The limiter throws only on cancellation, and nothing cancels this task.
-                result = .missing(.networkFailure)
+                outcome = .missing(.networkFailure)
             }
+            // An abandoned flight was ended in `turn`; the key may belong to a newer flight by now.
+            guard let outcome else { return }
+            result = outcome
         } else {
             logger.error("online terrain template gave no URL for tile \(Self.describe(key), privacy: .private)")
             result = .missing(.networkFailure)
         }
-        for continuation in (flights.removeValue(forKey: key) ?? [:]).values {
+        guard let ended = flights[key], ended.id == flight else { return }
+        flights[key] = nil
+        for continuation in ended.waiters.values {
             continuation.resume(returning: result)
         }
+    }
+
+    /// Decides, when the fetch's limiter slot comes up, whether its request goes out. A flight nobody waits for any more
+    /// ends here, in the same actor step as the check, so a caller arriving later starts a fresh flight instead of
+    /// joining one that will never send.
+    private func turn(of key: TileKey, flight: UInt64) -> Turn {
+        guard let current = flights[key], current.id == flight, !current.waiters.isEmpty else {
+            if flights[key]?.id == flight { flights[key] = nil }
+            logger.info("online terrain tile \(Self.describe(key), privacy: .private): not requested, nobody waits for it")
+            return .abandoned
+        }
+        // A 429 may have arrived while this request waited for its turn.
+        return isCoolingDown(at: now()) ? .coolingDown : .send
     }
 
     private static func perform(_ request: URLRequest, on session: URLSession, tileSize: Int) async -> Response {
@@ -143,7 +193,9 @@ actor OnlineTileProvider: TileProvider {
         switch response {
         case .tile(let decoded, let bytes):
             logger.info("online terrain tile \(tile, privacy: .private): status 200, \(bytes, privacy: .public) bytes")
-            coolDown.succeeded()
+            // A tile that arrives during a pause answers a request sent before the 429 (it usually trails the 429,
+            // having a body to carry), so it says nothing about the server's limit now and must not undo the doubling.
+            if !isCoolingDown(at: now()) { coolDown.succeeded() }
             return .tile(decoded)
         case .undecodable(let bytes):
             logger.error("online terrain tile \(tile, privacy: .private): status 200, \(bytes, privacy: .public) bytes that are not a \(self.tileSize, privacy: .public) px terrarium tile")
@@ -172,10 +224,6 @@ actor OnlineTileProvider: TileProvider {
         coolDownRunning = true
         let seconds = coolDown.end.map { ($0 - instant).components.seconds } ?? 0
         logger.notice("online terrain cool-down started: no requests for \(seconds, privacy: .public) s")
-    }
-
-    private func mayRequest() -> Bool {
-        !isCoolingDown(at: now())
     }
 
     /// Whether a cool-down is running; logs the end of one the first time it is seen over.
