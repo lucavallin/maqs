@@ -95,16 +95,16 @@ Nothing is uploaded until steps 1–3 pass, and when a leg fails, `release` does
 
 ## Swift package
 
-The package `Maqs` is Swift 6 (tools version 6.2) for iOS 18 and macOS 15; `MaqsUI` will be iOS only, because MapLibre's binary is ([ADR 0003](decisions.md)). Every target treats warnings as errors through `.treatAllWarnings(as: .error)`, with no `unsafeFlags`, so the package stays usable as a dependency. The decisions and the facts verified for this section are in [ADR 0014](decisions.md).
+The package `Maqs` is Swift 6 (tools version 6.2) for iOS 18 and macOS 15; `MaqsUI` will be iOS only, because MapLibre's binary is ([ADR 0003](decisions.md)). Every target treats warnings as errors through `.treatAllWarnings(as: .error)`, with no `unsafeFlags`, so the package stays usable as a dependency. The decisions and the facts verified for this section are in [ADR 0014](decisions.md) for `MaqsCore` and [ADR 0015](decisions.md) for `MaqsTerrain`.
 
 | Product | State | Imports |
 |---|---|---|
 | `MaqsCore` | available | system frameworks only: Foundation, CryptoKit, Observation, Synchronization, os |
-| `MaqsTerrain` | planned (sub-project 2) | system frameworks only |
+| `MaqsTerrain` | available | system frameworks only: Foundation, CoreLocation, CoreGraphics, ImageIO, Compression, Synchronization, os |
 | `MaqsData` | planned (sub-project 3) | SQLite3 and system frameworks |
 | `MaqsUI` | planned (sub-project 4), iOS only | MapLibre Native, the one target that imports it |
 
-`MaqsTerrain` and `MaqsData` import nothing from `MaqsCore`: the app hands them the file URLs of an installed pack. Whether `MaqsUI` depends on `MaqsCore`, and how `MaqsTerrain` and `MaqsUI` receive the online provider values (`TileSource` is a `MaqsCore` type today), is open and decided in their sub-projects. An app that needs only elevation links `MaqsTerrain` alone and never pulls in MapLibre.
+`MaqsTerrain` and `MaqsData` import nothing from `MaqsCore`: the app hands them the file URLs of an installed pack. For online terrain the app also builds an `OnlineTerrainSource`, `MaqsTerrain`'s own type, from `MaqsCore`'s `TileSource` ([Terrain](#terrain)). Whether `MaqsUI` depends on `MaqsCore`, and how it receives the online provider values, is open and decided in its sub-project. An app that needs only elevation links `MaqsTerrain` alone and never pulls in MapLibre.
 
 Clients read two files from GitHub, neither through the REST API. `manifest.json` comes from `https://github.com/lucavallin/maqs/releases/latest/download/manifest.json`, and its tag-pinned URLs lead to the files it lists. `config/sources.json` comes from `https://raw.githubusercontent.com/lucavallin/maqs/main/config/sources.json`, cached, with a copy bundled in the package as the fallback. How a client picks the files it can read is the compatibility rule in [`docs/data-format.md`](data-format.md#compatibility-rule); what it can assume about a release while one is being published is under [Data releases](#data-releases).
 
@@ -141,12 +141,35 @@ downloads/<sha256>-<file>.resume              # resume data
 
 **Reading installed files.** An update deletes the files it replaced at once. Read `installedPack(_:)` again after `install` returns rather than keeping URLs from an earlier result: a file that was not opened yet may be gone, while one that is open stays readable until it is closed. `MaqsData` will open its SQLite files read-only and immutable, so no `-wal` or `-shm` file appears for the sweep to delete.
 
+### Terrain
+
+`MaqsTerrain` gives the elevation at a point, along a route, over a grid and along a great-circle profile, and tells which of a list of targets an observer can see. One `actor Terrain` owns its archives, its tile cache and its online state. The app creates it from a `TerrainConfiguration`: the terrain files of its installed packs (`terrain` and `terrain-hd`, in any order), an optional `OnlineTerrainSource` and a User-Agent that names the app. After an install, an update or a removal it reads `installedPack(_:)` again and passes the new URLs to `setArchives(_:)`.
+
+**Sources.** For each tile a call needs, `Terrain` tries the local archives first, the one with the highest maximum zoom first, and then the online source. Where a local archive covers a point at the zoom the call needs, the call makes no online request for it, so inside an installed region a call needs no network; a look from inside one fetches online only the ground beyond the pack's border. Point and route samples read the finest zoom a source has (z13 under a `terrain-hd` archive, z12 elsewhere), a grid reads the coarsest zoom whose pixel is at most half a cell, and profiles and visibility read coarser tiles farther out, by default z12 to 10 km, z11 to 30 km, z10 to 40 km and z9 beyond. Every sample follows the rule in [`data-format.md`](data-format.md#elevation-sampling).
+
+**Results.** Missing data is a value, `ElevationSample.missing` with the reason `noData`, `rateLimited`, `networkFailure` or `requestCap`, so a route keeps its local values when some online tiles fail. A damaged archive throws `PMTilesError` or `TerrainError`. `visibility(of:from:options:)` returns one `Visibility` per target, in input order: `visible` with the distance, bearing and elevation angle; `hidden` with where the ground blocks the line; `unknown` with which height is missing and why; or `outOfRange`. Ground hides a target only when it clears the sight line by more than a margin, and missing ground never makes a target visible.
+
+**Online path.** Each `Terrain` has one `URLSession`, made from a copy of the configuration, with its own `URLCache` (`diskCacheBytes`, 64 MiB by default, under `Caches/Maqs/terrain-tiles`) and `.useProtocolCachePolicy`. The provider's `Cache-Control` decides, so a repeated look within six hours sends no request. Every request carries the app's User-Agent followed by `Maqs/<version>`, and none carries a header that disables caching. At most four requests run at once, a tile is requested once however many callers wait for it, and a tile whose callers have all been cancelled before its request goes out is not requested. A 429 pauses every online request for 60 s, twice as long after each further 429 up to 15 minutes, and during the pause online tiles are `rateLimited`. One call fetches at most 128 tiles online. Decoded tiles from every source share one LRU bounded by `memoryCacheBytes`, 64 MiB by default.
+
+**Privacy.** A tile request carries tile coordinates, not the position. One tile gives away an area its own size: about 6.8 km across at z12 at 46° N, twice that at each coarser zoom. A full look requests a ring of tiles centred on the observer, and the set as a whole places the observer within about 500 m by a rough estimate, or within about 1 km from its z12 tiles alone. An app with a strict privacy stance sets `onlineTiles` to false; `onlineSources` is then nil, the app builds no online source and `MaqsTerrain` sends nothing.
+
+**From `TileSource` to `OnlineTerrainSource`.** The app copies five values from the first terrain entry of `Maqs.onlineSources`:
+
+| `TileSource` (`MaqsCore`) | `OnlineTerrainSource` (`MaqsTerrain`) |
+|---|---|
+| `tiles` | `tiles` |
+| `format` | `format` |
+| `tileSize`, always set for a terrain source | `tileSize` |
+| `minZoom`, `maxZoom` | `minZoom`, `maxZoom` |
+
+`OnlineTerrainSource` checks them again: an HTTPS template with `{z}`, `{x}` and `{y}`, `webp` or `png`, 256 or 512 px, zooms from 0 to 22. The attribution stays in `TileSource`, for the app to show.
+
 ### Tests and CI
 
-`swift test` runs against committed fixtures, the `test` region's data files and the `data-ci` manifest in `Tests/MaqsTestSupport/Fixtures/`. The test-only target `MaqsTestSupport` serves them, together with `StubServer`, a `URLProtocol` stub, so no test touches the network. `scripts/update-fixtures.sh` rebuilds the `test` region and the base packs with the pipeline, copies the data files and the manifest into the fixtures, copies `config/sources.json` to `Sources/MaqsCore/Resources/sources.json`, and fails above 8 MB.
+`swift test` runs both test targets, `MaqsTerrainTests` and `MaqsCoreTests`, against committed fixtures, the `test` region's data files and the `data-ci` manifest in `Tests/MaqsTestSupport/Fixtures/`. Each target prints its own `Test run with N tests` line. The test-only target `MaqsTestSupport` serves the fixtures, together with `StubServer`, a `URLProtocol` stub, so no test touches the network. `scripts/update-fixtures.sh` rebuilds the `test` region and the base packs with the pipeline, copies the data files and the manifest into the fixtures, copies `config/sources.json` to `Sources/MaqsCore/Resources/sources.json`, runs `scripts/update-terrain-golden.sh`, and fails above 8 MB. That script writes `Fixtures/test/terrain-golden.json` from the committed terrain fixture with the pipeline's reader and sampler (`uv run python -m maqs.terrain_golden`), so the terrain tests compare the Swift reader and sampler with the pipeline's.
 
 `.github/workflows/swift.yml` runs on pushes to `main` and on pull requests that touch the package (`Package.swift`, `Package.resolved`, `Sources/`, `Tests/`, the fixtures script, `config/sources.json` or the workflow), and on dispatch. It has `contents: read` and three jobs:
 
-- `guards` (`ubuntu-24.04`): `import MapLibre` appears only under `Sources/MaqsUI/`; the bundled `sources.json` equals `config/sources.json` (`cmp`); the fixtures stay at or under 8,192 KB; git tracks no `.pmtiles`, `.sqlite` or `.pbf` outside the fixtures.
+- `guards` (`ubuntu-24.04`): `import MapLibre` appears only under `Sources/MaqsUI/`; the bundled `sources.json` equals `config/sources.json` (`cmp`); `TerrainVersion.string` in `MaqsTerrain` equals `MaqsVersion.string` in `MaqsCore`, since both go into the User-Agent; the fixtures stay at or under 8,192 KB; git tracks no `.pmtiles`, `.sqlite` or `.pbf` outside the fixtures.
 - `macos` (`macos-latest`): `swift build` and `swift test`.
-- `ios-simulator` (`macos-latest`): picks the scheme from `xcodebuild -list -json` (`Maqs`, or `Maqs-Package` once the package has several products), runs `xcodebuild test` on an `iPhone 17` simulator, and passes only when the log has no `": error:"` line and a passing `Test run with N tests` line.
+- `ios-simulator` (`macos-latest`): picks the scheme from `xcodebuild -list -json` (`Maqs-Package`, the name Xcode gives a package with several library products, as this one has, else `Maqs`), runs `xcodebuild test` on an `iPhone 17` simulator, and passes only when the log has no `": error:"` line and a passing `Test run with N tests` line.

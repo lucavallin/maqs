@@ -255,7 +255,7 @@ OSM tagging in South Tyrol (live Overpass, IT-BZ): 4,239 `route=hiking` relation
 
 ## 0008 — Requirements from the consuming apps' corner alert, elevation, and privacy needs
 
-**Date:** 2026-10-08 · **Status:** accepted (owner decision); the opt-out of decision 3 is the `onlineTiles` setting of 0014, not an empty `sources.json`
+**Date:** 2026-10-08 · **Status:** accepted (owner decision); the opt-out of decision 3 is the `onlineTiles` setting of 0014, not an empty `sources.json`; decision 5's "~27 m per pixel" at z12 is about 13.3 m with 512 px tiles (0009, 0015)
 
 **Context.** A survey of the consuming apps' plans (kept outside this repo) shows what they need from maqs: not rendering or routing, but **offline data** for a free-drive tight-corner alert (map-match position and heading to the road, look ahead over precomputed corners, sensitivity bands, cards like "tight left · R 64 m · 400 m"), offline elevation for ride profiles and spot elevations, and mountain passes for crossing events. One app has a strict "no coordinates leave the device" privacy stance; another already defines corners and a twist score on recorded GPS tracks. The owner decided that maqs's requirements supersede the apps' existing internal rules where they conflict.
 
@@ -610,3 +610,112 @@ On iOS the app forwards `application(_:handleEventsForBackgroundURLSession:compl
 - After a relaunch, a pack whose background download finished while the app was not running is installed only when the app calls `install` again, because the package does not remember which packs the user asked for. That call joins a transfer that is still running, or reuses the finished file after a size and hash check, so the file is not downloaded again.
 - Decided before `v0.1.0` (sub-project 4): persisting install intents, or exposing pending transfers, so that the app need not remember them; an explicit `Codable` shape for `PackID` in `pack.json`; a public `MaqsState` initializer for SwiftUI previews; a `PackState` that keeps the installed pack visible while it updates or after a failed update; that `remove` of a bundled pack leaves in place a downloaded record with the same id; and that `remove` does not cancel a background transfer restored after a relaunch that no caller has joined.
 - Deferred to later sub-projects: power-loss durability (no `fsync`); a `downloading` state for a background transfer the system reconnects after a relaunch, which today shows only when `install` is called again; and caching in `onlineSources`, which reads the `sources.json` file on every call, so `MaqsUI` should read it once rather than per tile.
+
+---
+
+## 0015 — `MaqsTerrain`: elevation, profiles and line of sight
+
+**Date:** 2026-10-26 · **Status:** accepted (owner decisions 2026-10-24 to 2026-10-26)
+
+**Context.** `MaqsTerrain` is the second of the four sub-projects of Phase 4 (ADR 0014). It answers how high the ground is at any coordinate, from the terrain archives of installed regions or from VersaTiles' online tiles outside them. It uses neither MapLibre nor `MaqsCore`, so an app that needs only elevation links this product alone. Line of sight sets the requirements: from where the user stands, which of the peaks around them can they see? `MaqsData` will supply the candidate peaks along a bearing, and `MaqsTerrain` decides which of them are visible. It is the only use that needs earth-curvature and refraction corrections and sight lines across many tiles. Spot elevations, routes and grids (ADR 0008) use the same sampler. ADR 0014 left open how the product receives the online provider values, because `TileSource` is a `MaqsCore` type.
+
+**Decisions.**
+1. The visibility query is part of `MaqsTerrain`. Left to the apps, each would rewrite the occlusion test and its edge cases (missing ground, the summit's real height, the target's own slope), and they would disagree.
+2. The range is a parameter, `maxDistance`, 100 km by default. A peak beyond it is `outOfRange`; a peak the terrain hides is `hidden`.
+3. Visibility is computed once, when the user stops and looks. There is no live sweep. A live mode, a horizon precomputed per position and queried by bearing, can come later as a new method without changing this API.
+4. The answer leans toward visible, because leaving out a peak the user can plainly see is worse than naming one that is just hidden. Ground hides a target only when it rises above the sight line by more than `margin`, 10 m by default, about the terrain's vertical error.
+5. The sight line aims at the true summit. z12 terrain (about 13.3 m per pixel at 46° N) flattens summits, so when the app passes a target's real height (`SightTarget.elevation`, the OSM `ele` that `MaqsData` will provide), the line aims at that height, and otherwise at the sampled ground.
+6. The target's own slope is ignored: the last `targetClearance` metres before the target, 150 by default, are not tested.
+7. The observer's eye is 1.7 m above the ground by default (`ObserverHeight.aboveGround`), or at an absolute height (`.absolute`).
+8. When ground is missing along the line and no known ground hides the target, the answer is `unknown`, never `visible`. The app decides whether to show such peaks.
+9. No dependency on `MaqsData` or `MaqsCore`. The inputs are coordinates, optional heights and file URLs.
+10. Distant ground comes from coarser tiles: z12 out to 10 km, z11 to 30 km, z10 to 40 km and z9 beyond (`ZoomBands.standard`), for local and online data alike. A full look then needs about 69 tiles instead of 743 (*Verified*, below). Distant ridges come out slightly lower, which errs toward visible. The bands are a parameter.
+11. The privacy cost of an online look is accepted and documented (*Privacy*, below). Apps with a strict privacy stance use the online opt-out. The request pattern does not try to hide the observer.
+12. There is no `ascentDescent` helper. The brief does not ask for one, and it can be added later without breaking anything.
+
+**Online source.** `MaqsTerrain` defines its own value type, `OnlineTerrainSource`, with the tile template, format, tile size and zoom range, and never sees a `MaqsCore` type. The app maps a `TileSource` to it in a few lines, which the README shows. This closes ADR 0014's open question for terrain; the question for `MaqsUI` stays open. The initializer throws `TerrainError.invalidConfiguration` unless the template is HTTPS with a host, has no credentials and has the placeholders `{z}`, `{x}` and `{y}` and no other; the format must be `webp` or `png`, the tile size 256 or 512, and `0 <= minZoom <= maxZoom <= 22`. When the app turns online tiles off, `Maqs.onlineSources` is nil, so an app that follows the README builds no online source and `MaqsTerrain` sends no request (ADRs 0008 and 0014).
+
+**Sampling.** Every elevation follows the pipeline's rule, which [`data-format.md`](data-format.md#elevation-sampling) states once for both. The tests compare the two implementations at 625 points of the `test` region, to 1e-6 m. The zoom depends on the call:
+- `elevation(at:)` and `elevations(at:)` read the finest zoom a source has at the point: z13 where a `terrain-hd` archive covers it, z12 elsewhere.
+- `grid` reads the coarsest zoom whose pixel, at the area's centre latitude, is at most half the cell spacing, so a large area decodes a few tiles instead of hundreds.
+- `profile` and `visibility` read the zoom of the band the distance from the start or the observer falls in, capped at the finest zoom a source has. Samples lie one 512 px pixel apart at that zoom, measured at the start latitude, unless a profile sets `step`.
+
+The sources are tried in order: local archives first, the one with the highest maximum zoom first, then the online source. A tile missing from an archive falls through to the next source. A first pass skips sources whose minimum zoom is above the zoom the call needs, so a `terrain-hd` archive that starts at z13 is not read for a z12 band. When no source covers the point, the skipped sources are tried at their minimum zoom, so data that exists is used. Where a local archive covers a point at the zoom a call needs, the call makes no online request for it, even when the online source has finer zooms, because inside an installed region the budget is zero network calls.
+
+`Terrain.init` and `setArchives(_:)` open the archives and validate the header, the root directory and the metadata. The tile type must be 2 (PNG) or 4 (WebP), and `tile_schema` must be `dem/terrarium` when the metadata has one; any other archive is `TerrainError.notTerrain`. The reader opens MVT (1) and MapLibre Vector Tile (6) archives too, and its tests read the basemap fixture, but they are not elevation sources. A call running when `setArchives` swaps the archives finishes each batch of tiles with the archives that batch was located in, and does not cache tiles it loads after the swap. A visibility look locates each batch's sight lines when it builds the batch, so its later batches use the new archives.
+
+**Visibility.** For each target, in input order:
+1. The great-circle distance from the observer. Beyond `maxDistance` the target is `.outOfRange`.
+2. The eye height: the ground at the observer plus the `aboveGround` value, or the `absolute` value. Without ground at the observer, every target in range is `.unknown(at: .observer)`.
+3. The target's height: `SightTarget.elevation`, else the ground at the target. Without either it is `.unknown(at: .target)`.
+4. The ground along the great circle from one step out to `distance − targetClearance`. A sample at distance `d` has the apparent height `ground − d² / (2R) × (1 − k)`; `EarthModel` defaults to `R` = 6,371,008.8 m and `k` = 0.13, and `.none` turns both corrections off.
+5. The sight line runs from the eye to the target's apparent height. If any known sample rises above it by more than `margin`, the target is `.hidden`, at the sample with the largest clearance, which the result carries.
+6. Otherwise, if any sample had no data, the target is `.unknown(at: .path)` with the reason of the first gap.
+7. Otherwise it is `.visible`, with its distance, bearing and an elevation angle corrected for curvature and refraction, so an app can place a label on screen.
+
+A known ridge outweighs a gap elsewhere, so a target known to be hidden is never `unknown`. A target less than a metre away is visible, and one whose coordinate is not a valid position is `.unknown(at: .target)`. The drop at 10 km is 7.848 m with `k` = 0 and 6.828 m with `k` = 0.13; at 100 km it is 784.8 m and 682.8 m. The tests use these values. Targets are processed in bearing order, in batches of at most 64 whose tiles fit `memoryCacheBytes`, so neighbouring sight lines share tiles and a full look decodes each tile about once.
+
+**Results and errors.** Every sample is an `ElevationSample`: `.elevation(metres)` or `.missing(MissingReason)`. The reasons are `noData` (no source covers the point, or the online source answered 404), `rateLimited` (the online cool-down), `networkFailure` (another status, a transport error, or a body that is not a tile of the source's size) and `requestCap` (the call reached its online cap). A failure of the network is never reported as `noData`, so an app can tell "nothing here" from "try again in a minute", and a route or a grid keeps its local values while some online tiles fail. Local corruption throws, because it is a broken install the app should surface: `PMTilesError` (`notPMTiles`, `unsupportedVersion`, `unsupportedCompression`, `truncated`, `corruptDirectory`, `corruptCompressedData` for bad gzip, `sectionTooLarge`, `nestedLeafDirectory`, `unreadableFile`) or `TerrainError` (`invalidConfiguration`, `notTerrain`, `undecodableTile`, `invalidArea`, and `invalidInput` for input outside the bounds). The bounds keep one call from asking for unbounded work: a `TerrainArea` spans at most 2° on each side, a grid has 1 to 1,024 cells on each side, a profile step is at least 1 m and a profile at most 100,000 points, a look takes at most 5,000 targets and 100,000 samples per sight line, and the observer and the options must be finite. A cancelled call throws `CancellationError`. Each `errorDescription` says what to do.
+
+**Caches.** Decoded tiles are kept as Float32 elevations, 1 MiB per 512 px tile, in an LRU bounded by `memoryCacheBytes`, 64 MiB by default; `setArchives` empties it. Online tile bytes go to a `URLCache` of `diskCacheBytes`, 64 MiB by default, in the app's Caches directory (`Maqs/terrain-tiles`). URLSession stores a response on disk only when it is at most about 5 % of the disk capacity, so `diskCacheBytes` must stay well above 20 times the largest tile; tiles weigh about 120–215 KB. Each archive keeps its decoded leaf directories in a 16-entry LRU.
+
+**Online tiles.** VersaTiles is a free demo server whose rate limit answers 429 with no `Retry-After` (ADR 0001), so the etiquette is in the code:
+- Each `Terrain` has one `URLSession`, made from a copy of the configuration it is given, with its own `URLCache` and `.useProtocolCachePolicy`. The server's six-hour `Cache-Control` decides, and a repeated look within it sends no request. No request carries a header that disables caching.
+- The `User-Agent` is the app's string followed by `Maqs/<version>`, and `Terrain.init` throws when an online source is set and the app's string is blank. `MaqsTerrain` keeps its own copy of the version (`TerrainVersion.string`) because it never imports `MaqsCore`, and the `guards` job of `swift.yml` fails when it differs from `MaqsVersion.string`.
+- Requests go out only for tiles no local archive has, at most four at once, and one per tile however many callers wait for it. When every caller waiting for a tile has been cancelled before its request is sent, the request is skipped; a request already sent completes and its result is dropped.
+- A 429 stops every request to the online source for 60 s, and each further 429 doubles the pause, up to 900 s. A 429 that arrives during a pause answers a request sent before the pause began, so it is ignored: a burst of four 429s makes one pause of 60 s, not 480 s. For the same reason a success during a pause neither ends it nor resets the doubling. The first success after a pause sets the next one back to 60 s. During a pause online tiles are `.rateLimited`, and nothing retries inside a call.
+- A call fetches at most 128 tiles online, and ground beyond that is `.requestCap`, so an app that passes thousands of targets or a large grid cannot flood the provider. A full look needs about 69.
+- A 404 is `.noData` for that call. The package does not remember it, and URLSession caches only 2xx responses, so the next call asks again.
+- The log (`os.Logger`, category `terrain`) has one line per request with its status and byte count, a line for each skipped request, and the start and end of each pause. Tile coordinates are logged `privacy: .private`; no full URL and no tile content is logged. There is no cache-hit field, which would need a `URLSessionTaskMetrics` delegate, so a 200 that came from the local `URLCache` looks the same as one the server sent. Archive errors are thrown to the app, not logged. As for `MaqsCore`, there is no metrics API: the signals are the log and the reasons in the results.
+
+The cool-down lengths and the cap of 128 are guesses at a safe pace. VersaTiles does not publish its limit, and neither number has been tried against the server.
+
+Cost: a full 360° look out to 100 km with nothing installed takes about 69 requests, roughly 11 MB at the fixture's tile sizes, and the cache makes that once per six hours for one area. Inside an installed region a look requests only the ground beyond the pack's border.
+
+**Privacy.** A tile request carries tile coordinates, not the position, but the tiles of one look form a ring centred on the observer. A rough estimate, not a measurement, puts the observer within a cell of about 0.2 km² (about 500 m across) given the full set of one look, and within about 1 km given its z12 tiles alone. An app weighing the privacy cost should use this figure rather than the size of one tile. Apps with a strict privacy stance set `onlineTiles` to false in `MaqsCore`: `Maqs.onlineSources` is then nil, the app builds no `OnlineTerrainSource`, and the package sends nothing.
+
+**PMTiles reader.** Internal, minimal and defensive, it mirrors `pipeline/src/maqs/pmtiles_header.py` and `pmtiles_reader.py`. It holds one descriptor (`O_RDONLY | O_CLOEXEC`) for the archive's lifetime and reads with `pread`, so a pack that `MaqsCore` removes meanwhile stays readable, and a file truncated underneath it is `PMTilesError.truncated`. Every offset and length is checked against the file and its sections before a read, a directory's entry count against its bytes before any allocation (at least four bytes per entry), and varints are at most ten bytes long. The caps are 16 MiB per directory, 64 MiB per tile and 8 MiB of metadata, after inflation too. It follows one level of leaf directories and rejects a nested leaf. An unsupported tile or internal compression fails when the archive opens. For gzip, Compression's `COMPRESSION_ZLIB` is raw DEFLATE (RFC 1951) and `compression_stream_process` does not report where the stream ended. So the reader parses the RFC 1952 header itself, with its optional `FEXTRA`, `FNAME`, `FCOMMENT` and `FHCRC` fields, and takes as the trailer the first position after the header whose 8 bytes equal the output's CRC-32 and length. It ignores bytes after the member, as zlib does for the pipeline.
+
+**Package.** `MaqsTerrain` is a second library product with no dependency. It imports Foundation, CoreLocation (for `CLLocationCoordinate2D`), CoreGraphics, ImageIO, Compression, Synchronization and os. The test target `MaqsTerrainTests` depends on `MaqsTerrain` and `MaqsTestSupport`. `MaqsTestSupport` no longer declares a dependency on `MaqsCore`, which none of its sources used, so the terrain tests do not build `MaqsCore`; it gains `StubGate`, which holds a stub response until the test releases it. With two library products the Xcode scheme is `Maqs-Package`, which `swift.yml` already picks. `Tests/MaqsTestSupport/Fixtures/test/terrain-golden.json` holds Hilbert tile ids, the SHA-256 of each fixture tile and the elevations on a 25 × 25 grid over the fixture, all from the pipeline's reader and sampler (`maqs.terrain_golden`). `scripts/update-terrain-golden.sh` writes it, and `scripts/update-fixtures.sh` runs that script, so the fixtures and the golden values are regenerated together.
+
+**Verified on 2026-10-25 and 2026-10-26.**
+
+| Fact | Verified value | Source |
+|---|---|---|
+| Fixture tiles | the `test` region's terrain tiles are lossless WebP (a `VP8L` chunk in every tile), so decoded values are exact; about 105 KB per tile on average, 118–215 KB for the z10–z12 tiles over the Nevegal mountains | the fixture archive |
+| ImageIO and Pillow | on macOS 27 with Swift 6.4 the decoded `CGImage` has 8 bits per component, 32 bits per pixel, alpha `noneSkipLast` and the sRGB colour space; its provider bytes and an RGBA8 redraw both match Pillow at five sampled pixels of tile 12/2187/1455. On the iOS Simulator the full-look measurement below decodes the fixture tile; the comparison with the pipeline's values runs there in the `ios-simulator` leg of `swift.yml` | local probe |
+| Compression | `COMPRESSION_ZLIB` is raw DEFLATE (RFC 1951) | the SDK's `compression.h` |
+| `CLLocationCoordinate2D` | `Sendable` in the macOS and iOS Simulator SDKs, so the public types that hold one are `Sendable` under strict concurrency | local builds |
+| Documentation | Context7 indexes neither Compression nor ImageIO; the SDK header and the probe above are the sources | Context7 |
+| URLCache | a response is cached only with a status in the 200–299 range and, with a disk cache, only when it is "no larger than about 5% of the disk cache size" | Apple, `urlSession(_:dataTask:willCacheResponse:completionHandler:)`, via Context7 |
+| Tile counts | a full 360° look out to 100 km from Nevegal, with rays every 1° and samples every 10 m, touches 743 tiles at z12 only; 93 with bands 12/11/10 at 10/30 km; 69 with the shipped bands (12 at z12, 23 at z11, 15 at z10, 19 at z9); 50 if the inner bands also tighten to 5 and 15 km | a count over the bands |
+| `swift test` | prints one `Test run with N tests` line per test target, `MaqsTerrainTests` and then `MaqsCoreTests` | local run |
+| Time limits | Swift Testing's `.timeLimit` cancels only the test's own task, so a polling loop (`Task.yield`) without `Task.checkCancellation()` hangs the whole run instead of failing | local run |
+| Release builds | `swift test -c release` fails, because the test targets use `@testable import`, which needs testability | local run |
+
+**Measurements (debug builds).** A full look is 200 targets at 10–100 km in every direction, with each tile decoded from the fixture's z12 WebP tile (`FullLookMeasurement`, which prints the numbers and asserts nothing about time).
+
+| Where | Time | Decodes | Peak tile cache |
+|---|---|---|---|
+| macOS, local Mac, the test run alone | 1.30–1.33 s warm; 4.29 s on one cold first run | 55 | 57,671,680 bytes (55 MiB, sampled) |
+| iOS Simulator, iPhone 18 Pro, the test run alone | 2.59 s on the first run, 2.38 s warm | 55 | the same |
+
+The target of about 2 s for a full look on local data is met on macOS and missed on the simulator in a debug build. Decoding already runs in parallel. Release builds cannot run the `@testable` tests, so the device and release-build numbers wait for the demo app (sub-project 4). The time is not a CI assertion, because runner timings vary.
+
+**Correction to ADR 0008.** Decision 5 of ADR 0008 puts z12 at "~27 m per pixel at 46° N". With 512 px tiles it is about 13.3 m, and a z12 tile is about 6.8 km wide there; ADR 0009 noted the same. ADR 0008's status line now points here.
+
+**Rejected.**
+- A raw sampler only, with the visibility test left to the apps: a smaller package, but every app would rewrite the same occlusion test and its edge cases, and they would disagree.
+- Precomputing visibility in the pipeline: it depends on the observer's position, which is personal data and never leaves the device.
+- z12 along the whole sight line: 743 tiles for a full look instead of 69.
+- Memory-mapping the archives: a mapped file that is truncated underneath faults on access, where a positioned read returns fewer bytes and the reader reports `truncated`.
+- Hiding the observer in the request pattern, for example with extra tiles around the ring: it adds requests to a free server on every look, and the opt-out already serves the apps that need more.
+- Retrying online requests inside a call: a 429 must never turn into a tight loop, and the app decides when to look again.
+
+**Consequences.**
+- `MaqsData` (sub-project 3) supplies the candidate peaks along a bearing with their `ele`, and the app passes them to `visibility(of:from:options:)` as `SightTarget`s.
+- After an install, an update or a removal, the app reads `installedPack(_:)` again and passes the terrain file URLs to `setArchives(_:)`. An archive that is already open stays readable after `MaqsCore` deletes its file, until `setArchives` or the end of the `Terrain` closes it.
+- A version bump changes both `MaqsVersion.string` and `TerrainVersion.string`; CI fails when they differ.
+- A live sweep, a public PMTiles reader and an `ascentDescent` helper can each be added later without changing this API.
+- Not verified: whether the cool-down and the cap suit VersaTiles' real limit; the device and release-build timings; and the peak memory on older iPhones with the 64 MiB default, which is a parameter. The demo app (sub-project 4) measures the last two.
+- Still open from ADR 0014: whether `MaqsUI` depends on `MaqsCore`, and how it receives the online provider values.

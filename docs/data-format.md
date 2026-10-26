@@ -25,11 +25,22 @@ A change of encoding, tile schema or zoom range bumps the layer's version. The t
 
 Region outputs are written to `dist/<region>/`, every base pack to `dist/base/`.
 
-Terrarium decoding: `elevation_m = (R * 256 + G + B / 256) - 32768`. The tiles are 512 px, so at zoom 12 one pixel is about 13 m at 46° N (a z12 tile is about 6.8 km wide there).
+The terrain tiles are 512 px, so at zoom 12 one pixel is about 13 m at 46° N (a z12 tile is about 6.8 km wide there). How a reader turns them into elevations is under [Elevation sampling](#elevation-sampling).
 
 The archive metadata is a JSON object. Basemap archives carry `tile_schema: "shortbread@1.0"`, terrain archives `tile_schema: "dem/terrarium"` and `tile_size: 512`. Both carry the upstream `attribution` string. The basemap also carries `planetiler:osm:osmosisreplicationtime`, the date of the OSM data in the VersaTiles build, which the build report copies out as `source_data_date`. The terrain archive has no date key, so terrain's `source_data_date` is null. `versatiles probe` shows the metadata; the pipeline reads it with its own header reader (`pipeline/src/maqs/pmtiles_header.py`).
 
 Measured sizes per region are in [`docs/decisions.md`](decisions.md), ADR 0009.
+
+## Elevation sampling
+
+One rule turns a terrarium tile into the elevation at a coordinate. The pipeline uses it for trail ascent and descent (`pipeline/src/maqs/osm/terrain_sampler.py`), and `MaqsTerrain` uses it for every sample it returns ([ADR 0015](decisions.md)). The Swift tests compare the two at 625 points of the `test` region, to 1e-6 m, against `Tests/MaqsTestSupport/Fixtures/test/terrain-golden.json`, which the pipeline writes.
+
+1. **Position.** At zoom `z`, with `n = 2^z` tiles per side and a tile of `s` pixels, the coordinate's Web Mercator position is `x = (lon + 180) / 360 × n` and `y = (1 − ln(tan φ + 1 / cos φ) / π) / 2 × n`, where φ is the latitude in radians. The tile under the coordinate is `(⌊x⌋, ⌊y⌋)`, and the pixel position inside it is `px = (x − ⌊x⌋) × s`, `py = (y − ⌊y⌋) × s`. A coordinate has no elevation when it is not finite, when its latitude is 85.05° or more north or south, or when the source does not hold its tile. `MaqsTerrain` wraps the longitude into [−180°, 180°) first; the pipeline samples only inside its region, where the two agree.
+2. **Pixel centres.** Pixel `(i, j)` holds the value at `(i + 0.5, j + 0.5)`.
+3. **Bilinear within the tile.** Take `px − 0.5` and `py − 0.5`, clamp each to `[0, s − 1]`, and interpolate between the four pixel centres around that point: along the row first, then between the two rows. At the tile's edge the clamp holds the edge pixels' values. Values are never interpolated across tiles, and a neighbouring tile is never read.
+4. **Terrarium.** A pixel's elevation in metres is `(R × 256 + G + B / 256) − 32768`, from its 8-bit red, green and blue values as stored, with no colour conversion.
+
+The pipeline samples at the archive's maximum zoom (12). `MaqsTerrain` chooses the zoom per call, as [`docs/architecture.md`](architecture.md#terrain) describes.
 
 ## Geometry encoding
 
@@ -127,7 +138,7 @@ One row per trail record from the region's trail sources (`trails.sources` in `c
 | 5 | `EEA:PD` | `demanding_alpine_hiking` |
 | 6 | `EEA:D`, `EEA:MD`, `EEA:ED` | `difficult_alpine_hiking` |
 
-**Ascent and descent.** Each leg is resampled every 25 m, plus its end points. A sample's elevation comes from `<region>-terrain.v1.pmtiles` in the same output directory, at the archive's maximum zoom (12): the terrarium value interpolated bilinearly between the four nearest pixel centres of the tile under the sample, clamped at the tile's edge (no interpolation across tiles). Along a leg, a reference elevation moves only when a sample is more than 5 m above or below it; the whole difference then counts as ascent or descent. The legs' totals are summed. Samples without a terrain tile are skipped, so:
+**Ascent and descent.** Each leg is resampled every 25 m, plus its end points. A sample's elevation comes from `<region>-terrain.v1.pmtiles` in the same output directory, at the archive's maximum zoom (12), by the rule in [Elevation sampling](#elevation-sampling). Along a leg, a reference elevation moves only when a sample is more than 5 m above or below it; the whole difference then counts as ascent or descent. The legs' totals are summed. Samples without a terrain tile are skipped, so:
 
 - with no terrain archive in the output directory, both columns are null for every trail (anomaly `terrain_missing`); when the archive cannot be read, they are null from that point on: for every trail if it cannot be opened, otherwise for the trail being sampled and every later one (`terrain_unreadable`);
 - when no sample of a trail has a tile, both are null (`terrain_no_coverage`);
