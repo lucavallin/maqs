@@ -11,10 +11,12 @@ struct SamplePoint: Sendable {
 /// Elevation lookups over installed archives and, where they have nothing, an online source.
 public actor Terrain {
     /// Online tile fetches allowed per call.
-    private static let fetchCap = 128
+    static let fetchCap = 128
 
-    private var providers: [any TileProvider]
+    private(set) var providers: [any TileProvider]
     private let cache: TileCache
+    /// The cache bound; a visibility look sizes its chunks by it.
+    let memoryCacheBytes: Int
     /// Bumped by `setArchives`; a load that started under an older value does not cache its tiles, whose provider indexes are stale.
     private var generation = 0
 
@@ -22,6 +24,7 @@ public actor Terrain {
     init(providers: [any TileProvider], memoryCacheBytes: Int) {
         self.providers = Self.ordered(providers)
         self.cache = TileCache(byteLimit: memoryCacheBytes)
+        self.memoryCacheBytes = memoryCacheBytes
     }
 
     /// Opens every archive and, when `online` is set, prepares the online source.
