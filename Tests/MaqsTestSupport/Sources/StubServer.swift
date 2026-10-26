@@ -10,10 +10,28 @@ public struct StubResponse: Sendable {
     public var transportError: URLError.Code?
     /// Seconds to wait before the response (or the transport error) is delivered; a task cancelled meanwhile gets nothing.
     public var delay: TimeInterval
+    /// When set, the response is held until the test releases the gate, however long that takes.
+    public var gate: StubGate?
     public init(status: Int = 200, headers: [String: String] = [:], body: Data = Data(), transportError: URLError.Code? = nil,
-                delay: TimeInterval = 0) {
+                delay: TimeInterval = 0, gate: StubGate? = nil) {
         self.status = status; self.headers = headers; self.body = body; self.transportError = transportError; self.delay = delay
+        self.gate = gate
     }
+}
+
+/// Holds back the responses that name it until the test calls `release()`, so a test can keep a request in flight
+/// for exactly as long as it needs instead of guessing a delay. Release it in a `defer`, so a failing test does not
+/// leave requests waiting.
+public final class StubGate: Sendable {
+    private let released = Mutex(false)
+
+    public init() {}
+
+    /// Lets every held response through, and every later one at once.
+    public func release() { released.withLock { $0 = true } }
+
+    /// Whether `release()` has been called.
+    public var isReleased: Bool { released.withLock { $0 } }
 }
 
 /// Routes requests of one `URLSession` to scripted responses, with no network.
@@ -61,6 +79,8 @@ public final class StubServer: Sendable {
 }
 
 final class StubURLProtocol: URLProtocol {
+    /// How often a response held by a `StubGate` checks whether it was released.
+    private static let gatePollInterval: TimeInterval = 0.005
     private static let servers = Mutex<[String: StubServer]>([:])
     /// Set by `stopLoading`, so a delayed response is not delivered to a cancelled task.
     private let stopped = Mutex(false)
@@ -69,6 +89,7 @@ final class StubURLProtocol: URLProtocol {
     private struct Delayed {
         let stub: StubResponse
         let response: HTTPURLResponse
+        let modes: [RunLoop.Mode]
     }
 
     static func register(_ server: StubServer) { servers.withLock { $0[server.id] = server } }
@@ -92,18 +113,24 @@ final class StubURLProtocol: URLProtocol {
         var headers = stub.headers
         headers["Content-Length"] = String(stub.body.count)
         let response = HTTPURLResponse(url: url, statusCode: stub.status, httpVersion: "HTTP/1.1", headerFields: headers)!
-        guard stub.delay > 0 else {
+        guard stub.delay > 0 || stub.gate != nil else {
             deliver(stub, response: response)
             return
         }
         // A selector on the client thread's run loop, not a dispatch queue: a `@Sendable` closure cannot capture this
         // non-Sendable `URLProtocol`, and URLProtocol expects its client to be called from the thread that started loading.
-        delayed.withLock { $0 = Delayed(stub: stub, response: response) }
-        perform(#selector(deliverDelayed), with: nil, afterDelay: stub.delay, inModes: [RunLoop.current.currentMode ?? .default])
+        let modes = [RunLoop.current.currentMode ?? .default]
+        delayed.withLock { $0 = Delayed(stub: stub, response: response, modes: modes) }
+        perform(#selector(deliverDelayed), with: nil, afterDelay: stub.delay, inModes: modes)
     }
 
     @objc private func deliverDelayed() {
         guard let delayed = delayed.withLock({ $0 }) else { return }
+        if let gate = delayed.stub.gate, !gate.isReleased {
+            // Polled on the same run loop for the reason above; `stopLoading` cancels the next poll.
+            perform(#selector(deliverDelayed), with: nil, afterDelay: Self.gatePollInterval, inModes: delayed.modes)
+            return
+        }
         deliver(delayed.stub, response: delayed.response)
     }
 

@@ -56,6 +56,15 @@ private final class Counter: Sendable {
         if case .elevation = sample { true } else { false }
     }
 
+    /// Waits until `condition` holds, polling rather than sleeping; the cancellation check lets the suite's time limit
+    /// end the wait should the condition never come true.
+    private static func waitUntil(_ condition: () async -> Bool) async throws {
+        while !(await condition()) {
+            try Task.checkCancellation()
+            await Task.yield()
+        }
+    }
+
     @Test func onlineSamplesEqualTheLocalOnes() async throws {
         server.route(try Self.url(of: Self.key), body: try Self.fixtureTile())
         let golden = try Golden.load()
@@ -154,13 +163,27 @@ private final class Counter: Sendable {
     /// A 200 for a request sent before the 429 came back says nothing about the server's limit now.
     @Test func aTileFromTheSameBurstDoesNotUndoTheDoubling() async throws {
         let limited = TileKey(z: 12, x: 2186, y: 1455)
-        server.route(try Self.url(of: limited)) { _ in StubResponse(status: 429, delay: 0.1) }
+        let limitedGate = StubGate()
+        let tileGate = StubGate()
+        defer {
+            limitedGate.release()
+            tileGate.release()
+        }
+        server.route(try Self.url(of: limited)) { _ in StubResponse(status: 429, gate: limitedGate) }
         let tile = try Self.fixtureTile()
-        server.route(try Self.url(of: Self.key)) { _ in StubResponse(status: 200, body: tile, delay: 0.3) }
+        server.route(try Self.url(of: Self.key)) { _ in StubResponse(status: 200, body: tile, gate: tileGate) }
         let clock = TestClock()
-        let terrain = Terrain(providers: [try provider(clock: clock)], memoryCacheBytes: 64 << 20)
-        let samples = try await terrain.samples(at: [Self.centre(of: limited), Self.centre(of: Self.key)], zoomLimits: [12, 12])
-        // Both requests were out before the 429 came back: one burst, and the tile arrived during the pause.
+        let provider = try provider(clock: clock)
+        let terrain = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
+        let points = [Self.centre(of: limited), Self.centre(of: Self.key)]
+        let burst = Task { try await terrain.samples(at: points, zoomLimits: [12, 12]) }
+        // Both requests are out before either answer: one burst.
+        try await Self.waitUntil { server.requests.count >= 2 }
+        limitedGate.release()
+        // The 429 is settled once its flight has ended, so the tile let through next arrives during the pause.
+        try await Self.waitUntil { !(await provider.isFetching(limited)) }
+        tileGate.release()
+        let samples = try await burst.value
         #expect(server.requests.count == 2)
         #expect(samples[0] == .missing(.rateLimited))
         #expect(Self.isElevation(samples[1]))
@@ -187,12 +210,18 @@ private final class Counter: Sendable {
     }
 
     @Test func oneRequestForATileManyCallersWant() async throws {
+        let gate = StubGate()
+        defer { gate.release() }
         let tile = try Self.fixtureTile()
-        server.route(try Self.url(of: Self.key)) { _ in StubResponse(status: 200, body: tile, delay: 0.3) }
-        let terrain = Terrain(providers: [try provider()], memoryCacheBytes: 64 << 20)
+        server.route(try Self.url(of: Self.key)) { _ in StubResponse(status: 200, body: tile, gate: gate) }
+        let provider = try provider()
+        let terrain = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
         let point = Self.centre(of: Self.key)
         async let first = Self.sample(terrain, at: point)
         async let second = Self.sample(terrain, at: point)
+        // Both callers wait on the one fetch before its answer is let through.
+        try await Self.waitUntil { await provider.waiters(for: Self.key) >= 2 }
+        gate.release()
         let (one, two) = try await (first, second)
         #expect(Self.isElevation(one))
         #expect(one == two)
@@ -201,19 +230,19 @@ private final class Counter: Sendable {
 
     /// Review Focus 5.
     @Test func aCancelledWaiterLeavesTheFetchForTheOthers() async throws {
+        let gate = StubGate()
+        defer { gate.release() }
         let tile = try Self.fixtureTile()
-        server.route(try Self.url(of: Self.key)) { _ in StubResponse(status: 200, body: tile, delay: 0.3) }
+        server.route(try Self.url(of: Self.key)) { _ in StubResponse(status: 200, body: tile, gate: gate) }
         let provider = try provider()
         let terrain = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
         let point = Self.centre(of: Self.key)
         let callers = (0..<3).map { _ in Task { try await Self.sample(terrain, at: point) } }
-        // Polls rather than sleeps; the check lets the time limit end the loop should the waiters never arrive.
-        while await provider.waiters(for: Self.key) < 3 {
-            try Task.checkCancellation()
-            await Task.yield()
-        }
+        // All three wait on one fetch whose request is out and held by the gate.
+        try await Self.waitUntil { await provider.waiters(for: Self.key) >= 3 && !server.requests.isEmpty }
         callers[1].cancel()
         await #expect(throws: CancellationError.self) { try await callers[1].value }
+        gate.release()
         let first = try await callers[0].value
         let third = try await callers[2].value
         #expect(Self.isElevation(first))
@@ -228,31 +257,25 @@ private final class Counter: Sendable {
 
     /// Ruling R7: a queued fetch whose callers have all left sends no request, and a later caller starts afresh.
     @Test func aTileNobodyWaitsForAnyMoreIsNotRequested() async throws {
-        // Four tiles answered after 0.3 s hold every limiter slot.
+        // Four tiles whose answers the gate holds keep every limiter slot until the test releases them.
+        let gate = StubGate()
+        defer { gate.release() }
         let blockers = (0..<4).map { TileKey(z: 12, x: 2000 + $0, y: 1400) }
-        for key in blockers { server.route(try Self.url(of: key)) { _ in StubResponse(status: 404, delay: 0.3) } }
+        for key in blockers { server.route(try Self.url(of: key)) { _ in StubResponse(status: 404, gate: gate) } }
         let tileURL = try Self.url(of: Self.key)
         server.route(tileURL, body: try Self.fixtureTile())
         let provider = try provider()
         let terrain = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
         let holding = Task { try await terrain.samples(at: blockers.map(Self.centre), zoomLimits: blockers.map { _ in 12 }) }
-        while server.requests.count < 4 {
-            try Task.checkCancellation()
-            await Task.yield()
-        }
+        try await Self.waitUntil { server.requests.count >= 4 }
         let abandoned = Task { try await Self.sample(terrain, at: Self.centre(of: Self.key)) }
-        while await provider.waiters(for: Self.key) < 1 {
-            try Task.checkCancellation()
-            await Task.yield()
-        }
+        try await Self.waitUntil { await provider.waiters(for: Self.key) >= 1 }
         abandoned.cancel()
         await #expect(throws: CancellationError.self) { try await abandoned.value }
+        gate.release()
         _ = try await holding.value
         // The slots are free now; the abandoned fetch gets its turn and ends without a request.
-        while await provider.isFetching(Self.key) {
-            try Task.checkCancellation()
-            await Task.yield()
-        }
+        try await Self.waitUntil { !(await provider.isFetching(Self.key)) }
         #expect(!server.requests.contains { $0.url == tileURL })
         // A caller arriving afterwards starts a fresh flight and gets the tile.
         #expect(Self.isElevation(try await Self.sample(terrain, at: Self.centre(of: Self.key))))
