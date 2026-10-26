@@ -204,7 +204,7 @@ import Testing
     }
 
     @Test func replacingArchivesDuringALookDoesNotTrap() async throws {
-        let gate = Gate()
+        let gate = LoadGate()
         let provider = GatedTerrain(gate: gate)
         let terrain = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
         let targets = ring((0..<70).map { 80 + Double($0) * 0.2 }, distance: 20_000, elevation: 1000)
@@ -216,46 +216,5 @@ import Testing
         await gate.open()
         let results = try await look.value
         #expect(results.count == targets.count)
-    }
-}
-
-/// Lets a test hold a provider's first load until it opens the gate.
-private actor Gate {
-    private var isOpen = false
-    private var blocked = false
-    private var loaders: [CheckedContinuation<Void, Never>] = []
-    private var watchers: [CheckedContinuation<Void, Never>] = []
-
-    func pass() async {
-        guard !isOpen else { return }
-        blocked = true
-        watchers.forEach { $0.resume() }
-        watchers = []
-        await withCheckedContinuation { loaders.append($0) }
-    }
-
-    func waitUntilBlocked() async {
-        guard !blocked else { return }
-        await withCheckedContinuation { watchers.append($0) }
-    }
-
-    func open() {
-        isOpen = true
-        loaders.forEach { $0.resume() }
-        loaders = []
-    }
-}
-
-private final class GatedTerrain: TileProvider {
-    private let inner = SyntheticTerrain(tileSize: 512, zoomRange: 0...12, elevation: { _, _ in 0 })
-    private let gate: Gate
-    init(gate: Gate) { self.gate = gate }
-    var zoomRange: ClosedRange<Int> { inner.zoomRange }
-    var tileSize: Int { inner.tileSize }
-    var isOnline: Bool { false }
-    func covers(_ key: TileKey) throws -> Bool { try inner.covers(key) }
-    func load(_ key: TileKey) async throws -> TileLoad {
-        await gate.pass()
-        return try await inner.load(key)
     }
 }
