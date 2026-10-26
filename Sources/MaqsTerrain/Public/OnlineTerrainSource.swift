@@ -24,7 +24,8 @@ public struct OnlineTerrainSource: Sendable, Equatable {
     /// Checks every value and throws ``TerrainError/invalidConfiguration(_:)`` naming the first one that is wrong.
     ///
     /// The template must be an HTTPS URL with a host and no credentials, containing `{z}`, `{x}` and `{y}` and no other
-    /// placeholder; the format must be `webp` or `png`; the tile size 256 or 512; and `0 <= minZoom <= maxZoom <= 22`.
+    /// placeholder, with none of them in the host or the port; the format must be `webp` or `png`; the tile size 256 or
+    /// 512; and `0 <= minZoom <= maxZoom <= 22`.
     public init(tiles: String, format: String, tileSize: Int, minZoom: Int, maxZoom: Int) throws(TerrainError) {
         for placeholder in Self.placeholders where !tiles.contains(placeholder) {
             throw .invalidConfiguration("the tile template has no \(placeholder)")
@@ -33,8 +34,14 @@ public struct OnlineTerrainSource: Sendable, Equatable {
         guard !probe.contains("{"), !probe.contains("}") else {
             throw .invalidConfiguration("the tile template has a placeholder other than {z}, {x} and {y}")
         }
-        guard let components = URLComponents(string: probe) else {
+        // A second set of values: a placeholder in the authority would give the two URLs different hosts or ports.
+        guard let components = URLComponents(string: probe),
+            let other = URLComponents(string: Self.substitute(tiles, z: 1, x: 2, y: 3))
+        else {
             throw .invalidConfiguration("the tile template is not a URL")
+        }
+        guard other.scheme == components.scheme, other.host == components.host, other.port == components.port else {
+            throw .invalidConfiguration("the tile template has a placeholder in its scheme, host or port")
         }
         guard components.scheme?.lowercased() == "https" else {
             throw .invalidConfiguration("the tile template is not HTTPS")
