@@ -37,6 +37,16 @@ import Testing
         #expect(provider.loads.allSatisfy { $0.z == 3 })
     }
 
+    @Test func aSourceWithAMinimumZoomAboveTheGridZoomStillServesIt() async throws {
+        let provider = SyntheticTerrain(tileSize: 512, zoomRange: 5...12) { _, _ in 100 }
+        let terrain = Terrain(providers: [provider], memoryCacheBytes: 64 << 20)
+        let area = try TerrainArea(southWest: coordinate(45, 11), northEast: coordinate(47, 13))
+        let grid = try await terrain.grid(area, columns: 10, rows: 10)
+        #expect(grid.samples.allSatisfy { $0 == .elevation(100) })
+        #expect(!provider.loads.isEmpty)
+        #expect(provider.loads.allSatisfy { $0.z == 5 })
+    }
+
     @Test func anAreaRejectsNaNInvertedCornersAndALargeSpan() {
         let invalid: [(CLLocationCoordinate2D, CLLocationCoordinate2D)] = [
             (coordinate(.nan, 11), coordinate(46, 12)),
