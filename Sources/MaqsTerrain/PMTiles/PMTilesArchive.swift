@@ -42,7 +42,9 @@ final class PMTilesArchive: Sendable {
     let header: PMTilesHeader
     /// The metadata's `tile_schema`, when present.
     let tileSchema: String?
-    /// The metadata's `tile_size`, when present.
+    /// Whether the metadata has a `tile_size` entry, whatever its value.
+    let declaresTileSize: Bool
+    /// The metadata's `tile_size` when it is a whole number.
     let tileSize: Int?
     private let file: OpenFile
     private let rootEntries: [DirectoryEntry]
@@ -65,7 +67,9 @@ final class PMTilesArchive: Sendable {
         self.file = file
         self.rootEntries = try Directory.decode(root)
         self.tileSchema = metadata["tile_schema"] as? String
-        self.tileSize = (metadata["tile_size"] as? NSNumber)?.intValue
+        self.declaresTileSize = metadata["tile_size"] != nil
+        // Bridging is exact: 512.5 or a string is nil here, not truncated to a number.
+        self.tileSize = metadata["tile_size"] as? Int
     }
 
     /// Whether the archive holds tile `z/x/y`. Tiles outside the zoom and coordinate range are absent.

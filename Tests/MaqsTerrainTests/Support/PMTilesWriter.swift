@@ -59,7 +59,7 @@ enum PMTilesWriter {
     }
 
     static func write(tiles: [(z: Int, x: Int, y: Int, data: Data)], to url: URL, leafEntries: Int? = nil,
-                      tileType: UInt8 = 4, metadata: [String: String] = ["tile_schema": "dem/terrarium"],
+                      tileType: UInt8 = 4, metadata: [String: any Sendable] = ["tile_schema": "dem/terrarium"],
                       minZoom: Int? = nil, maxZoom: Int? = nil) throws {
         let sorted = tiles.map { (id: TileID.id(z: $0.z, x: $0.x, y: $0.y)!, data: $0.data) }.sorted { $0.id < $1.id }
         var tileData = Data()
