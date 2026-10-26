@@ -26,6 +26,7 @@ public struct TerrainArea: Sendable, Equatable {
         self.northEast = northEast
     }
 
+    /// Two areas are equal when their corners have the same latitudes and longitudes.
     public static func == (lhs: TerrainArea, rhs: TerrainArea) -> Bool {
         lhs.southWest.latitude == rhs.southWest.latitude && lhs.southWest.longitude == rhs.southWest.longitude
             && lhs.northEast.latitude == rhs.northEast.latitude && lhs.northEast.longitude == rhs.northEast.longitude
