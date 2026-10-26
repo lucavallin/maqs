@@ -203,4 +203,49 @@ extension Terrain {
         let samples = try await samples(at: coordinates, zoomLimits: coordinates.map { _ in zoom })
         return ElevationGrid(area: area, columns: columns, rows: rows, samples: samples)
     }
+
+    /// A profile is bounded so one call cannot ask for an unbounded number of samples.
+    private static let maxProfilePoints = 100_000
+
+    /// Samples the terrain along the great circle from `from` to `to`.
+    ///
+    /// Samples start at distance 0 and are `options.step` apart (by default one tile pixel of the zoom used at that distance) up to and including the end.
+    /// Tiles are read at the zoom `options.bands` gives for the distance, so far samples use coarser tiles.
+    /// - Throws: ``TerrainError/invalidInput(_:)`` for a non-finite endpoint, a `step` under 1 m or a profile of more than 100,000 points, otherwise as ``elevation(at:)``.
+    public func profile(from: CLLocationCoordinate2D, to: CLLocationCoordinate2D, options: ProfileOptions = ProfileOptions()) async throws -> ElevationProfile {
+        guard [from.latitude, from.longitude, to.latitude, to.longitude].allSatisfy(\.isFinite),
+              abs(from.latitude) <= 90, abs(to.latitude) <= 90 else {
+            throw TerrainError.invalidInput("profile endpoints must be finite latitudes within 90 degrees")
+        }
+        if let step = options.step, !(step >= 1) {
+            throw TerrainError.invalidInput("a profile step is at least 1 metre, not \(step)")
+        }
+        let total = Geodesy.distance(from, to)
+        var distances: [Double] = [0]
+        var distance = 0.0
+        while true {
+            let zoom = options.bands.zoom(atDistance: distance)
+            distance += options.step ?? WebMercator.pixelSize(zoom: zoom, tileSize: 512, latitude: from.latitude)
+            guard distance < total else { break }
+            guard distances.count < Self.maxProfilePoints else {
+                throw TerrainError.invalidInput("a profile has at most \(Self.maxProfilePoints) points; use a larger step or a shorter line")
+            }
+            distances.append(distance)
+        }
+        if total > 0 { distances.append(total) }
+        let coordinates = distances.map { total > 0 ? Geodesy.intermediate(from: from, to: to, fraction: $0 / total) : from }
+        let samples = try await samples(at: coordinates, zoomLimits: distances.map { options.bands.zoom(atDistance: $0) })
+        var points: [ProfilePoint] = []
+        points.reserveCapacity(distances.count)
+        for index in distances.indices {
+            let apparent: Double?
+            if case .elevation(let metres) = samples[index] {
+                apparent = metres - options.earth.drop(atDistance: distances[index])
+            } else {
+                apparent = nil
+            }
+            points.append(ProfilePoint(distance: distances[index], coordinate: coordinates[index], ground: samples[index], apparentElevation: apparent))
+        }
+        return ElevationProfile(points: points)
+    }
 }
