@@ -82,7 +82,11 @@ private final class GatedProvider: TileProvider {
         let terrain = Terrain(providers: [gated], memoryCacheBytes: 64 << 20)
         let place = CLLocationCoordinate2D(latitude: 46.1, longitude: 12.25)
         let inFlight = Task { try await terrain.elevation(at: place) }
-        while !gated.hasStarted { await Task.yield() }
+        // The time limit cancels only this task, so the loop must check for it or a hang stalls the whole run.
+        while !gated.hasStarted {
+            try Task.checkCancellation()
+            await Task.yield()
+        }
         try await terrain.setArchives([Fixtures.url(Self.fixture)])
         gated.open()
         #expect(try await inFlight.value == .elevation(10))
