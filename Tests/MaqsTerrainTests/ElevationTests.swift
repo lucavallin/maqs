@@ -1,10 +1,34 @@
 import CoreLocation
 import Foundation
 import MaqsTestSupport
+import Synchronization
 import Testing
 @testable import MaqsTerrain
 
-@Suite struct ElevationTests {
+/// A provider whose loads wait until the test lets them go.
+private final class GatedProvider: TileProvider {
+    let zoomRange = 0...12
+    let tileSize = 256
+    let isOnline = false
+    private let started = Mutex(false)
+    private let release = Mutex<CheckedContinuation<Void, Never>?>(nil)
+
+    var hasStarted: Bool { started.withLock { $0 } }
+
+    func covers(_ key: TileKey) throws -> Bool { true }
+
+    func load(_ key: TileKey) async throws -> TileLoad {
+        await withCheckedContinuation { continuation in
+            release.withLock { $0 = continuation }
+            started.withLock { $0 = true }
+        }
+        return .tile(try ElevationTile(size: tileSize, elevations: [Float](repeating: 10, count: tileSize * tileSize)))
+    }
+
+    func open() { release.withLock { $0?.resume(); $0 = nil } }
+}
+
+@Suite(.timeLimit(.minutes(1))) struct ElevationTests {
     private static let fixture = "test/test-terrain.v1.pmtiles"
 
     private func terrain(archives: [URL]? = nil) throws -> Terrain {
@@ -51,5 +75,22 @@ import Testing
             Issue.record("expected an elevation after setArchives")
             return
         }
+    }
+
+    @Test func setArchivesDuringALoadDoesNotCacheTheOldTile() async throws {
+        let gated = GatedProvider()
+        let terrain = Terrain(providers: [gated], memoryCacheBytes: 64 << 20)
+        let place = CLLocationCoordinate2D(latitude: 46.1, longitude: 12.25)
+        let inFlight = Task { try await terrain.elevation(at: place) }
+        while !gated.hasStarted { await Task.yield() }
+        try await terrain.setArchives([Fixtures.url(Self.fixture)])
+        gated.open()
+        #expect(try await inFlight.value == .elevation(10))
+        #expect(await terrain.cachedBytes == 0)
+        guard case .elevation(let value) = try await terrain.elevation(at: place) else {
+            Issue.record("expected an elevation from the new archive")
+            return
+        }
+        #expect(value != 10)
     }
 }

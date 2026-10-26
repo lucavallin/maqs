@@ -15,6 +15,8 @@ public actor Terrain {
 
     private var providers: [any TileProvider]
     private let cache: TileCache
+    /// Bumped by `setArchives`; a load that started under an older value does not cache its tiles, whose provider indexes are stale.
+    private var generation = 0
 
     /// Local providers come first, the one with the highest zoom first; online providers last.
     init(providers: [any TileProvider], memoryCacheBytes: Int) {
@@ -61,27 +63,41 @@ public actor Terrain {
     public func setArchives(_ urls: [URL]) throws {
         let local = try Self.localProviders(urls)
         providers = Self.ordered(local + providers.filter(\.isOnline))
+        generation += 1
         cache.removeAll()
     }
 
     /// The first provider, in order, that covers the coordinate at its best zoom not above `zoomLimit`.
+    /// Only when none does, a provider whose minimum zoom is above the limit is tried at that minimum zoom, in the same order.
     func locate(_ coordinate: CLLocationCoordinate2D, zoomLimit: Int) throws -> SamplePoint {
+        var tooFine: [(index: Int, provider: any TileProvider)] = []
         for (index, provider) in providers.enumerated() {
             let zoom = min(zoomLimit, provider.zoomRange.upperBound)
-            guard zoom >= provider.zoomRange.lowerBound,
-                let position = WebMercator.position(
-                    longitude: coordinate.longitude, latitude: coordinate.latitude, zoom: zoom, tileSize: provider.tileSize),
-                try provider.covers(position.key)
-            else { continue }
-            return SamplePoint(tile: SourceTile(provider: index, key: position.key), pixelX: position.pixelX, pixelY: position.pixelY)
+            guard zoom >= provider.zoomRange.lowerBound else {
+                tooFine.append((index, provider))
+                continue
+            }
+            if let point = try point(coordinate, zoom: zoom, provider: provider, index: index) { return point }
+        }
+        for (index, provider) in tooFine {
+            if let point = try point(coordinate, zoom: provider.zoomRange.lowerBound, provider: provider, index: index) { return point }
         }
         return SamplePoint(tile: nil, pixelX: 0, pixelY: 0)
+    }
+
+    private func point(_ coordinate: CLLocationCoordinate2D, zoom: Int, provider: any TileProvider, index: Int) throws -> SamplePoint? {
+        guard let position = WebMercator.position(
+                longitude: coordinate.longitude, latitude: coordinate.latitude, zoom: zoom, tileSize: provider.tileSize),
+            try provider.covers(position.key)
+        else { return nil }
+        return SamplePoint(tile: SourceTile(provider: index, key: position.key), pixelX: position.pixelX, pixelY: position.pixelY)
     }
 
     /// Loads each tile from the cache or its provider. An online fetch takes one from `budget`; at zero the tile is `.missing(.requestCap)`.
     /// Local read errors propagate; a cancelled caller throws `CancellationError`, here or from a provider it waits on.
     func load(_ tiles: Set<SourceTile>, budget: inout Int) async throws -> [SourceTile: TileLoad] {
         try Task.checkCancellation()
+        let startedUnder = generation
         var loaded: [SourceTile: TileLoad] = [:]
         var pending: [SourceTile] = []
         let ordered = tiles.sorted { ($0.provider, $0.key.z, $0.key.x, $0.key.y) < ($1.provider, $1.key.z, $1.key.x, $1.key.y) }
@@ -109,7 +125,7 @@ public actor Terrain {
             return results
         }
         for (source, result) in fetched {
-            if case .tile(let tile) = result { cache.insert(tile, for: source) }
+            if case .tile(let tile) = result, generation == startedUnder { cache.insert(tile, for: source) }
             loaded[source] = result
         }
         return loaded
