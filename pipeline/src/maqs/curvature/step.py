@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
+from collections import defaultdict
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -11,7 +14,15 @@ import osmium
 from maqs.config import Bbox, CurvatureConfig
 from maqs.context import BuildContext
 from maqs.curvature.score import Corner, score_way
-from maqs.geometry import Coord, bbox_of, encode_polyline, line_length_m
+from maqs.geometry import (
+    M_PER_DEG_LAT,
+    M_PER_DEG_LON_EQUATOR,
+    Coord,
+    bbox_of,
+    cumulative_m,
+    encode_polyline,
+    line_length_m,
+)
 from maqs.layers import output_name
 from maqs.osm import extract
 from maqs.sqlite_out import COUNT_TABLES, TABLES, write_sqlite
@@ -46,6 +57,9 @@ class SegmentRecord:
     end_node: int
     score: float
     corners: list[Corner]
+    junction: str | None
+    nodes: list[int]  # located node ids, in way order
+    located: list[Coord]  # their coordinates, before the vertex merge; `coords` is a subsequence
 
 
 def read_roads(pbf: Path, config: CurvatureConfig) -> tuple[list[SegmentRecord], list[Anomaly]]:
@@ -73,7 +87,8 @@ def read_roads(pbf: Path, config: CurvatureConfig) -> tuple[list[SegmentRecord],
         if len(located) < len(obj.nodes):
             message = f"{len(obj.nodes) - len(located)} of {len(obj.nodes)} nodes have no location"
             anomalies.append(Anomaly("unlocated_nodes", f"way/{obj.id}", message))
-        merged, score, corners = score_way([(n.lon, n.lat) for n in located])
+        located_coords = [(n.lon, n.lat) for n in located]
+        merged, score, corners = score_way(located_coords)
         segments.append(
             SegmentRecord(
                 osm_way_id=obj.id,
@@ -88,6 +103,9 @@ def read_roads(pbf: Path, config: CurvatureConfig) -> tuple[list[SegmentRecord],
                 end_node=located[-1].ref,
                 score=score,
                 corners=corners,
+                junction=tags.get("junction"),
+                nodes=[n.ref for n in located],
+                located=located_coords,
             )
         )
     return segments, anomalies
@@ -113,7 +131,67 @@ def segment_row(s: SegmentRecord, segment_id: int, bbox: Bbox) -> tuple:
         lon_max,
         lat_max,
         encode_polyline(s.coords),
+        s.junction,
     )
+
+
+def _along_nearest(stretch: Sequence[Coord], offsets: Sequence[float], point: Coord) -> float:
+    """Distance along a polyline (vertex offsets given) to the point nearest `point`."""
+    m_per_deg_lon = M_PER_DEG_LON_EQUATOR * math.cos(math.radians(point[1]))
+    best_gap, best_along = math.inf, offsets[0]
+    for (p, q), start in zip(zip(stretch, stretch[1:], strict=False), offsets, strict=False):
+        dx, dy = (q[0] - p[0]) * m_per_deg_lon, (q[1] - p[1]) * M_PER_DEG_LAT
+        px, py = (point[0] - p[0]) * m_per_deg_lon, (point[1] - p[1]) * M_PER_DEG_LAT
+        span = dx * dx + dy * dy
+        t = 0.0 if span == 0.0 else min(1.0, max(0.0, (px * dx + py * dy) / span))
+        gap = math.hypot(px - t * dx, py - t * dy)
+        if gap < best_gap:
+            best_gap, best_along = gap, start + t * math.sqrt(span)
+    return best_along
+
+
+def junction_rows(segments: Sequence[SegmentRecord]) -> list[tuple[int, int, float]]:
+    """(segment_id, node, along_m) for every interior located node that another kept segment
+    also has, in segment then along order.
+
+    A node counts as shared when two or more distinct segments list it among their located
+    nodes, at an end or inside. Ends are not listed: start_node/end_node already carry them. The
+    5 m vertex merge may have dropped the node's own vertex, so `along_m` is the distance along
+    the stored geometry to the point nearest the node on the stretch between the kept vertices
+    around it. The stored geometry is a subsequence of the located nodes, matched in order.
+    """
+    owners: dict[int, set[int]] = defaultdict(set)
+    for index, s in enumerate(segments):
+        for node in s.nodes:
+            owners[node].add(index)
+    rows: list[tuple[int, int, float]] = []
+    for index, s in enumerate(segments):
+        interior = [i for i in range(1, len(s.nodes) - 1) if len(owners[s.nodes[i]]) > 1]
+        if not interior:
+            continue
+        offsets = cumulative_m(s.coords)
+        kept: list[int | None] = []  # per located vertex: its index in the stored geometry
+        matched = 0
+        for coord in s.located:
+            if matched < len(s.coords) and coord == s.coords[matched]:
+                kept.append(matched)
+                matched += 1
+            else:
+                kept.append(None)
+        found: list[tuple[float, int]] = []
+        for i in interior:
+            k = kept[i]
+            if k is not None:
+                along = offsets[k]
+            else:
+                before = next(kept[j] for j in range(i - 1, -1, -1) if kept[j] is not None)
+                after = next(kept[j] for j in range(i + 1, len(kept)) if kept[j] is not None)
+                along = _along_nearest(
+                    s.coords[before : after + 1], offsets[before : after + 1], s.located[i]
+                )
+            found.append((along, s.nodes[i]))
+        rows.extend((index + 1, node, along) for along, node in sorted(found))
+    return rows
 
 
 def corner_row(c: Corner, corner_id: int, segment_id: int, ordinal: int) -> tuple:
@@ -154,6 +232,8 @@ class CurvatureStep:
         meta = metadata_for(ctx, "curvature")
         segments, anomalies = read_roads(roads, config)
 
+        junctions = junction_rows(segments)
+
         def fill(conn: sqlite3.Connection) -> None:
             corner_id = 0
             for index, s in enumerate(segments):
@@ -175,6 +255,8 @@ class CurvatureStep:
                         "INSERT INTO corners_rtree VALUES (?, ?, ?, ?, ?)",
                         (corner_id, lon, lon, lat, lat),
                     )
+
+            conn.executemany("INSERT INTO junctions VALUES (?, ?, ?)", junctions)
 
         write_sqlite(self.outputs(ctx)[0], "curvature", meta, fill)
         return StepOutcome([], anomalies)
