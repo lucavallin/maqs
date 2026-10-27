@@ -4,7 +4,8 @@ public struct Fork: Sendable, Equatable {
     public let distance: Double
     /// The branch the walk took.
     public let chosen: RoadBranch
-    /// The branches it did not take, by way id, `forward` before `backward`.
+    /// The branches it did not take, by way id, `forward` before `backward`. A way that passes the junction twice
+    /// is listed for each pass.
     public let alternatives: [RoadBranch]
     /// The last rule that narrowed the branches, which says how good the guess is.
     public let reason: Reason
