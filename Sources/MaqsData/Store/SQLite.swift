@@ -43,22 +43,31 @@ final class Connection {
 
     /// The prepared statement for `sql`, cached by its text and reset with its bindings cleared on every call.
     ///
-    /// Preparing the same text again resets the statement, so finish stepping one before preparing its text again.
+    /// When the cached statement is still mid-read (a nested query of the same text while its rows are being
+    /// stepped), the call returns a fresh statement that is not cached, so the outer read is never reset under it.
     func prepare(_ sql: String) throws(QueryError) -> Statement {
         if let cached = statements[sql] {
-            cached.reset()
-            return cached
+            if !cached.isBusy {
+                cached.reset()
+                return cached
+            }
+            return try compile(sql, persistent: false)
         }
+        let statement = try compile(sql, persistent: true)
+        statements[sql] = statement
+        return statement
+    }
+
+    private func compile(_ sql: String, persistent: Bool) throws(QueryError) -> Statement {
         var pointer: OpaquePointer?
-        let code = sqlite3_prepare_v3(handle, sql, -1, UInt32(SQLITE_PREPARE_PERSISTENT), &pointer, nil)
+        let flags = persistent ? UInt32(SQLITE_PREPARE_PERSISTENT) : 0
+        let code = sqlite3_prepare_v3(handle, sql, -1, flags, &pointer, nil)
         guard code == SQLITE_OK, let pointer else {
             sqlite3_finalize(pointer)
             // SQL with no statement in it prepares to nothing with SQLITE_OK; that is a misuse, not a damaged file.
             throw .sqlite(code == SQLITE_OK ? SQLITE_MISUSE : code, file: fileName)
         }
-        let statement = Statement(handle: pointer, fileName: fileName)
-        statements[sql] = statement
-        return statement
+        return Statement(handle: pointer, fileName: fileName)
     }
 
     /// The column names of `table` (`PRAGMA table_info`); empty when the file has no such table.
@@ -89,6 +98,9 @@ final class Connection {
 final class Statement {
     private let handle: OpaquePointer
     private let fileName: String
+    /// The result code (extended codes are on) of the last `step` that failed; `SQLITE_OK` after ``reset()``.
+    /// Its low byte is the primary code: `SQLITE_ERROR` for an FTS5 syntax error, never for a damaged file.
+    private(set) var failureCode: Int32 = SQLITE_OK
 
     fileprivate init(handle: OpaquePointer, fileName: String) {
         self.handle = handle
@@ -122,9 +134,14 @@ final class Statement {
         switch sqlite3_step(handle) {
         case SQLITE_ROW: true
         case SQLITE_DONE: false
-        case let code: throw .sqlite(code, file: fileName)
+        case let code:
+            failureCode = code
+            throw .sqlite(code, file: fileName)
         }
     }
+
+    /// Whether the statement has stepped to a row but not finished or been reset.
+    var isBusy: Bool { sqlite3_stmt_busy(handle) != 0 }
 
     /// The column as an integer; 0 for NULL.
     func int64(at column: Int32) -> Int64 {
@@ -153,6 +170,7 @@ final class Statement {
         // reset repeats the code of a failed step, which step already threw; there is nothing new to report.
         sqlite3_reset(handle)
         sqlite3_clear_bindings(handle)
+        failureCode = SQLITE_OK
     }
 
     private func check(_ code: Int32) throws(QueryError) {
