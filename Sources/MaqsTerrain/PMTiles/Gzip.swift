@@ -33,9 +33,17 @@ enum Gzip {
         let bytes = data.startIndex == 0 ? data : Data(data)
         let bodyStart = try headerLength(of: bytes)
         var output = Data()
-        try bytes.withUnsafeBytes { (raw: UnsafeRawBufferPointer) throws(PMTilesError) in
-            try inflateBody(raw, from: bodyStart, limit: limit, into: &output)
+        // The Xcode 26 SDK declares Data.withUnsafeBytes with an untyped rethrows, which would turn a typed
+        // closure's error into `any Error`; the closure catches it instead.
+        var failure: PMTilesError?
+        bytes.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
+            do throws(PMTilesError) {
+                try inflateBody(raw, from: bodyStart, limit: limit, into: &output)
+            } catch {
+                failure = error
+            }
         }
+        if let failure { throw failure }
         // Compression does not report where the DEFLATE stream ended, so the trailer is the first place after the
         // header that holds this output's CRC-32 and length. Both must match, so a damaged stream or trailer is
         // rejected, and bytes after the member are ignored.
