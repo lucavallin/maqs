@@ -236,11 +236,56 @@ import Testing
         #expect(statement.failureCode == 0)
     }
 
-    @Test("tier 3 gives no match for an expression FTS5 rejects, and still throws for a damaged file")
+    @Test("tier 3 gives no match for an expression FTS5 rejects")
     func syntaxErrorIsNoMatch() throws {
         let files = try LayerFile.openAll([Fixtures.url("test/test-trails.v1.sqlite")], as: .trails)
         #expect(try TrailSearch.fullText("\"unterminated", in: files[0], index: 0, difficulty: nil).isEmpty)
         #expect(try TrailSearch.fullText("\"cammino\"*", in: files[0], index: 0, difficulty: nil).count == 3)
+    }
+
+    @Test("a damaged full-text index throws instead of giving no match")
+    func damagedIndexThrows() async throws {
+        let directory = try TemporaryDirectory()
+        let url = directory.url.appending(path: "damaged-trails.sqlite")
+        try FileManager.default.copyItem(at: Fixtures.url("test/test-trails.v1.sqlite"), to: url)
+        let rootPage: Int
+        do {
+            let files = try LayerFile.openAll([url], as: .trails)
+            let statement = try files[0].connection.prepare("SELECT rootpage FROM sqlite_master WHERE name = 'trails_fts_data'")
+            defer { statement.reset() }
+            #expect(try statement.step())
+            rootPage = Int(statement.int64(at: 0))
+        }
+        // Overwrite the b-tree page of the index data, so the file opens but the full-text step cannot read it.
+        let handle = try FileHandle(forWritingTo: url)
+        try handle.seek(toOffset: UInt64((rootPage - 1) * 4096))
+        try handle.write(contentsOf: Data(repeating: 0xFF, count: 4096))
+        try handle.close()
+        let trails = try Trails(files: [url])
+        do {
+            _ = try await trails.search("cammino dolo")
+            Issue.record("a damaged index gave an answer")
+        } catch {
+            guard case .corruptData(let file, _) = error else {
+                Issue.record("unexpected \(error)")
+                return
+            }
+            #expect(file == "damaged-trails.sqlite")
+        }
+    }
+
+    @Test("a token-less word does not empty a search that has other words")
+    func tokenlessWordKeepsMatches() async throws {
+        let directory = try TemporaryDirectory()
+        let url = directory.url.appending(path: "trails.sqlite")
+        try LayerFileWriter.trails([
+            TrailRow(id: 1, name: "Alta Via", legs: Self.leg(12)),
+            TrailRow(id: 2, name: "x", legs: Self.leg(12)),
+        ], to: url)
+        let trails = try Trails(files: [url])
+        for text in ["alta —", "* alta", "alta \""] {
+            #expect(try await trails.search(text).map(\.featureID) == [1], "\(text)")
+        }
     }
 
     @Test("preparing the text of a statement that is mid-read gives another statement")
