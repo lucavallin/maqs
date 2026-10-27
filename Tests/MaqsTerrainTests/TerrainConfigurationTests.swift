@@ -66,15 +66,25 @@ import Testing
 
     // MARK: Logging
 
-    /// This process's `terrain` log messages since `start`.
-    private func terrainLog(since start: Date) throws -> [String] {
+    /// This process's `terrain` log messages since `start` that contain `needle`.
+    ///
+    /// The log store lags the call that logged: it is polled until a matching line shows up or
+    /// five seconds pass, so a loaded machine does not fail the test on a line that is only late.
+    private func terrainLog(since start: Date, containing needle: String) async throws -> [String] {
         let store = try OSLogStore(scope: .currentProcessIdentifier)
         let subsystem = NSPredicate(format: "subsystem == %@ AND category == %@", "com.lucavallin.maqs", "terrain")
-        return try store.getEntries(at: store.position(date: start), matching: subsystem)
-            .compactMap { ($0 as? OSLogEntryLog)?.composedMessage }
+        let deadline = ContinuousClock.now + .seconds(5)
+        while true {
+            try Task.checkCancellation()
+            let lines = try store.getEntries(at: store.position(date: start), matching: subsystem)
+                .compactMap { ($0 as? OSLogEntryLog)?.composedMessage }
+                .filter { $0.contains(needle) }
+            if !lines.isEmpty || ContinuousClock.now >= deadline { return lines }
+            try await Task.sleep(for: .milliseconds(50))
+        }
     }
 
-    @Test func anArchiveThatFailsToOpenIsLoggedAndThrown() throws {
+    @Test func anArchiveThatFailsToOpenIsLoggedAndThrown() async throws {
         let directory = try TemporaryDirectory()
         // A name of its own, so a line another test logs cannot satisfy this one.
         let name = "corrupt-\(UUID().uuidString).pmtiles"
@@ -84,7 +94,7 @@ import Testing
         #expect(throws: PMTilesError.notPMTiles) {
             _ = try Terrain(configuration: TerrainConfiguration(archives: [url]))
         }
-        let lines = try terrainLog(since: start).filter { $0.contains(name) }
+        let lines = try await terrainLog(since: start, containing: name)
         #expect(lines.count == 1)
         #expect(lines.first?.contains("notPMTiles") == true)
     }
@@ -99,7 +109,7 @@ import Testing
         await #expect(throws: TerrainError.notTerrain(url)) {
             try await terrain.setArchives([url])
         }
-        let lines = try terrainLog(since: start).filter { $0.contains(name) }
+        let lines = try await terrainLog(since: start, containing: name)
         #expect(lines.count == 1)
         // The case only: the URL the error carries holds the app's container path.
         #expect(lines.first?.contains("notTerrain") == true)
