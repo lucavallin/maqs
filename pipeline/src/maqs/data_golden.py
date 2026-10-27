@@ -11,7 +11,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import sqlite3
 from pathlib import Path
 
 from maqs.curvature.score import score_way
@@ -22,6 +21,7 @@ from maqs.geometry import (
     decode_polyline,
     line_length_m,
 )
+from maqs.sqlite_out import open_readonly
 
 GOLDEN_VERSION = 1
 ORIGIN: Coord = (12.25, 46.1)
@@ -76,7 +76,7 @@ def analyse(coordinates: list[Coord]) -> dict[str, object]:
 
 def build_golden(curvature: Path) -> dict[str, object]:
     """Golden values for the curvature file at `curvature` and for the built-in tracks."""
-    conn = sqlite3.connect(f"file:{curvature}?mode=ro", uri=True)
+    conn = open_readonly(curvature)
     try:
         rows = conn.execute("SELECT osm_way_id, geometry FROM segments ORDER BY id").fetchall()
     finally:
