@@ -184,10 +184,11 @@ with `ele` taken as 0 when null and "wikidata present" meaning a non-empty `wiki
 ```sql
 CREATE TABLE segments (
   id INTEGER PRIMARY KEY, osm_way_id INTEGER NOT NULL, name TEXT, ref TEXT,
-  highway TEXT NOT NULL, surface TEXT, junction TEXT,
+  highway TEXT NOT NULL, surface TEXT,
   oneway INTEGER NOT NULL DEFAULT 0, maxspeed TEXT, length_m REAL NOT NULL, score REAL NOT NULL,
   start_node INTEGER NOT NULL, end_node INTEGER NOT NULL,
-  min_lon REAL, min_lat REAL, max_lon REAL, max_lat REAL, geometry TEXT NOT NULL
+  min_lon REAL, min_lat REAL, max_lon REAL, max_lat REAL, geometry TEXT NOT NULL,
+  junction TEXT
 );
 CREATE TABLE corners (
   id INTEGER PRIMARY KEY, segment_id INTEGER NOT NULL REFERENCES segments(id),

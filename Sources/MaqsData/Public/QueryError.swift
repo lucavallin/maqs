@@ -20,7 +20,8 @@ public enum QueryError: Error, Equatable, LocalizedError {
     case corruptData(file: String, detail: String)
     /// The file could not be read: an I/O or permission failure. On iOS that includes a file under Complete data
     /// protection while the device is locked, and on Apple platforms a file removed or replaced since it was opened
-    /// (a region update or removal), which the system SQLite stops reading.
+    /// (a region update or removal), which the system SQLite stops reading. After an install, update or removal the
+    /// app passes the current files to `setFiles(_:)`; the message shown to the user only asks to try again.
     case unreadable(file: String)
     /// A query argument is out of range or not a usable number; the payload says which.
     case invalidInput(String)
@@ -43,7 +44,7 @@ public enum QueryError: Error, Equatable, LocalizedError {
         case .corruptData(let file, let detail):
             "\(file) is damaged (\(detail)). Remove the region and install it again."
         case .unreadable(let file):
-            "\(file) could not be read. If the region was updated or removed since it was opened, pass the current files again. On iOS a file under Complete data protection cannot be read while the device is locked; try again after unlocking. Reinstall the region if it keeps failing."
+            "\(file) could not be read. Try again in a moment. The device may be locked, which blocks protected files until it is unlocked, or the region may have just been updated or removed. If it keeps failing, install the region again."
         case .invalidInput(let detail):
             "The query was rejected (\(detail)). Adjust the input and try again."
         case .unknownSegment(let id):
