@@ -56,7 +56,8 @@ CREATE TABLE segments (
   highway TEXT NOT NULL, surface TEXT,
   oneway INTEGER NOT NULL DEFAULT 0, maxspeed TEXT, length_m REAL NOT NULL, score REAL NOT NULL,
   start_node INTEGER NOT NULL, end_node INTEGER NOT NULL,
-  min_lon REAL, min_lat REAL, max_lon REAL, max_lat REAL, geometry TEXT NOT NULL
+  min_lon REAL, min_lat REAL, max_lon REAL, max_lat REAL, geometry TEXT NOT NULL,
+  junction TEXT
 );
 CREATE TABLE corners (
   id INTEGER PRIMARY KEY, segment_id INTEGER NOT NULL REFERENCES segments(id),
@@ -66,6 +67,13 @@ CREATE TABLE corners (
   entry_m REAL NOT NULL, apex_m REAL NOT NULL, exit_m REAL NOT NULL
 );
 CREATE INDEX corners_segment ON corners(segment_id, ordinal);
+CREATE TABLE junctions (
+  segment_id INTEGER NOT NULL REFERENCES segments(id),
+  node INTEGER NOT NULL,
+  along_m REAL NOT NULL
+);
+CREATE INDEX junctions_node ON junctions(node);
+CREATE INDEX junctions_segment ON junctions(segment_id, along_m);
 CREATE VIRTUAL TABLE segments_rtree USING rtree(id, min_lon, max_lon, min_lat, max_lat);
 CREATE VIRTUAL TABLE corners_rtree USING rtree(id, min_lon, max_lon, min_lat, max_lat);
 """,
@@ -74,12 +82,14 @@ CREATE VIRTUAL TABLE corners_rtree USING rtree(id, min_lon, max_lon, min_lat, ma
 TABLES: dict[str, frozenset[str]] = {
     "trails": frozenset({"metadata", "trails", "trails_fts", "trails_rtree"}),
     "places": frozenset({"metadata", "places", "places_fts", "places_rtree"}),
-    "curvature": frozenset({"metadata", "segments", "corners", "segments_rtree", "corners_rtree"}),
+    "curvature": frozenset(
+        {"metadata", "segments", "corners", "junctions", "segments_rtree", "corners_rtree"}
+    ),
 }
 COUNT_TABLES: dict[str, tuple[str, ...]] = {
     "trails": ("trails",),
     "places": ("places",),
-    "curvature": ("segments", "corners"),
+    "curvature": ("segments", "corners", "junctions"),
 }
 FTS_TABLES: dict[str, tuple[str, ...]] = {
     "trails": ("trails_fts",),
