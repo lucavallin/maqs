@@ -50,12 +50,16 @@ def build_overlay(
     max_zoom: int,
     extra: Sequence[str] = (),
 ) -> list[str]:
-    """Write the features next to `out`, run tippecanoe, and return the command it ran."""
+    """Write the features next to `out`, run tippecanoe, and return the command it ran.
+
+    tippecanoe runs in `out`'s folder with bare file names: it writes its command line and the
+    output path into the archive's metadata, which would otherwise carry the build folder.
+    """
     src = out.with_suffix(".geojsonseq")
     try:
         write_geojsonseq(features, src)
-        argv = tippecanoe_argv(src, out, layer, min_zoom, max_zoom, extra)
-        tools.run(argv)
+        argv = tippecanoe_argv(Path(src.name), Path(out.name), layer, min_zoom, max_zoom, extra)
+        tools.run(argv, cwd=out.parent)
     finally:
         src.unlink(missing_ok=True)
     return argv
