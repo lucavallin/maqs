@@ -5,8 +5,8 @@ import Foundation
 enum Geodesy {
     static let radius = 6_371_008.8
     /// The pipeline's local plane (`geometry.py`): metres per degree of latitude, and of longitude on the equator.
-    private static let metresPerDegreeLatitude = 110_574.0
-    private static let metresPerDegreeLongitudeAtEquator = 111_320.0
+    static let metresPerDegreeLatitude = 110_574.0
+    static let metresPerDegreeLongitudeAtEquator = 111_320.0
 
     private static func radians(_ degrees: Double) -> Double { degrees * .pi / 180 }
     private static func degrees(_ radians: Double) -> Double { radians * 180 / .pi }
