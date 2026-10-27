@@ -292,3 +292,20 @@ def test_the_step_writes_the_junctions_table(ctx, tmp_path, monkeypatch):
         ("roundabout",),
         (None,),
     ]
+
+
+def test_a_way_doubling_back_onto_a_passed_point_does_not_crash(tmp_path):
+    # the merge's backward pass drops V, which equals the last vertex L; W (1 m from L) is shared
+    nodes = {
+        1: at(0, 0),
+        2: at(100, 0),
+        3: at(200, 0),
+        4: at(199, 0),
+        5: at(200, 0),
+        9: at(199, 50),
+    }
+    ways = {1: ([1, 2, 3, 4, 5], {"highway": "primary"}), 2: ([4, 9], {"highway": "primary"})}
+    segments, rows = rows_for(write_osm(tmp_path / "doubling.osm.pbf", nodes, ways, {}))
+    assert len(segments[0].coords) == 3
+    assert [(r[0], r[1]) for r in rows] == [(1, 4)]
+    assert rows[0][2] == pytest.approx(200.0, abs=1.5)

@@ -170,14 +170,15 @@ def junction_rows(segments: Sequence[SegmentRecord]) -> list[tuple[int, int, flo
         if not interior:
             continue
         offsets = cumulative_m(s.coords)
-        kept: list[int | None] = []  # per located vertex: its index in the stored geometry
-        matched = 0
-        for coord in s.located:
-            if matched < len(s.coords) and coord == s.coords[matched]:
-                kept.append(matched)
+        # Per located vertex: its index in the stored geometry. merge_close always keeps the
+        # first and last vertex, so they are pinned; the others match in order.
+        kept: list[int | None] = [None] * len(s.located)
+        kept[0], kept[-1] = 0, len(s.coords) - 1
+        matched = 1
+        for i in range(1, len(s.located) - 1):
+            if matched < len(s.coords) - 1 and s.located[i] == s.coords[matched]:
+                kept[i] = matched
                 matched += 1
-            else:
-                kept.append(None)
         found: list[tuple[float, int]] = []
         for i in interior:
             k = kept[i]
