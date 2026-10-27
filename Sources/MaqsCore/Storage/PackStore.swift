@@ -71,7 +71,7 @@ struct PackStore: Sendable {
         let url = layout.recordURL(record.id)
         do {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try Self.makeEncoder().encode(record).write(to: url, options: .atomic)
+            try Self.makeEncoder().encode(record).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
             throw StorageError.writeFailed("pack.json")
         }
@@ -93,12 +93,21 @@ struct PackStore: Sendable {
         }
     }
 
-    /// Moves a verified download into place in one `rename(2)`, which replaces an existing file atomically.
+    /// Marks a verified download Protected Until First User Authentication, then moves it into place in one `rename(2)`,
+    /// which replaces an existing file atomically. A file that cannot be marked is not installed.
     func moveIntoPlace(from source: URL, to destination: URL) throws {
         do {
             try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
         } catch {
             throw StorageError.cannotCreateDirectory(destination.deletingLastPathComponent().lastPathComponent)
+        }
+        // Readable once the phone has been unlocked once, so a ride can be recorded with the screen locked. The files hold public data.
+        do {
+            try FileManager.default.setAttributes([.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+                                                  ofItemAtPath: source.path(percentEncoded: false))
+        } catch {
+            logger.error("protection failed")
+            throw StorageError.writeFailed(destination.lastPathComponent)
         }
         let result: Int32 = source.withUnsafeFileSystemRepresentation { from in
             destination.withUnsafeFileSystemRepresentation { to in

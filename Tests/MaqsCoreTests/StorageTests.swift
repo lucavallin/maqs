@@ -189,6 +189,41 @@ import MaqsTestSupport
         #expect(!FileManager.default.fileExists(atPath: source.path(percentEncoded: false)))
     }
 
+    @Test("an installed file is readable after first unlock")
+    func installedFileProtection() throws {
+        let tmp = try TemporaryDirectory()
+        let store = try PackStore(root: tmp.url)
+        // A new file takes its directory's class, as in an app whose default is Complete.
+        for directory in [store.layout.root, store.layout.packsDirectory, store.layout.downloadsDirectory] {
+            try Self.setProtection(.complete, at: directory)
+        }
+        let destination = store.layout.fileURL(.region("test"), layer: .places, sha256: String(repeating: "a", count: 64), fileName: "p.sqlite")
+        let source = store.layout.downloadURL(fileName: "p.sqlite")
+        try Data("new".utf8).write(to: source)
+        try Self.setProtection(.complete, at: source)
+        try store.moveIntoPlace(from: source, to: destination)
+        #expect(try Self.protection(of: destination) == .completeUntilFirstUserAuthentication)
+    }
+
+    @Test("pack.json is readable after first unlock")
+    func recordProtection() throws {
+        let tmp = try TemporaryDirectory()
+        let store = try PackStore(root: tmp.url)
+        let id = PackID.region("test")
+        try FileManager.default.createDirectory(at: store.layout.packDirectory(id), withIntermediateDirectories: true)
+        try Self.setProtection(.complete, at: store.layout.packDirectory(id))
+        try store.write(PackRecord(id: id, release: "data-ci", files: [:]))
+        #expect(try Self.protection(of: store.layout.recordURL(id)) == .completeUntilFirstUserAuthentication)
+    }
+
+    private static func setProtection(_ type: FileProtectionType, at url: URL) throws {
+        try FileManager.default.setAttributes([.protectionKey: type], ofItemAtPath: url.path(percentEncoded: false))
+    }
+
+    private static func protection(of url: URL) throws -> FileProtectionType? {
+        try FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false))[.protectionKey] as? FileProtectionType
+    }
+
     @Test("moveIntoPlace creates a missing destination directory")
     func moveCreatesDirectory() throws {
         let tmp = try TemporaryDirectory()
