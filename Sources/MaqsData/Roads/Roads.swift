@@ -113,8 +113,9 @@ public actor Roads {
     /// corrected once the rider is through the junction.
     ///
     /// The walk never enters a segment against its effective one-way (``RoadSegment/oneway``), except that it keeps
-    /// to the rider's own segment in the direction given, straight on past junctions, until it leaves it. It never
-    /// travels the stretch between two junctions twice, so a loop ends the walk.
+    /// to the rider's own segment in the direction given, straight on past junctions and across a ring's closing
+    /// node, until it turns onto another road. It never travels the stretch between two junctions twice, so a loop
+    /// ends the walk.
     ///
     /// In a file without the `junctions` table (built before it) the walk knows segment ends only: it passes side
     /// roads that meet the segment mid-way without a fork, and where the road ends in the middle of another way it
