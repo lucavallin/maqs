@@ -1,6 +1,6 @@
 {
   "manifest_version": 1,
-  "created_at": "2026-10-16T18:32:28Z",
+  "created_at": "2026-10-27T09:57:28Z",
   "release": "data-ci",
   "shortbread_version": "1.0",
   "attribution": [
@@ -54,7 +54,7 @@
             "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-basemap.v1.pmtiles",
             "bytes": 1617480,
             "sha256": "748b46de5a711f228bbd3afcbecf2c7713a386d60cc2417dd46cceef65bdb952",
-            "data_date": "2026-10-16",
+            "data_date": "2026-10-27",
             "osm_timestamp": "2026-06-07T23:59:58Z"
           }
         ],
@@ -65,7 +65,7 @@
             "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-terrain.v1.pmtiles",
             "bytes": 1496730,
             "sha256": "e24d222d07bcd861eb9c66f73bc0e2c902f9f41b94d64cd9131c9105f062318d",
-            "data_date": "2026-10-16",
+            "data_date": "2026-10-27",
             "osm_timestamp": null
           }
         ],
@@ -75,17 +75,17 @@
             "file": "test-trails.v1.sqlite",
             "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-trails.v1.sqlite",
             "bytes": 126976,
-            "sha256": "e1356b0d03031dbcfa714401fa65b3afbf299b9ed3c461343a23efeeba0fd137",
-            "data_date": "2026-10-16",
+            "sha256": "415f7f46be496a2d7fb729fe22513e76a46890430a04444a82204ca702bfee8a",
+            "data_date": "2026-10-27",
             "osm_timestamp": "2026-10-14T20:21:12Z"
           },
           {
             "layer_schema_version": 1,
             "file": "test-trails.v1.pmtiles",
             "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-trails.v1.pmtiles",
-            "bytes": 190870,
-            "sha256": "bba7a1c34a09b7f2ef2644c45d87bb6c2556969302b43c4b9146671023d2fa8c",
-            "data_date": "2026-10-16",
+            "bytes": 190889,
+            "sha256": "93fda976f5f651d144fb86bf2585036a00ecab021cd5b67ac5492beb3c7e74af",
+            "data_date": "2026-10-27",
             "osm_timestamp": null,
             "role": "overlay"
           }
@@ -96,17 +96,17 @@
             "file": "test-places.v1.sqlite",
             "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-places.v1.sqlite",
             "bytes": 40960,
-            "sha256": "929e52e7dadd06427ec343668a4c0d7e821018831536bbbc194d995696384d3e",
-            "data_date": "2026-10-16",
+            "sha256": "ad1e4ea7e3b3d2ec83967807295d7bce76cd9a89ade004db76558250755e0a03",
+            "data_date": "2026-10-27",
             "osm_timestamp": "2026-10-14T20:21:12Z"
           },
           {
             "layer_schema_version": 1,
             "file": "test-places.v1.pmtiles",
             "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-places.v1.pmtiles",
-            "bytes": 7062,
-            "sha256": "cee1f025601631c2a1b360140d0ca5032d76c655e7edeae1c140450db7b50b40",
-            "data_date": "2026-10-16",
+            "bytes": 7082,
+            "sha256": "38af0756dd44304682742ab735010d269573f8a3927038d1e6c016ee7b6979bb",
+            "data_date": "2026-10-27",
             "osm_timestamp": null,
             "role": "overlay"
           }
@@ -116,9 +116,9 @@
             "layer_schema_version": 1,
             "file": "test-curvature.v1.sqlite",
             "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-curvature.v1.sqlite",
-            "bytes": 176128,
-            "sha256": "c7ccdfb20d4a3ccb6d55b3a1957f677767b8a4ac35d224d477d99afa8e3d0401",
-            "data_date": "2026-10-16",
+            "bytes": 188416,
+            "sha256": "572a11aa0c8ca599833fd75bba4e2f44053e6ca494ba13d9937f824b55d96fb7",
+            "data_date": "2026-10-27",
             "osm_timestamp": "2026-10-14T20:21:12Z"
           }
         ]
@@ -140,7 +140,7 @@
             "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/base-triveneto-basemap.v1.pmtiles",
             "bytes": 13165829,
             "sha256": "75430f171e1c1edc7a9678cb47becb02ecec94612335e19ccd319258b8dd0f91",
-            "data_date": "2026-10-16",
+            "data_date": "2026-10-27",
             "osm_timestamp": "2026-06-07T23:59:58Z"
           }
         ]
