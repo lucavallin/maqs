@@ -45,6 +45,14 @@ struct LookaheadWalk {
         }
     }
 
+    /// A node to search for branches at, the coordinate searched around, and how far in metres the node can lie
+    /// from it.
+    private struct Place {
+        let node: Int64
+        let coordinate: CLLocationCoordinate2D
+        let slack: Double
+    }
+
     /// A piece of a segment between two neighbouring junction points, in drawing-direction metres, `from <= to`.
     private struct Stretch {
         let from: Double
@@ -114,7 +122,8 @@ struct LookaheadWalk {
     }
 
     /// Walks from `along` metres on `start` in `direction`, which may run against the segment's one-way: the walk
-    /// keeps to it straight on, past junctions met mid-way, until it leaves the segment.
+    /// keeps to it straight on, past junctions met mid-way and across a closed way's closing node, until it leaves
+    /// the segment.
     mutating func run(from start: Roads.StoredSegment, direction: TravelDirection, along: Double) throws(QueryError)
         -> Lookahead {
         var entry = Entry(stored: start, points: try junctionPoints(of: start), direction: direction,
@@ -137,7 +146,9 @@ struct LookaheadWalk {
             if nodeDistance >= distance { return finish(.reachedDistance) }
 
             let straightOn = BranchKey(entry.segment.id, entry.direction, point.along)
-            let open = try branches(at: point).filter { isOpen($0, exempt: onStart && $0.key == straightOn) }
+            let staying = Self.across(entry, at: point)
+            func stays(_ key: BranchKey) -> Bool { key == straightOn || key == staying }
+            let open = try branches(at: point).filter { isOpen($0, exempt: onStart && stays($0.key)) }
             guard var chosen = open.first else { return finish(.noContinuation(at: nodeDistance)) }
             if open.count > 1 {
                 let (choice, reason) = choose(among: open, arrivingOn: entry, over: stretch)
@@ -146,11 +157,23 @@ struct LookaheadWalk {
                     distance: nodeDistance, chosen: choice.branch,
                     alternatives: open.filter { $0.key != choice.key }.map(\.branch), reason: reason))
             }
-            // Straight on along the same segment continues its step.
+            // Straight on along the same segment continues its step; across a closing node it starts a new one, but
+            // the walk is still on the rider's segment.
             entering = chosen.key != straightOn
-            onStart = onStart && !entering
+            onStart = onStart && stays(chosen.key)
             entry = chosen
             entryDistance = nodeDistance
+        }
+    }
+
+    /// The branch that carries `entry` on across its segment's closing node, when the segment is a closed way and
+    /// `point` is that node: onto its start travelling forward, onto its end travelling backward.
+    private static func across(_ entry: Entry, at point: JunctionPoint) -> BranchKey? {
+        let segment = entry.segment
+        guard segment.startNode == segment.endNode, segment.length > 0 else { return nil }
+        switch entry.direction {
+        case .forward: return point.along == segment.length ? BranchKey(segment.id, .forward, 0) : nil
+        case .backward: return point.along == 0 ? BranchKey(segment.id, .backward, segment.length) : nil
         }
     }
 
@@ -237,61 +260,83 @@ struct LookaheadWalk {
 
     // MARK: Branches
 
-    /// Every way on from `point`, from every open file and for each of its nodes: the segments that start or end at
-    /// the node, found through `segments_rtree` around the point and travelled away from it, and, in a file with the
+    /// Every way on from `point`, from every open file: for each of its nodes, the segments that start or end at the
+    /// node, found through `segments_rtree` around the point and travelled away from it, and, in a file with the
     /// `junctions` table, the segments that pass through it (`junctions_node`), each travelled both ways from there.
     /// The segment the walk is on is one of the latter, so going straight on is a branch.
+    ///
+    /// A segment met here may hold this place as a junction point with other nodes too: a row on its end shares the
+    /// end's point, and rows at one distance share theirs. Those nodes are searched as well, until no new one turns
+    /// up, so every road at this place is found whichever of its nodes the walk arrives at. A branch that would travel
+    /// nothing (along a segment's end, or a segment of no length) is left out: the roads beyond it are found here.
     ///
     /// A branch found in several files (``BranchKey``) comes from the first. The order is by way id, `forward` first,
     /// then by where the branch is entered, the order ties are broken in.
     private func branches(at point: JunctionPoint) throws(QueryError) -> [Entry] {
-        var found: [Entry] = []
-        var seen: Set<BranchKey> = []
-        func add(_ row: Roads.Row, _ ways: [(direction: TravelDirection, along: Double)], in file: LayerFile)
+        var found: [BranchKey: Entry] = [:]
+        // The file each branch was read from, by index; a branch is read again only from an earlier file.
+        var seen: [BranchKey: Int] = [:]
+        var places = point.nodes.map { Place(node: $0, coordinate: point.coordinate, slack: point.slack) }
+        var queued = Set(point.nodes)
+        func add(_ row: Roads.Row, _ ways: [(direction: TravelDirection, along: Double)], file index: Int)
             throws(QueryError) {
-            let new = ways.filter { seen.insert(BranchKey(row.wayID, $0.direction, $0.along)).inserted }
+            let new = ways.filter { way in
+                seen[BranchKey(row.wayID, way.direction, way.along)].map { index < $0 } ?? true
+            }
             guard !new.isEmpty else { return }
-            let stored = try Roads.stored(row, in: file)
+            let stored = try Roads.stored(row, in: files[index])
             let points = try junctionPoints(of: stored)
-            found += new.map { Entry(stored: stored, points: points, direction: $0.direction, along: $0.along) }
+            for here in points where new.contains(where: { $0.along == here.along }) {
+                for node in here.nodes where queued.insert(node).inserted {
+                    places.append(Place(node: node, coordinate: here.coordinate, slack: here.slack))
+                }
+            }
+            for way in new {
+                let entry = Entry(stored: stored, points: points, direction: way.direction, along: way.along)
+                seen[entry.key] = index
+                found[entry.key] = Self.next(entry).point.along == way.along ? nil : entry
+            }
         }
 
-        let latitudeBox = Self.nodeBox + point.slack / Geodesy.metresPerDegreeLatitude
-        // Longitude degrees shrink towards the poles; the floor keeps the box finite there.
-        let cosine = max(cos(point.coordinate.latitude * .pi / 180), 0.01)
-        let longitudeBox = Self.nodeBox + point.slack / (Geodesy.metresPerDegreeLongitudeAtEquator * cosine)
-        for file in files {
-            for node in point.nodes {
+        var cursor = 0
+        while cursor < places.count {
+            let place = places[cursor]
+            cursor += 1
+            let latitudeBox = Self.nodeBox + place.slack / Geodesy.metresPerDegreeLatitude
+            // Longitude degrees shrink towards the poles; the floor keeps the box finite there.
+            let cosine = max(cos(place.coordinate.latitude * .pi / 180), 0.01)
+            let longitudeBox = Self.nodeBox + place.slack / (Geodesy.metresPerDegreeLongitudeAtEquator * cosine)
+            for (index, file) in files.enumerated() {
                 let ends = try file.connection.prepare("\(Roads.select(file)) JOIN segments_rtree r ON r.id = s.id "
                     + "WHERE r.min_lon <= ?1 AND r.max_lon >= ?2 AND r.min_lat <= ?3 AND r.max_lat >= ?4 "
                     + "AND (s.start_node = ?5 OR s.end_node = ?5) ORDER BY s.id")
                 defer { ends.reset() }
-                try ends.bind(point.coordinate.longitude + longitudeBox, at: 1)
-                try ends.bind(point.coordinate.longitude - longitudeBox, at: 2)
-                try ends.bind(point.coordinate.latitude + latitudeBox, at: 3)
-                try ends.bind(point.coordinate.latitude - latitudeBox, at: 4)
-                try ends.bind(node, at: 5)
+                try ends.bind(place.coordinate.longitude + longitudeBox, at: 1)
+                try ends.bind(place.coordinate.longitude - longitudeBox, at: 2)
+                try ends.bind(place.coordinate.latitude + latitudeBox, at: 3)
+                try ends.bind(place.coordinate.latitude - latitudeBox, at: 4)
+                try ends.bind(place.node, at: 5)
                 while try ends.step() {
                     let row = Roads.row(ends)
                     var ways: [(direction: TravelDirection, along: Double)] = []
-                    if row.startNode == node { ways.append((.forward, 0)) }
-                    if row.endNode == node { ways.append((.backward, row.length)) }
-                    try add(row, ways, in: file)
+                    if row.startNode == place.node { ways.append((.forward, 0)) }
+                    if row.endNode == place.node { ways.append((.backward, row.length)) }
+                    try add(row, ways, file: index)
                 }
 
                 guard file.hasJunctions else { continue }
                 let through = try file.connection.prepare("\(Roads.select(file, adding: "j.along_m")) "
                     + "JOIN junctions j ON j.segment_id = s.id WHERE j.node = ?1 ORDER BY s.id, j.along_m")
                 defer { through.reset() }
-                try through.bind(node, at: 1)
+                try through.bind(place.node, at: 1)
                 while try through.step() {
                     let row = Roads.row(through)
                     let along = try Self.rowAlong(through.double(at: 14), length: row.length, row: row.rowID, in: file)
-                    try add(row, [(.forward, along), (.backward, along)], in: file)
+                    try add(row, [(.forward, along), (.backward, along)], file: index)
                 }
             }
         }
-        return found.sorted { a, b in
+        return found.values.sorted { a, b in
             if a.segment.id != b.segment.id { return a.segment.id < b.segment.id }
             if a.direction != b.direction { return a.direction == .forward }
             return a.along < b.along

@@ -785,6 +785,64 @@ import Testing
             alternatives: [RoadBranch(segment: 300, direction: .forward)], reason: .smallestTurn)])
     }
 
+    @Test("a stem that meets a row on the through way's end turns onto the way, never along its empty end",
+          arguments: [false, true])
+    func stemAtRowOnTheEnd(atStart: Bool) async throws {
+        let directory = try TemporaryDirectory()
+        // The merge drops node 3, 3.6 m from the dead end at node 2, and its row falls on 100's end, or on its start
+        // when mirrored. Heading north, the stem's only way on is along 100, away from node 2.
+        let network = atStart
+            ? RoadNetwork([Way(100, [(2, 3, 2), (3, 0, 0), (1, 100, 0)]), Way(200, [(4, 0, -100), (3, 0, 0)])])
+            : RoadNetwork([Way(100, [(1, 0, 0), (3, 100, 0), (2, 97, 2)]), Way(200, [(4, 100, -100), (3, 100, 0)])])
+        let roads = try roads(network, junctions: .derived, in: directory)
+        let way = try await length(of: 100, in: roads)
+        let stem = try await length(of: 200, in: roads)
+        #expect(try along(of: 3, on: 100, in: network) == [atStart ? 0 : way])
+        let result = try await lookahead(roads, on: 200, .forward, at: 0)
+        #expect(result.forks.isEmpty)
+        #expect(result.path == [
+            PathStep(segment: 200, direction: .forward, along: 0, distance: 0),
+            PathStep(segment: 100, direction: atStart ? .forward : .backward, along: atStart ? 0 : way, distance: stem),
+        ])
+        let end = try #require(stop(result))
+        #expect(abs(end - (stem + way)) < 1e-9)
+    }
+
+    @Test("arriving at a way's end node also finds the side road whose row lies on that end")
+    func endNodeFindsRowOnTheEnd() async throws {
+        let directory = try TemporaryDirectory()
+        // As in the test above, node 3's row lies on 100's end at node 2. Way 300 arrives at node 2 from the north;
+        // way 200 leaves node 3 south-east, the smaller turn.
+        let roads = try roads(RoadNetwork([
+            Way(100, [(1, 0, 0), (3, 100, 0), (2, 97, 2)]),
+            Way(200, [(3, 100, 0), (4, 200, -60)]),
+            Way(300, [(5, 97, 100), (2, 97, 2)]),
+        ]), junctions: .derived, in: directory)
+        let result = try await lookahead(roads, on: 300, .forward, at: 0)
+        #expect(result.forks.map(\.chosen) == [RoadBranch(segment: 200, direction: .forward)])
+        #expect(result.forks.map(\.alternatives) == [[RoadBranch(segment: 100, direction: .backward)]])
+    }
+
+    @Test("a rider against a one-way ring keeps to it across its closing node until the walk turns off")
+    func againstRingAcrossClosingNode() async throws {
+        let directory = try TemporaryDirectory()
+        let network = Self.roundabout()
+        let roads = try roads(network, junctions: .derived, in: directory)
+        let ring = try await length(of: 300, in: roads)
+        // Backward from 30 m: past the SP2 exit, across the closing node, past the entry road, and off at the SS1
+        // exit, the only way on once the ring ahead is the rider's own stretch.
+        let result = try await lookahead(roads, on: 300, .backward, at: 30, distance: 10_000)
+        try #require(result.path.map(\.segment) == [300, 300, 400])
+        #expect(result.path.map(\.direction) == [.backward, .backward, .forward])
+        #expect(result.path[1].along == ring)
+        #expect(result.forks.map(\.chosen) == [
+            RoadBranch(segment: 300, direction: .backward), RoadBranch(segment: 300, direction: .backward),
+        ])
+        #expect(result.forks.map(\.alternatives) == [
+            [RoadBranch(segment: 200, direction: .forward)], [RoadBranch(segment: 100, direction: .backward)],
+        ])
+    }
+
     @Test("junction rows at one distance share a junction point")
     func rowsAtOneDistance() async throws {
         let directory = try TemporaryDirectory()
