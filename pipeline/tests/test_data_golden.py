@@ -9,6 +9,7 @@ from maqs.data_golden import build_golden, main
 from maqs.geometry import decode_polyline, line_length_m
 from maqs.osm import extract
 from maqs.steps.base import run_step
+from tests.golden_compare import golden_mismatch
 from tests.step_fixtures import stub_tags_filter
 from tests.test_steps_curvature import junction_network
 
@@ -81,4 +82,4 @@ def test_the_committed_data_golden_matches_the_committed_fixture() -> None:
     # A curvature change without a run of scripts/update-data-golden.sh fails here, instead of
     # leaving the Swift tests comparing against stale values.
     committed = json.loads((FIXTURES / "data-golden.json").read_text(encoding="utf-8"))
-    assert build_golden(FIXTURES / "test-curvature.v1.sqlite") == committed
+    assert golden_mismatch(build_golden(FIXTURES / "test-curvature.v1.sqlite"), committed) is None

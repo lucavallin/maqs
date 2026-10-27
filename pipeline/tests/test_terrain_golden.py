@@ -7,6 +7,7 @@ import pytest
 from maqs.osm.terrain_sampler import TerrainSampler
 from maqs.pmtiles_reader import PMTilesArchive, zxy_to_tile_id
 from maqs.terrain_golden import build_golden, main
+from tests.golden_compare import golden_mismatch
 from tests.helpers import write_pmtiles
 from tests.test_terrain_sampler import terrarium_tile
 
@@ -70,4 +71,4 @@ def test_the_committed_golden_file_matches_the_committed_fixture() -> None:
     # A sampler or reader change without a run of scripts/update-terrain-golden.sh fails here,
     # instead of leaving the Swift tests comparing against stale values.
     committed = json.loads((FIXTURES / "terrain-golden.json").read_text(encoding="utf-8"))
-    assert build_golden(FIXTURES / "test-terrain.v1.pmtiles") == committed
+    assert golden_mismatch(build_golden(FIXTURES / "test-terrain.v1.pmtiles"), committed) is None
