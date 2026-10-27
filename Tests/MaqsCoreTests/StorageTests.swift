@@ -189,6 +189,9 @@ import MaqsTestSupport
         #expect(!FileManager.default.fileExists(atPath: source.path(percentEncoded: false)))
     }
 
+    // On the iOS Simulator the protection class read back from a file is not the one the code set (observed on the
+    // simulator leg, 2026-10-27), so both tests, which read it back, run on macOS only.
+    #if os(macOS)
     @Test("an installed file is readable after first unlock")
     func installedFileProtection() throws {
         let tmp = try TemporaryDirectory()
@@ -215,6 +218,7 @@ import MaqsTestSupport
         try store.write(PackRecord(id: id, release: "data-ci", files: [:]))
         #expect(try Self.protection(of: store.layout.recordURL(id)) == .completeUntilFirstUserAuthentication)
     }
+    #endif
 
     private static func setProtection(_ type: FileProtectionType, at url: URL) throws {
         try FileManager.default.setAttributes([.protectionKey: type], ofItemAtPath: url.path(percentEncoded: false))

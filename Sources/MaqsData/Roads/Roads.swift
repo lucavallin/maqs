@@ -9,6 +9,11 @@ import Foundation
 public actor Roads {
     private var files: [LayerFile]
 
+    /// The region and segment ``cornersAhead(from:distance:)`` starts from for `segment`; for tests of the lookup.
+    func startForTesting(of segment: RoadSegment) throws(QueryError) -> (region: String, segment: RoadSegment)? {
+        try Self.start(of: segment, in: files).map { ($0.file.region, $0.segment) }
+    }
+
     /// Opens every file or none.
     ///
     /// - Throws: ``QueryError`` naming the first file that cannot be opened, is not a curvature file, is damaged, or
@@ -133,7 +138,7 @@ public actor Roads {
             throw .invalidInput("distance must be above 0 and at most 10000 metres")
         }
         guard position.along.isFinite else { throw .invalidInput("along must be a finite number") }
-        guard let start = try Self.stored(position.segment.id, in: files) else {
+        guard let start = try Self.start(of: position.segment, in: files) else {
             throw .unknownSegment(position.segment.id)
         }
         var walk = LookaheadWalk(files: files, distance: distance)
@@ -192,6 +197,37 @@ public actor Roads {
             return try stored(row(statement), in: file)
         }
         return nil
+    }
+
+    /// The stored segment a caller's `segment` stands for, found through the R*Tree on the bounds of its geometry and
+    /// filtered by way id, which beats the full scan of ``stored(_:in:)`` on a large file (`osm_way_id` has no index
+    /// and the files are immutable). The first file with a hit wins. When no file answers the probe, for example
+    /// because the caller built the segment with a geometry the files do not hold, it falls back to the scan.
+    static func start(of segment: RoadSegment, in files: [LayerFile]) throws(QueryError) -> StoredSegment? {
+        if let first = segment.geometry.first {
+            var minLon = first.longitude, maxLon = first.longitude
+            var minLat = first.latitude, maxLat = first.latitude
+            for point in segment.geometry {
+                minLon = min(minLon, point.longitude)
+                maxLon = max(maxLon, point.longitude)
+                minLat = min(minLat, point.latitude)
+                maxLat = max(maxLat, point.latitude)
+            }
+            for file in files {
+                let statement = try file.connection.prepare("\(select(file)) JOIN segments_rtree r ON r.id = s.id "
+                    + "WHERE r.min_lon <= ?1 AND r.max_lon >= ?2 AND r.min_lat <= ?3 AND r.max_lat >= ?4 "
+                    + "AND s.osm_way_id = ?5 ORDER BY s.id LIMIT 1")
+                defer { statement.reset() }
+                try statement.bind(maxLon + rtreeMargin, at: 1)
+                try statement.bind(minLon - rtreeMargin, at: 2)
+                try statement.bind(maxLat + rtreeMargin, at: 3)
+                try statement.bind(minLat - rtreeMargin, at: 4)
+                try statement.bind(segment.id, at: 5)
+                guard try statement.step() else { continue }
+                return try stored(row(statement), in: file)
+            }
+        }
+        return try stored(segment.id, in: files)
     }
 
     /// `row` with its geometry decoded and its corners read.

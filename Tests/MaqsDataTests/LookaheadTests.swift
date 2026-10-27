@@ -428,6 +428,36 @@ import Testing
         #expect(try await lookahead(roads, on: 100, .backward, at: total + 5).end == .noContinuation(at: total))
     }
 
+    @Test("the start segment is the first file's copy when two files hold the way")
+    func startFromFirstFile() async throws {
+        let directory = try TemporaryDirectory()
+        let line: [RoadNetwork.Node] = [(1, 0, 0), (2, 0, 100)]
+        let first = directory.url.appending(path: "a.sqlite")
+        let second = directory.url.appending(path: "b.sqlite")
+        try RoadNetwork([Way(100, line, ref: "A")]).write(to: first, region: "a")
+        try RoadNetwork([Way(100, line, ref: "B")]).write(to: second, region: "b")
+        let roads = try Roads(files: [first, second])
+        let segment = try #require(await roads.segment(100))
+        let start = try #require(try await roads.startForTesting(of: segment))
+        #expect(start.region == "a")
+        #expect(start.segment.ref == "A")
+    }
+
+    @Test("the start segment is still found by a scan when the passed geometry is off")
+    func startByScan() async throws {
+        let directory = try TemporaryDirectory()
+        let roads = try roads(RoadNetwork([Way(100, [(1, 0, 0), (2, 0, 100)])]), in: directory)
+        let real = try #require(await roads.segment(100))
+        let far = [CLLocationCoordinate2D(latitude: 10, longitude: 10), CLLocationCoordinate2D(latitude: 10.1, longitude: 10)]
+        let made = RoadSegment(
+            id: real.id, name: nil, ref: nil, highway: real.highway, surface: nil, junction: nil, maxspeed: nil,
+            oneway: real.oneway, length: real.length, score: 0, startNode: 1, endNode: 2, geometry: far, corners: [])
+        let start = try #require(try await roads.startForTesting(of: made))
+        #expect(start.segment.geometry.count == real.geometry.count)
+        let result = try await roads.cornersAhead(from: RoadPosition(segment: made, direction: .forward, along: 0))
+        #expect(result.path.first?.segment == 100)
+    }
+
     @Test("an out-of-range distance or a non-finite along is invalidInput before any file is read",
           arguments: [
               (0.0, 0.0, "distance"), (10_001.0, 0.0, "distance"), (.nan, 0.0, "distance"), (-1.0, 0.0, "distance"),

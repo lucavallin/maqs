@@ -53,7 +53,10 @@ public actor Places {
             try Self.bind(box, kinds: kinds, to: statement)
             while try statement.step() {
                 let place = Self.place(statement, region: file.region)
-                guard let result = Self.result(for: place, in: cone), seen.insert(place.id).inserted else { continue }
+                guard let result = Self.result(for: place, in: cone) else { continue }
+                // The pipeline writes a place once per file; only a second file repeats one, and hashing every id of
+                // a 30,000-place cone costs about 7 ms in a debug build.
+                if files.count > 1, !seen.insert(place.id).inserted { continue }
                 found.append((result, index))
             }
         }
@@ -64,12 +67,17 @@ public actor Places {
             }
             found.removeLast(found.count - limit)
         }
-        found.sort { a, b in
-            if a.result.distance != b.result.distance { return a.result.distance < b.result.distance }
+        // Sorted by plain-number keys, then mapped back: comparing whole results copies each place's strings and
+        // names on every comparison, which dominated a 30,000-place cone.
+        let keys = found.enumerated().map { position, entry in
+            (distance: entry.result.distance, fileIndex: entry.fileIndex, featureID: entry.result.place.featureID,
+             position: position)
+        }.sorted { a, b in
+            if a.distance != b.distance { return a.distance < b.distance }
             if a.fileIndex != b.fileIndex { return a.fileIndex < b.fileIndex }
-            return a.result.place.featureID < b.result.place.featureID
+            return a.featureID < b.featureID
         }
-        return found.map(\.result)
+        return keys.map { found[$0.position].result }
     }
 
     /// The places whose point lies in `area` (edges included), highest `rank_score` first.
