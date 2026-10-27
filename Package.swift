@@ -8,12 +8,17 @@ let package = Package(
     platforms: [.iOS(.v18), .macOS(.v15)],
     products: [
         .library(name: "MaqsCore", targets: ["MaqsCore"]),
+        .library(name: "MaqsData", targets: ["MaqsData"]),
         .library(name: "MaqsTerrain", targets: ["MaqsTerrain"]),
     ],
     targets: [
         .target(
             name: "MaqsCore",
             resources: [.copy("Resources/sources.json")],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MaqsData",
             swiftSettings: warningsAsErrors
         ),
         .target(
@@ -30,6 +35,11 @@ let package = Package(
         .testTarget(
             name: "MaqsCoreTests",
             dependencies: ["MaqsCore", "MaqsTestSupport"],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MaqsDataTests",
+            dependencies: ["MaqsData", "MaqsTestSupport"],
             swiftSettings: warningsAsErrors
         ),
         .testTarget(
