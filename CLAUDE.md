@@ -111,7 +111,7 @@ swift test
 swift test --filter MaqsCoreTests                         # one target (or MaqsTerrainTests, MaqsDataTests)
 swift test --filter ManifestTests                         # one suite, by its name alone (MaqsCoreTests/ManifestTests matches nothing)
 swift test --filter ManifestTests/decodesFixture          # one test: suite/function
-scripts/update-fixtures.sh                                # rebuild the test region and base packs, copy the test region's data files and the data-ci manifest into Tests/MaqsTestSupport/Fixtures/ and config/sources.json into the package, rewrite terrain-golden.json; fails over 8 MB
+scripts/update-fixtures.sh                                # rebuild the test region and base packs, copy the test region's data files and the data-ci manifest into Tests/MaqsTestSupport/Fixtures/ and config/sources.json into the package, rewrite terrain-golden.json and data-golden.json (it runs both golden scripts below); fails over 8 MB
 scripts/update-data-golden.sh                             # rewrite only Fixtures/test/data-golden.json from the committed fixtures with the pipeline's polyline decoder and corner scoring (needs uv)
 scripts/update-terrain-golden.sh                          # rewrite only Fixtures/test/terrain-golden.json from the committed terrain fixture with the pipeline's reader and sampler (needs uv)
 

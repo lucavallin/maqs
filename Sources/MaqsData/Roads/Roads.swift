@@ -119,7 +119,8 @@ public actor Roads {
     ///
     /// The walk never enters a segment against its effective one-way (``RoadSegment/oneway``), except that it keeps
     /// to the rider's own segment in the direction given, straight on past junctions and across a ring's closing
-    /// node, until it turns onto another road. It never travels the stretch between two junctions twice, so a loop
+    /// node. The exemption ends at the first junction where the walk takes any other branch: another road, or
+    /// another pass of the same way. It never travels the stretch between two junctions twice, so a loop
     /// ends the walk.
     ///
     /// In a file without the `junctions` table (built before it) the walk knows segment ends only: it passes side

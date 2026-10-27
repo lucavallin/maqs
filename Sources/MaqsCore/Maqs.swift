@@ -154,7 +154,9 @@ public actor Maqs {
     ///
     /// After an update the previous files of the changed layers are removed, so a URL from an earlier
     /// ``InstalledPack`` that was not opened yet may no longer exist: read ``installedPack(_:)`` again after this
-    /// returns. A file that is already open stays readable until it is closed.
+    /// returns. A PMTiles archive that is already open stays readable until it is closed. A SQLite file that
+    /// `MaqsData` has open does not: Apple's libsqlite3 fails reads on a file that was replaced or removed
+    /// (`SQLITE_IOERR_VNODE`), so pass the new URLs to `setFiles(_:)` after every install, update or removal.
     ///
     /// - Throws: ``MaqsError/download(_:)``: `noCatalog` before any catalog is loaded; `notInCatalog` when the catalog
     ///   does not list the pack, the pack offers none of the configured layers, or its id is not valid (nothing is
