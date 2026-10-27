@@ -121,6 +121,25 @@ import Testing
         #expect(result.forks.map(\.reason) == [.smallestTurn])
     }
 
+    @Test("the turn is measured on the road the walk arrives on, also when it arrives travelling backward")
+    func forkArrivingBackward() async throws {
+        let directory = try TemporaryDirectory()
+        // The stem is drawn west from the fork, so the rider travels it backward and arrives heading east. Way 203
+        // is about 6° off east. A degenerate incoming bearing of 0° would pick 201 (about 11° east of north), one of
+        // 180° would pick 202 (about 11° east of south); the highest id is the right one, so a tie cannot help.
+        let roads = try roads(RoadNetwork([
+            Way(100, [(2, 0, 0), (1, -100, 0)]),
+            Way(201, [(2, 0, 0), (3, 20, 100)]),
+            Way(202, [(2, 0, 0), (4, 20, -100)]),
+            Way(203, [(2, 0, 0), (5, 100, 10)]),
+        ]), in: directory)
+        let stem = try await length(of: 100, in: roads)
+        let result = try await lookahead(roads, on: 100, .backward, at: stem)
+        #expect(result.forks.map(\.chosen) == [RoadBranch(segment: 203, direction: .forward)])
+        #expect(result.forks.map(\.reason) == [.smallestTurn])
+        #expect(result.forks.map(\.distance) == [stem])
+    }
+
     @Test("the carried ref crosses an unnamed link")
     func carriedRef() async throws {
         let directory = try TemporaryDirectory()
@@ -294,6 +313,72 @@ import Testing
         #expect(result.forks.count == 1)
         #expect(result.corners.map(\.segment) == [100, 201])
         #expect(result.corners.map(\.afterFork) == [false, true])
+    }
+
+    @Test("corners on later segments count from the position, forward and backward, up to the reach")
+    func laterSegments() async throws {
+        let directory = try TemporaryDirectory()
+        // One bend per way, about 102 m along it; way 300 is drawn against the chain, so the walk enters it backward.
+        let roads = try roads(RoadNetwork([
+            Way(100, [(1, 0, 0), (11, 100, 20), (2, 200, 0)]),
+            Way(200, [(2, 200, 0), (21, 300, -20), (3, 400, 0)]),
+            Way(300, [(4, 600, 0), (31, 500, 20), (3, 400, 0)]),
+            Way(400, [(4, 600, 0), (41, 700, -20), (5, 800, 0)]),
+        ]), in: directory)
+        let s100 = try #require(await roads.segment(100))
+        let s200 = try #require(await roads.segment(200))
+        let s300 = try #require(await roads.segment(300))
+        let s400 = try #require(await roads.segment(400))
+        #expect([s100, s200, s300, s400].map(\.corners.count) == [1, 1, 1, 1])
+
+        // The reach of 600 m leaves out the bend on the last way of each walk.
+        let ahead = try await lookahead(roads, on: 100, .forward, at: 50, distance: 600)
+        expectWalk(ahead, over: [(s100, .forward, 50), (s200, .forward, 0), (s300, .backward, s300.length),
+                                 (s400, .forward, 0)], reach: 600)
+        #expect(ahead.corners.map(\.segment) == [100, 200, 300])
+        #expect(ahead.end == .reachedDistance)
+
+        let back = try await lookahead(roads, on: 400, .backward, at: s400.length - 50, distance: 600)
+        expectWalk(back, over: [(s400, .backward, s400.length - 50), (s300, .forward, 0),
+                                (s200, .backward, s200.length), (s100, .backward, s100.length)], reach: 600)
+        #expect(back.corners.map(\.segment) == [400, 300, 200])
+        #expect(back.end == .reachedDistance)
+    }
+
+    /// One leg of an expected walk: the segment, the direction of travel, and where it is entered.
+    private typealias Leg = (segment: RoadSegment, direction: TravelDirection, along: Double)
+
+    /// Checks `result` against the walk over `legs`, worked out from the `corners` rows alone: each leg starts where
+    /// the one before it ended, and a corner `d` metres along its segment lies `offset + d − along` ahead forward, and
+    /// `offset + along − d` backward with entry and exit swapped and its turn mirrored. Distances within 1e-9 m.
+    private func expectWalk(
+        _ result: Lookahead, over legs: [Leg], reach: Double, sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        var offset = 0.0
+        var expected: [(segment: Int64, turn: Turn, entry: Double, apex: Double, exit: Double)] = []
+        #expect(result.path.count == legs.count, sourceLocation: sourceLocation)
+        for (step, leg) in zip(result.path, legs) {
+            #expect(step.segment == leg.segment.id && step.direction == leg.direction && step.along == leg.along,
+                    sourceLocation: sourceLocation)
+            #expect(abs(step.distance - offset) < 1e-9, sourceLocation: sourceLocation)
+            let forward = leg.direction == .forward
+            func ahead(_ along: Double) -> Double { forward ? offset + along - leg.along : offset + leg.along - along }
+            let ordered: [Corner] = forward ? leg.segment.corners : leg.segment.corners.reversed()
+            for corner in ordered where ahead(corner.apexDistance) >= offset && ahead(corner.apexDistance) <= reach {
+                expected.append((
+                    leg.segment.id, forward ? corner.turn : (corner.turn == .left ? .right : .left),
+                    ahead(forward ? corner.entry : corner.exit), ahead(corner.apexDistance),
+                    ahead(forward ? corner.exit : corner.entry)))
+            }
+            offset += abs((forward ? leg.segment.length : 0) - leg.along)
+        }
+        #expect(result.corners.count == expected.count, sourceLocation: sourceLocation)
+        for (corner, want) in zip(result.corners, expected) {
+            #expect(corner.segment == want.segment && corner.turn == want.turn, sourceLocation: sourceLocation)
+            #expect(abs(corner.entry - want.entry) < 1e-9, "entry on \(want.segment)", sourceLocation: sourceLocation)
+            #expect(abs(corner.apex - want.apex) < 1e-9, "apex on \(want.segment)", sourceLocation: sourceLocation)
+            #expect(abs(corner.exit - want.exit) < 1e-9, "exit on \(want.segment)", sourceLocation: sourceLocation)
+        }
     }
 
     // MARK: Positions and files
