@@ -22,6 +22,7 @@ cp "$root"/dist/test/*.pmtiles "$root"/dist/test/*.sqlite "$fixtures/test/"
 cp "$root/dist/manifest.json" "$fixtures/manifest.json"
 cp "$root/config/sources.json" "$root/Sources/MaqsCore/Resources/sources.json"
 "$root/scripts/update-terrain-golden.sh"
+"$root/scripts/update-data-golden.sh"
 
 size_kb=$(du -sk "$fixtures" | cut -f1)
 if [ "$size_kb" -gt "$cap_kb" ]; then
