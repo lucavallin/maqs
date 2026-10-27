@@ -55,9 +55,11 @@ def stub_tippecanoe(
     def fake_run(argv: list[Any], **kw: Any) -> subprocess.CompletedProcess[str]:
         argv = [str(a) for a in argv]
         calls["argv"] = argv
-        lines = Path(argv[-1]).read_text().splitlines()
+        calls["cwd"] = kw.get("cwd")
+        folder = kw.get("cwd") or Path()
+        lines = (folder / argv[-1]).read_text().splitlines()
         calls["features"] = [json.loads(line) for line in lines if line.strip()]
-        out = Path(argv[argv.index("-o") + 1])
+        out = folder / argv[argv.index("-o") + 1]
         write_pmtiles(out, tile_type=1, min_zoom=min_zoom, max_zoom=max_zoom)
         return subprocess.CompletedProcess(argv, 0, "", "")
 

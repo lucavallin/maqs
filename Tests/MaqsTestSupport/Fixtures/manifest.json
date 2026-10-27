@@ -1,6 +1,6 @@
 {
   "manifest_version": 1,
-  "created_at": "2026-10-27T09:57:28Z",
+  "created_at": "2026-10-27T17:56:42Z",
   "release": "data-ci",
   "shortbread_version": "1.0",
   "attribution": [
@@ -83,8 +83,8 @@
             "layer_schema_version": 1,
             "file": "test-trails.v1.pmtiles",
             "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-trails.v1.pmtiles",
-            "bytes": 190889,
-            "sha256": "93fda976f5f651d144fb86bf2585036a00ecab021cd5b67ac5492beb3c7e74af",
+            "bytes": 190846,
+            "sha256": "13cc27ebe013bebb9c3c1fa989da02e14fc76a174039216e89d9f15188c57379",
             "data_date": "2026-10-27",
             "osm_timestamp": null,
             "role": "overlay"
@@ -104,8 +104,8 @@
             "layer_schema_version": 1,
             "file": "test-places.v1.pmtiles",
             "url": "https://github.com/lucavallin/maqs/releases/download/data-ci/test-places.v1.pmtiles",
-            "bytes": 7082,
-            "sha256": "38af0756dd44304682742ab735010d269573f8a3927038d1e6c016ee7b6979bb",
+            "bytes": 7037,
+            "sha256": "c9c0eb6fd92176fbfa5337d084371298903d63faf6206b4e6edbe2e261cc3018",
             "data_date": "2026-10-27",
             "osm_timestamp": null,
             "role": "overlay"
