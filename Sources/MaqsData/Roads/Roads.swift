@@ -99,20 +99,26 @@ public actor Roads {
 
     /// The corners coming up within `distance` metres of a rider the app has matched to a road.
     ///
-    /// The walk follows the road from the position across segment ends, through every open file. Where several
-    /// branches lead on it guesses. It keeps the branches with the path's last road number (`ref`), then its last
-    /// name, then its last `highway` class, each step only when it leaves a branch; tags are compared whole, trimmed,
-    /// with whitespace collapsed and case ignored, and a branch without the tag never matches. Among what is left it
-    /// takes the smallest turn, measured over 20 m either side of the junction (or the whole stretch, when shorter);
-    /// ties go to the lower way id, then `forward`. Each guess is a ``Fork``, and the corners past it are marked
-    /// ``UpcomingCorner/afterFork``; ask again on every position update and a wrong guess is corrected once the rider
-    /// is through the junction.
+    /// The walk follows the road from the position through every open file, from junction to junction: the ends of
+    /// segments and, in a file with the curvature layer's `junctions` table, the nodes where roads meet a segment
+    /// mid-way. So a side road is a fork on the road it leaves, the stem of a T-junction turns onto the through road,
+    /// and a roundabout drawn as one ring is walked round across its closing node.
     ///
-    /// The walk never enters a segment against its effective one-way (``RoadSegment/oneway``), except the rider's
-    /// own segment in the direction given, and never travels a stretch twice, so a loop ends the walk. Roads are
-    /// followed from segment end to segment end: a side road that meets the segment mid-way is passed without a
-    /// fork, and where the road ends in the middle of another way the walk stops with
-    /// ``Lookahead/End/noContinuation(at:)``.
+    /// Where several branches lead on it guesses. It keeps the branches with the path's last road number (`ref`),
+    /// then its last name, then its last `highway` class, each step only when it leaves a branch; tags are compared
+    /// whole, trimmed, with whitespace collapsed and case ignored, and a branch without the tag never matches. Among
+    /// what is left it takes the smallest turn, measured over 20 m either side of the junction (or the whole
+    /// stretch, when shorter); ties go to the lower way id, then `forward`. Each guess is a ``Fork``, and the corners
+    /// past it are marked ``UpcomingCorner/afterFork``; ask again on every position update and a wrong guess is
+    /// corrected once the rider is through the junction.
+    ///
+    /// The walk never enters a segment against its effective one-way (``RoadSegment/oneway``), except that it keeps
+    /// to the rider's own segment in the direction given, straight on past junctions, until it leaves it. It never
+    /// travels the stretch between two junctions twice, so a loop ends the walk.
+    ///
+    /// In a file without the `junctions` table (built before it) the walk knows segment ends only: it passes side
+    /// roads that meet the segment mid-way without a fork, and where the road ends in the middle of another way it
+    /// stops with ``Lookahead/End/noContinuation(at:)``.
     ///
     /// - Parameters:
     ///   - position: The matched position. Its segment is read again from the open files by its id; `along` is
@@ -192,11 +198,13 @@ public actor Roads {
         StoredSegment(segment: try segment(row, geometry: decode(row, in: file), in: file), rowID: row.rowID, file: file)
     }
 
-    /// The columns of ``Row``, from `segments s`; `junction` is NULL in a file without the column.
-    static func select(_ file: LayerFile) -> String {
+    /// The columns of ``Row``, from `segments s`, then `extra` as column 14 when given; `junction` is NULL in a file
+    /// without the column.
+    static func select(_ file: LayerFile, adding extra: String? = nil) -> String {
         let junction = file.hasJunctionColumn ? "s.junction" : "NULL"
+        let tail = extra.map { ", \($0)" } ?? ""
         return "SELECT s.id, s.osm_way_id, s.name, s.ref, s.highway, s.surface, \(junction), s.maxspeed, s.oneway, "
-            + "s.length_m, s.score, s.start_node, s.end_node, s.geometry FROM segments s"
+            + "s.length_m, s.score, s.start_node, s.end_node, s.geometry\(tail) FROM segments s"
     }
 
     static func row(_ statement: Statement) -> Row {
