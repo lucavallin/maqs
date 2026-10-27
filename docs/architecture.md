@@ -95,13 +95,13 @@ Nothing is uploaded until steps 1–3 pass, and when a leg fails, `release` does
 
 ## Swift package
 
-The package `Maqs` is Swift 6 (tools version 6.2) for iOS 18 and macOS 15; `MaqsUI` will be iOS only, because MapLibre's binary is ([ADR 0003](decisions.md)). Every target treats warnings as errors through `.treatAllWarnings(as: .error)`, with no `unsafeFlags`, so the package stays usable as a dependency. The decisions and the facts verified for this section are in [ADR 0014](decisions.md) for `MaqsCore` and [ADR 0015](decisions.md) for `MaqsTerrain`.
+The package `Maqs` is Swift 6 (tools version 6.2) for iOS 18 and macOS 15; `MaqsUI` will be iOS only, because MapLibre's binary is ([ADR 0003](decisions.md)). Every target treats warnings as errors through `.treatAllWarnings(as: .error)`, with no `unsafeFlags`, so the package stays usable as a dependency. The decisions and the facts verified for this section are in [ADR 0014](decisions.md) for `MaqsCore`, [ADR 0015](decisions.md) for `MaqsTerrain` and [ADR 0016](decisions.md) for `MaqsData`.
 
 | Product | State | Imports |
 |---|---|---|
 | `MaqsCore` | available | system frameworks only: Foundation, CryptoKit, Observation, Synchronization, os |
 | `MaqsTerrain` | available | system frameworks only: Foundation, CoreLocation, CoreGraphics, ImageIO, Compression, Synchronization, os |
-| `MaqsData` | planned (sub-project 3) | SQLite3 and system frameworks |
+| `MaqsData` | available | system frameworks only: Foundation, SQLite3, CoreLocation, os |
 | `MaqsUI` | planned (sub-project 4), iOS only | MapLibre Native, the one target that imports it |
 
 `MaqsTerrain` and `MaqsData` import nothing from `MaqsCore`: the app hands them the file URLs of an installed pack. For online terrain the app also builds an `OnlineTerrainSource`, `MaqsTerrain`'s own type, from `MaqsCore`'s `TileSource` ([Terrain](#terrain)). Whether `MaqsUI` depends on `MaqsCore`, and how it receives the online provider values, is open and decided in its sub-project. An app that needs only elevation links `MaqsTerrain` alone and never pulls in MapLibre.
@@ -126,7 +126,7 @@ notInstalled → queued → downloading → verifying → installed | failed
 
 A pack is `queued` only while another pack's install runs. `cancelInstall(_:)` returns it to `installed` or `notInstalled`, whichever it was, and `failed` keeps whatever was installed before. An `install` after `cancelInstall` does not join the cancelled install: it is registered at once, so a second `cancelInstall` or a `remove` reaches it, and it takes its place in the line once the cancelled one has ended.
 
-`install(_:)` runs one pack at a time, in call order. It fetches every file of each configured layer whose set of SHA-256s differs from the installed record, and nothing for a layer whose set matches. It downloads at most two files at once, checks each file's size and then its SHA-256, moves the files into content-addressed directories with `rename(2)` and writes `pack.json` last. Readers trust only the files `pack.json` names, so a crash leaves the old pack or the new one, never a mix; the sweep in `Maqs.init` removes what an interrupted install left behind. Storage, under `Application Support/Maqs/`, excluded from backup:
+`install(_:)` runs one pack at a time, in call order. It fetches every file of each configured layer whose set of SHA-256s differs from the installed record, and nothing for a layer whose set matches. It downloads at most two files at once, checks each file's size and then its SHA-256, marks each verified file Protected Until First User Authentication, moves the files into content-addressed directories with `rename(2)` and writes `pack.json` last, also in that class. Readers trust only the files `pack.json` names, so a crash leaves the old pack or the new one, never a mix; the sweep in `Maqs.init` removes what an interrupted install left behind. Storage, under `Application Support/Maqs/`, excluded from backup:
 
 ```
 manifest.json  manifest.meta.json             # cached manifest; its ETag and fetch date
@@ -139,7 +139,7 @@ downloads/<sha256>-<file>.resume              # resume data
 
 **Background downloads.** On iOS the app sets `backgroundSessionIdentifier` and forwards `application(_:handleEventsForBackgroundURLSession:completionHandler:)` to `Maqs.handleEventsForBackgroundURLSession(identifier:completionHandler:)`. The package calls the handler on the main thread once the session has delivered its events. A download goes on while the app is suspended or not running, but the package does not remember which packs the user asked for: after a relaunch the app calls `install(_:)` again for them, and that call joins a transfer still running or reuses a finished file after a size and hash check, instead of downloading it again. Without an identifier (macOS, tests) the session is a foreground one and downloads last as long as the process. A process creates one `Maqs`.
 
-**Reading installed files.** An update deletes the files it replaced at once. Read `installedPack(_:)` again after `install` returns rather than keeping URLs from an earlier result: a file that was not opened yet may be gone, while one that is open stays readable until it is closed. `MaqsData` will open its SQLite files read-only and immutable, so no `-wal` or `-shm` file appears for the sweep to delete.
+**Reading installed files.** An update deletes the files it replaced at once. Read `installedPack(_:)` again after `install` returns rather than keeping URLs from an earlier result: a file that was not opened yet may be gone, while one that is open stays readable until it is closed. `MaqsData` opens its SQLite files read-only and immutable, so no `-wal` or `-shm` file appears for the sweep to delete. Replacing or deleting a file that is open makes libsqlite3 fail later reads, so after every install, update or removal the app passes the current URLs to `setFiles(_:)` ([MaqsData](#data)).
 
 ### Terrain
 
@@ -164,9 +164,23 @@ downloads/<sha256>-<file>.resume              # resume data
 
 `OnlineTerrainSource` checks them again: an HTTPS template with `{z}`, `{x}` and `{y}` outside its host and port, `webp` or `png`, 256 or 512 px, zooms from 0 to 22. The attribution stays in `TileSource`, for the app to show.
 
+### Data
+
+`MaqsData` answers questions about the trails, places and curvature files of installed regions, offline and read-only. It has three readers, one `actor` per layer: `Trails`, `Places` and `Roads`. The app creates each from the file URLs of its installed packs (`InstalledFile.url` from `MaqsCore`; `MaqsData` imports nothing from it) and calls `setFiles(_:)` after every install, update or removal. Several files of one layer are read together, a record found in two is returned once and the first file wins, and with no files every query is empty. `MaqsData` makes no network request. A trail outside the installed regions cannot be found, because no online source of trail data exists.
+
+**Opening.** A file is opened by URI with `immutable=1` and checked before use: one `metadata` row, the reader's layer, `schema_version` 1 and the tables and columns it reads. A file that fails is a typed `QueryError` naming it by its last path component. A read failure later, such as a file replaced under an open connection or one under Complete data protection while the phone is locked, is `unreadable`.
+
+**Trails.** `search(_:near:difficulty:limit:)` returns summaries in three groups: an exact `ref`, `ref_rei` or `name`; a number inside a `ref` (`926` finds `926A` and `E926`); then full-text search, with every word quoted. `trail(_:)` and `trail(region:featureID:)` return the record with its path, one array per leg, and its `geometry_status`.
+
+**Places.** `places(in: BearingCone, kinds:limit:)` returns the places inside a cone from an origin, nearest first, each with its distance, bearing and offset. The app maps them to `SightTarget`s for `MaqsTerrain`'s `visibility(of:from:)`. `places(in: QueryArea, ...)` returns the highest `rank_score` in a box.
+
+**Roads.** `segments(near:within:limit:)` returns the road segments around a position for the app to match against. `cornersAhead(from:distance:)` walks on from the matched segment, direction and position, follows the junctions it meets (a segment's ends and the `junctions` table) and reports the corners ahead. At a fork it takes the likeliest branch by `ref`, then `name`, then `highway`, then the smallest turn, and marks the fork and the corners after it. Roads against a one-way are not entered, and a roundabout or motorway without a `oneway` tag counts as one-way. Files built before the `junctions` table (`data-2026-10`) have end-node links only. [`data-format.md`](data-format.md#curvature-layer_schema_version-1) has the tables. `Curvature.analyze` applies the same corner formula to a list of coordinates.
+
+ADR 0016 has the rules in full and the measurements.
+
 ### Tests and CI
 
-`swift test` runs both test targets, `MaqsTerrainTests` and `MaqsCoreTests`, against committed fixtures, the `test` region's data files and the `data-ci` manifest in `Tests/MaqsTestSupport/Fixtures/`. Each target prints its own `Test run with N tests` line. The test-only target `MaqsTestSupport` serves the fixtures, together with `StubServer`, a `URLProtocol` stub, so no test touches the network. `scripts/update-fixtures.sh` rebuilds the `test` region and the base packs with the pipeline, copies the data files and the manifest into the fixtures, copies `config/sources.json` to `Sources/MaqsCore/Resources/sources.json`, runs `scripts/update-terrain-golden.sh`, and fails above 8 MB. That script writes `Fixtures/test/terrain-golden.json` from the committed terrain fixture with the pipeline's reader and sampler (`uv run python -m maqs.terrain_golden`), so the terrain tests compare the Swift reader and sampler with the pipeline's.
+`swift test` runs the three test targets, `MaqsDataTests`, `MaqsTerrainTests` and `MaqsCoreTests`, against committed fixtures, the `test` region's data files and the `data-ci` manifest in `Tests/MaqsTestSupport/Fixtures/`. Each target prints its own `Test run with N tests` line. The test-only target `MaqsTestSupport` serves the fixtures, together with `StubServer`, a `URLProtocol` stub, so no test touches the network. `scripts/update-fixtures.sh` rebuilds the `test` region and the base packs with the pipeline, copies the data files and the manifest into the fixtures, copies `config/sources.json` to `Sources/MaqsCore/Resources/sources.json`, runs `scripts/update-terrain-golden.sh`, and fails above 8 MB. That script writes `Fixtures/test/terrain-golden.json` from the committed terrain fixture with the pipeline's reader and sampler (`uv run python -m maqs.terrain_golden`), so the terrain tests compare the Swift reader and sampler with the pipeline's. `scripts/update-data-golden.sh` does the same for the data layers: it writes `Fixtures/test/data-golden.json` (`uv run python -m maqs.data_golden`) from the committed fixtures with the pipeline's polyline decoder and corner scoring, and `update-fixtures.sh` runs it too.
 
 `.github/workflows/swift.yml` runs on pushes to `main` and on pull requests that touch the package (`Package.swift`, `Package.resolved`, `Sources/`, `Tests/`, the fixtures script, `config/sources.json` or the workflow), and on dispatch. It has `contents: read` and three jobs:
 

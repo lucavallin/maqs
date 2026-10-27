@@ -24,7 +24,7 @@ swift test                       # macOS; reads the committed fixtures, no netwo
 xcodebuild -scheme Maqs-Package -destination 'platform=iOS Simulator,name=iPhone 17' -skipPackagePluginValidation test
 ```
 
-Any installed simulator works for the last command (`xcrun simctl list devices available`). The scheme is `Maqs-Package` because the package has several library products (with one it would be `Maqs`); `xcodebuild -list` shows which. Swift Testing also prints an XCTest summary that says "Executed 0 tests"; the real counts are on the `Test run with N tests` lines, one per test target.
+Any installed simulator works for the last command (`xcrun simctl list devices available`). The scheme is `Maqs-Package` because the package has several library products (with one it would be `Maqs`); `xcodebuild -list` shows which. Swift Testing also prints an XCTest summary that says "Executed 0 tests"; the real counts are on the `Test run with N tests` lines, one per test target (`MaqsDataTests`, `MaqsTerrainTests`, `MaqsCoreTests`).
 
 The tests read the `test` region's outputs from `Tests/MaqsTestSupport/Fixtures/`. When the pipeline's outputs or `config/sources.json` change, regenerate them with `scripts/update-fixtures.sh`, which needs the pipeline tools and takes a few minutes, and commit the result. The script fails when the fixtures exceed 8 MB, and so does `swift.yml`. Never edit a fixture by hand.
 

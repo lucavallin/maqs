@@ -11,7 +11,7 @@ This file governs *how you work* in this repository. Section 1 and the Stack cus
 
 `docs/BRIEF.md` is the source of truth for *what* to build, in what order, and which decisions are already made; it was amended after Phase 0 and `docs/decisions.md` records why. The owner's standing rules sit at the top of the brief: one map provider online and offline, as few providers as possible, nothing unmaintained, trail data from more than one source. This file governs *how*. When the two disagree, say so; do not silently pick one.
 
-**Where we are:** Phases 0–3 are done and recorded in `docs/decisions.md` ADRs 0001–0013; the first data release, `data-2026-10`, is published. Phase 4 (the Swift package) is in progress in four sub-projects: the first two are done, the package skeleton with `MaqsCore` (ADR 0014) and `MaqsTerrain` (ADR 0015); `MaqsData` and then `MaqsUI` with the demo app come next. The brief's phases are strictly ordered; each ends with a summary and waits for the go-ahead. Commands, paths, and file names below describe the contract the brief defines; a command that does not run yet is not a bug, it is a phase that has not happened.
+**Where we are:** Phases 0–3 are done and recorded in `docs/decisions.md` ADRs 0001–0013; the first data release, `data-2026-10`, is published. Phase 4 (the Swift package) is in progress in four sub-projects: the first three are done, the package skeleton with `MaqsCore` (ADR 0014), `MaqsTerrain` (ADR 0015) and `MaqsData` (ADR 0016); `MaqsUI` with the demo app comes next. The brief's phases are strictly ordered; each ends with a summary and waits for the go-ahead. Commands, paths, and file names below describe the contract the brief defines; a command that does not run yet is not a bug, it is a phase that has not happened.
 
 ### Explicitly out of scope
 - Any reference to the consuming apps: their names, bundle ids, styles, or needs beyond what the public API expresses.
@@ -77,15 +77,16 @@ docs/data-format.md        # every file format and SQLite schema, versioned — 
 DATA_LICENSE.md            # ODbL notice + every attribution string the data requires
 Package.swift              # package "Maqs", four products, MapLibre is the only dependency
 Sources/MaqsCore/          # manifest, sources.json, region catalog, downloads, storage — no MapLibre, no SQLite
-Sources/MaqsData/          # SQLite3 readers: trails, places, curvature — read-only, async
+Sources/MaqsData/          # SQLite3 readers: Trails, Places, Roads actors and the Curvature formula — read-only, offline, no MaqsCore, no MaqsTerrain
 Sources/MaqsTerrain/       # PMTiles v3 reader, terrarium decoding, DEM sampling, profiles, visibility, online tiles — no MapLibre, no MaqsCore
 Sources/MaqsUI/            # MapLibre integration, style assembly, overlays, attribution view — the ONLY `import MapLibre`
 Sources/MaqsCore/Resources/sources.json # byte copy of config/sources.json, the offline fallback; copied by scripts/update-fixtures.sh, checked by swift.yml
-Tests/<Module>Tests/       # one Swift Testing target per module (MaqsCoreTests, MaqsTerrainTests); fixtures = test-region outputs, small
+Tests/<Module>Tests/       # one Swift Testing target per module (MaqsCoreTests, MaqsTerrainTests, MaqsDataTests); fixtures = test-region outputs, small
 Tests/MaqsTestSupport/     # test-only library target (not a product, no dependency): fixture URLs, StubServer (URLProtocol stub) and StubGate, temporary directories
 Tests/MaqsTestSupport/Fixtures/ # the test region's data files and the data-ci manifest, committed, capped at 8 MB by swift.yml (ADR 0014)
 Tests/MaqsTestSupport/Fixtures/test/terrain-golden.json # tile ids, tile SHA-256s and elevations from the pipeline's reader and sampler; the terrain tests' reference (ADR 0015)
-scripts/                   # update-fixtures.sh: regenerates the fixtures and the bundled sources.json; update-terrain-golden.sh: regenerates terrain-golden.json (update-fixtures.sh runs it)
+Tests/MaqsTestSupport/Fixtures/test/data-golden.json # polyline decodes and corner scores from the pipeline's decoder and score_way; the data tests' reference (ADR 0016)
+scripts/                   # update-fixtures.sh: regenerates the fixtures and the bundled sources.json; update-terrain-golden.sh and update-data-golden.sh: regenerate terrain-golden.json and data-golden.json (update-fixtures.sh runs both)
 Examples/MaqsDemo/         # minimal SwiftUI app to eyeball everything; not a product
 config/sources.json        # online providers, priority order — fetched by clients from main
 config/regions.yaml        # region id, names (it/en), bbox — adding a region is one entry here (a new Geofabrik extract also needs a build-maps.yml edit)
@@ -107,10 +108,11 @@ dist/<region>/             # build outputs (gitignored; Releases only, never git
 # Swift package — the "done" bar for Swift changes (build + all module tests)
 swift build
 swift test
-swift test --filter MaqsCoreTests                         # one target (or MaqsTerrainTests)
+swift test --filter MaqsCoreTests                         # one target (or MaqsTerrainTests, MaqsDataTests)
 swift test --filter ManifestTests                         # one suite, by its name alone (MaqsCoreTests/ManifestTests matches nothing)
 swift test --filter ManifestTests/decodesFixture          # one test: suite/function
 scripts/update-fixtures.sh                                # rebuild the test region and base packs, copy the test region's data files and the data-ci manifest into Tests/MaqsTestSupport/Fixtures/ and config/sources.json into the package, rewrite terrain-golden.json; fails over 8 MB
+scripts/update-data-golden.sh                             # rewrite only Fixtures/test/data-golden.json from the committed fixtures with the pipeline's polyline decoder and corner scoring (needs uv)
 scripts/update-terrain-golden.sh                          # rewrite only Fixtures/test/terrain-golden.json from the committed terrain fixture with the pipeline's reader and sampler (needs uv)
 
 # iOS Simulator leg (what swift.yml runs on iPhone 17; locally any installed simulator works)
@@ -162,7 +164,7 @@ Grep xcodebuild output for `": error:"`; a bare `error` matches unrelated tool p
 - `manifest.json`, `build-report.json`, checksums — generated by the pipeline's release step; a hand-edited manifest is a corrupted release
 - Release assets — re-run the workflow for the month; never upload a file by hand
 - `Sources/MaqsCore/Resources/sources.json`, the bundled fallback — a byte copy of `config/sources.json`, copied by `scripts/update-fixtures.sh` and checked by `cmp` in `swift.yml`; edit the source
-- `Tests/MaqsTestSupport/Fixtures/` — the `test` region's outputs, the `data-ci` manifest and `terrain-golden.json`; regenerate with `scripts/update-fixtures.sh` (the golden file alone with `scripts/update-terrain-golden.sh`), never edit or hand-copy a file
+- `Tests/MaqsTestSupport/Fixtures/` — the `test` region's outputs, the `data-ci` manifest, `terrain-golden.json` and `data-golden.json`; regenerate with `scripts/update-fixtures.sh` (a golden file alone with `scripts/update-terrain-golden.sh` or `scripts/update-data-golden.sh`), never edit or hand-copy a file
 - Bundled glyphs and sprite — generated from the chosen open font; regenerate with the documented command, never patch PBF glyph files
 - `docs/data-format.md` schema versions — a schema change bumps `layer_schema_version` and documents the compatibility rule in the same change; never edit a published version's description in place
 
@@ -260,7 +262,7 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **macOS CI runners are slow and scarce.** `swift.yml` must not run on data-only or docs-only changes; use `paths` filters. Diagnose locally, batch fixes, never re-run CI casually.
 - **Disk space on the Ubuntu runner is checked, not freed** (ADR 0013 has the measured figures); each `build` leg fails under 6 GB. The matrix legs must not download the PBF per region: they restore the cache `prepare` warms, with `fail-on-cache-miss` (ADR 0013).
 - **`swift test` on macOS does not exercise the iOS Simulator leg**; availability differences (`Network.framework`, background `URLSession` behaviour) only show there. Run the simulator leg before declaring Phase 4 work done.
-- **Swift Testing prints a fake XCTest summary** ("Executed 0 tests"); read `Test run with N tests`. `swift test` prints one such line per test target (`MaqsTerrainTests`, then `MaqsCoreTests`): read every one. Grep xcodebuild output for `": error:"`, not `error`.
+- **Swift Testing prints a fake XCTest summary** ("Executed 0 tests"); read `Test run with N tests`. `swift test` prints one such line per test target (`MaqsDataTests`, `MaqsTerrainTests`, `MaqsCoreTests`): read every one. Grep xcodebuild output for `": error:"`, not `error`.
 - **The Xcode scheme name depends on the product count:** `Maqs` with one library product, `Maqs-Package` with several, which is the case since `MaqsTerrain` (ADR 0015). `swift.yml` reads `xcodebuild -list -json` and picks whichever exists.
 - **`swift test --filter` takes the suite name** (`ManifestTests`, or `ManifestTests/decodesFixture` for one test). `MaqsCoreTests/ManifestTests` matches nothing and only warns "No matching test cases were run".
 - **Swift Testing runs suites in parallel.** Every stub route lives in its own `StubServer`, whose id travels in a request header; never register a stub in a global.
@@ -288,6 +290,14 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **`maqs manifest --previous` carries only entries built for the previous release** (URL tag == its `release`), or every lower entry on a same-month re-run; a carried URL must keep its original tag or the window never closes.
 - **Output files carry the schema version (`veneto-trails.v1.sqlite`).** A `dist/` from before 2026-10-16 is rebuilt, not reused; `maqs manifest` refuses its reports.
 - **JSON Schema `pattern` is ECMA-262, Python's `re` is not.** Spell digits `[0-9]` (Python's `\d` matches any Unicode digit) and validate through `maqs.schemas.validate`, which makes a final `$` match only at the end of the string.
+- **libsqlite3 fails reads from a database file that was unlinked or renamed over while open** ("BUG IN CLIENT OF libsqlite3.dylib ... vnode unlinked while in use", then `SQLITE_IOERR_VNODE` on reads that miss the page cache). `immutable=1`, `mode=ro` and mmap do not avoid it, and `MaqsCore`'s install and removal trigger it. `MaqsData` reports `unreadable`; the app passes the current files to `setFiles(_:)` after every install, update or removal (ADR 0016).
+- **The immutable URI needs the path percent-encoded.** `file:<path>?immutable=1` with a raw `#`, `?` or `%` in the path, or a space left unencoded, is misread and the open fails or misses the file.
+- **R\*Tree boxes are float32, rounded outward.** A stored `min_lon` of 12.2029055 reads back 12.2029037. Boxes still contain the geometry, but a point or node probe needs a margin: 10 m around a node, since the 5 m vertex merge can move a vertex off it.
+- **FTS5 words must be quoted and bound.** Unquoted user text (`AND`, `NEAR(`, `-`, `*`, a quote) is syntax. A quoted word with no tokens (`—`) makes a phrase that matches nothing: ignore it among other words, and treat a lone one as no results.
+- **OSM does not split ways at junctions**, so a side road ends at a node inside another way and no `start_node`/`end_node` matches. The curvature layer's `junctions` table carries those links; `data-2026-10` files lack it, and the lookahead then follows end nodes only.
+- **`oneway` 0 cannot tell `oneway=no` from no tag.** Readers infer one-way for `junction=roundabout` and `highway=motorway` when it is 0, so an explicit `no` on a roundabout reads as one-way.
+- **SwiftPM refuses two files with the same name in one target** ("filename ... used twice"), even in different folders. The lookahead walk is `Roads/LookaheadWalk.swift` and the public type `Public/Lookahead.swift`.
+- **The iOS Simulator does not read back a file protection class set on a file**, so the protection tests run on macOS only (`#if os(macOS)`). On macOS the default class is already Protected Until First User Authentication, which is the class `MaqsCore` sets on installed files so a locked-screen ride can read them (ADR 0016). A real device is unverified.
 - **The package must never know the apps.** A "small convenience for the app" that leaks an app's name, style, or assumptions into `Sources/` is scope creep into a different repo.
 
 ### Git and CI

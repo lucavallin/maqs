@@ -184,7 +184,7 @@ with `ele` taken as 0 when null and "wikidata present" meaning a non-empty `wiki
 ```sql
 CREATE TABLE segments (
   id INTEGER PRIMARY KEY, osm_way_id INTEGER NOT NULL, name TEXT, ref TEXT,
-  highway TEXT NOT NULL, surface TEXT,
+  highway TEXT NOT NULL, surface TEXT, junction TEXT,
   oneway INTEGER NOT NULL DEFAULT 0, maxspeed TEXT, length_m REAL NOT NULL, score REAL NOT NULL,
   start_node INTEGER NOT NULL, end_node INTEGER NOT NULL,
   min_lon REAL, min_lat REAL, max_lon REAL, max_lat REAL, geometry TEXT NOT NULL
@@ -197,21 +197,32 @@ CREATE TABLE corners (
   entry_m REAL NOT NULL, apex_m REAL NOT NULL, exit_m REAL NOT NULL
 );
 CREATE INDEX corners_segment ON corners(segment_id, ordinal);
+CREATE TABLE junctions (
+  segment_id INTEGER NOT NULL REFERENCES segments(id),
+  node INTEGER NOT NULL,
+  along_m REAL NOT NULL
+);
+CREATE INDEX junctions_node ON junctions(node);
+CREATE INDEX junctions_segment ON junctions(segment_id, along_m);
 CREATE VIRTUAL TABLE segments_rtree USING rtree(id, min_lon, max_lon, min_lat, max_lat);
 CREATE VIRTUAL TABLE corners_rtree USING rtree(id, min_lon, max_lon, min_lat, max_lat);
 ```
 
-**`segments`** has one row per OSM way whose `highway` is one of `curvature.highways` and whose `surface` is not one of `curvature.exclude_surfaces` (a way without `surface` is kept). Both lists are in `config/regions.yaml`. Rows follow the extract's way order. A way with fewer than two located nodes is skipped (`too_short` anomaly); a way with some unlocated nodes is kept and joined over them (`unlocated_nodes`). Two-node ways and straight ways are kept with score 0 and no corners, because they carry the adjacency a lookahead follows. A closed way, such as a roundabout drawn as one ring, is scored like any other way: its vertices all turn the same way, so it becomes a tight corner (a 20 m ring scores as one corner of radius 20 m); its first and last vertex, the same node, have no radius. Nothing marks a roundabout, and `oneway` is not inferred from `junction=roundabout`.
+**`segments`** has one row per OSM way whose `highway` is one of `curvature.highways` and whose `surface` is not one of `curvature.exclude_surfaces` (a way without `surface` is kept). Both lists are in `config/regions.yaml`. Rows follow the extract's way order. A way with fewer than two located nodes is skipped (`too_short` anomaly); a way with some unlocated nodes is kept and joined over them (`unlocated_nodes`). Two-node ways and straight ways are kept with score 0 and no corners, because they carry the adjacency a lookahead follows. A closed way, such as a roundabout drawn as one ring, is scored like any other way: its vertices all turn the same way, so it becomes a tight corner (a 20 m ring scores as one corner of radius 20 m); its first and last vertex, the same node, have no radius. In a file without the `junction` column (see below), nothing marks a roundabout. The `oneway` column is never inferred from `junction=roundabout`; readers do that (see `oneway`).
 
 | Column | Meaning |
 |---|---|
 | `osm_way_id` | the way id |
-| `name`, `ref`, `highway`, `surface`, `maxspeed` | the way's tags, as tagged |
-| `oneway` | 1 for `oneway=yes`, `true` or `1` (traffic in the drawing direction), −1 for `oneway=-1` (against it), otherwise 0. Only the explicit tag counts: a roundabout or motorway without it is 0 |
-| `start_node`, `end_node` | the OSM ids of the way's first and last located node. Segments that share a node id meet there; this is how a lookahead follows a road across way splits ([ADR 0008](decisions.md)) |
+| `name`, `ref`, `highway`, `surface`, `junction`, `maxspeed` | the way's tags, as tagged; `junction` is null for a way without the tag |
+| `oneway` | 1 for `oneway=yes`, `true` or `1` (traffic in the drawing direction), −1 for `oneway=-1` (against it), otherwise 0. Only the explicit tag counts: a roundabout or motorway without it is 0, and so is `oneway=no`, so 0 cannot tell `no` from no tag. Readers infer one-way in the drawing direction for `junction=roundabout` and `highway=motorway` when the column is 0 (OSM implies it for both); `junction=circular` and `motorway_link` follow their tag only |
+| `start_node`, `end_node` | the OSM ids of the way's first and last located node. Segments that share a node id meet there; this is how a lookahead follows a road across way splits ([ADR 0008](decisions.md)). Neither column has an index: a reader finds the segments that end at a node through `segments_rtree` at the node's coordinate, in a box that allows for the 5 m vertex merge and the R\*Tree's float32 rounding, and filters by node id |
 | `length_m` | the length of the stored geometry |
 | `score` | the curvature score below, in metres of weighted length |
 | `min_lon` … `max_lat`, `geometry` | the bbox and the polyline of the vertices left after the 5 m merge |
+
+**`junctions`** records where roads meet in the middle of a way. OSM does not split a way at a junction and the pipeline keeps ways whole, so a side road usually ends at a node inside another way, where no `start_node` or `end_node` matches. There is one row for every located node inside a segment, not its first or last, that is also a located node of another kept segment, at its end or inside it. `node` is the OSM node id and `along_m` the distance along the stored geometry to the point nearest the node, because the vertex merge may have dropped the node's own vertex. A node a way passes twice gets two rows. Ends are not listed: `start_node` and `end_node` carry them. A node shared only with a way the layer leaves out (a residential or unpaved road) gives no row. A reader that follows roads takes the segments through a node from `junctions` by `node` and the segments ending at it from `start_node`/`end_node`.
+
+**Since which release.** `segments.junction` and `junctions` are additive, so `layer_schema_version` stays 1. Files built after this change carry both; the first release that does is the first monthly build after it. The files of `data-2026-10` have neither and remain valid v1 files: readers treat both as optional, and without `junctions` they know end nodes only.
 
 **`corners`** has one row per corner: `segment_id`, `ordinal` (0, 1, … in way order), the apex position `apex_lon`/`apex_lat`, `min_radius_m`, `direction` (`left` or `right`), and `entry_m`, `apex_m`, `exit_m`, the distances along the segment's stored geometry from its first vertex. All of it follows the way's drawing direction: for travel the other way, `left` and `right` swap and a distance d becomes `length_m − d`.
 
@@ -440,7 +451,7 @@ Every run writes `dist/<region>/build-report.json`, also when a step fails. `--r
 | `built_at` | ISO 8601 UTC, `YYYY-MM-DDTHH:MM:SSZ` |
 | `tools` | tool name → version found (`dev` for the Homebrew `pmtiles` build) |
 | `steps[]` | `name`, `status` (`built`, `skipped` or `failed`), `seconds`, `command` (the argv of the step's main tool run: the tile tool, or tippecanoe for trails and places; empty for curvature and when skipped), `outputs[]`, `anomalies`, `anomaly_count`, `anomaly_kinds`, and `error` when failed |
-| `steps[].outputs[]` | `file`, `layer` (the step's layer; `basemap` for a base pack), `layer_schema_version` (the layer's version, as in the file name), `data_date` (the UTC date of this run, `YYYY-MM-DD`, one value for the whole run, also for the outputs of a skipped step), `bytes`, `sha256`, `tile_type`, `min_zoom`, `max_zoom`, `tiles`, `compression`, `attribution`, `source_data_date` (both null when the archive metadata has no value), and `source`: the archive the output was cut from (`https://download.versatiles.org/osm-landcover.versatiles` for basemap and base packs, `https://download.versatiles.org/elevation.versatiles` for terrain, `https://download.mapterhorn.com` for terrain-hd, which reads several archives there; null for the overlays and SQLite files). A SQLite output has `tile_type`, `min_zoom`, `max_zoom`, `tiles` and `compression` null, takes `attribution` and `source_data_date` from its metadata row (`attribution`, `osm_timestamp`), and adds `rows`: table → row count (`trails`; `places`; `segments` and `corners`) |
+| `steps[].outputs[]` | `file`, `layer` (the step's layer; `basemap` for a base pack), `layer_schema_version` (the layer's version, as in the file name), `data_date` (the UTC date of this run, `YYYY-MM-DD`, one value for the whole run, also for the outputs of a skipped step), `bytes`, `sha256`, `tile_type`, `min_zoom`, `max_zoom`, `tiles`, `compression`, `attribution`, `source_data_date` (both null when the archive metadata has no value), and `source`: the archive the output was cut from (`https://download.versatiles.org/osm-landcover.versatiles` for basemap and base packs, `https://download.versatiles.org/elevation.versatiles` for terrain, `https://download.mapterhorn.com` for terrain-hd, which reads several archives there; null for the overlays and SQLite files). A SQLite output has `tile_type`, `min_zoom`, `max_zoom`, `tiles` and `compression` null, takes `attribution` and `source_data_date` from its metadata row (`attribution`, `osm_timestamp`), and adds `rows`: table → row count (`trails`; `places`; `segments`, `corners` and `junctions`) |
 | `steps[].anomalies` | data problems the step recorded and built past, each `{kind, id, message}`, in the order found and capped at 1,000 entries. `id` names the object: `way/<id>`, `relation/<id>`, `node/<id>`, the region id (`terrain_missing`) or the terrain file name (`terrain_unreadable`) |
 | `steps[].anomaly_count` | the total before the cap |
 | `steps[].anomaly_kinds` | kind → count over all anomalies, not capped, sorted by kind |
