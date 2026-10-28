@@ -99,7 +99,8 @@ jobs:
           status=$?
           set -e
           fail() { echo "$1" >&2; tail -50 xcodebuild.log; exit 1; }
-          grep -E '": error:|Test run with|TEST (SUCCEEDED|FAILED)' xcodebuild.log || true
+          # Swift Testing's issue lines name the failing expectation and its file and line.
+          grep -E '": error:|recorded an issue|Test run with|TEST (SUCCEEDED|FAILED)' xcodebuild.log || true
           if grep -q '": error:' xcodebuild.log || grep -qE 'Test run with .* failed|\*\* TEST FAILED \*\*' xcodebuild.log; then
             fail 'xcodebuild reported errors or failed tests'
           fi
