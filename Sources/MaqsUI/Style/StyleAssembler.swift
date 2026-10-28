@@ -61,6 +61,10 @@ enum StyleAssembler {
             throw .invalidStyle("the style has no \"basemap\" source")
         }
         guard basemap["type"] as? String == "vector" else { throw .invalidStyle("the \"basemap\" source is not a vector source") }
+        if let name = sources.first(where: { !($0.value is JSON) })?.key {
+            throw .invalidStyle("the source \"\(name)\" is not a JSON object")
+        }
+        if layers.contains(where: { !($0 is JSON) }) { throw .invalidStyle("a \"layers\" element is not a JSON object") }
         if let id = sources.keys.first(where: { $0.hasPrefix(reservedPrefix) }) {
             throw .invalidStyle("the source id \"\(id)\" starts with \"\(reservedPrefix)\", which the package reserves")
         }
@@ -74,6 +78,8 @@ enum StyleAssembler {
 
     private static func tileSource(_ source: JSON, _ template: TileTemplate, encoding: String?) -> JSON {
         var source = source
+        // MapLibre ignores `tiles` when a `url` is present, which would keep a custom style on its own host.
+        source["url"] = nil
         source["tiles"] = [template.template]
         source["minzoom"] = template.minZoom
         source["maxzoom"] = template.maxZoom
@@ -152,18 +158,19 @@ enum StyleAssembler {
         let palette = Palette(inputs.content)
         var sources: JSON = [:]
         var layers: [JSON] = []
+        var places: [JSON] = []
         for overlay in inputs.overlays {
             let id = "maqs-\(overlay.layer.rawValue)-\(overlay.region)"
             sources[id] = ["type": "vector", "url": "pmtiles://" + overlay.fileURL.absoluteString] as JSON
             switch overlay.layer {
             case .trails:
-                guard inputs.showsTrails else { continue }
-                layers += trailLayers(id, palette)
+                if inputs.showsTrails { layers += trailLayers(id, palette) }
             case .places:
-                layers.append(placesLayer(id, inputs, palette))
+                places.append(placesLayer(id, inputs, palette))
             }
         }
-        return (sources, layers)
+        // Places last, so labels and icons stay above every region's trail lines.
+        return (sources, layers + places)
     }
 
     private static func trailLayers(_ source: String, _ palette: Palette) -> [JSON] {
@@ -176,12 +183,13 @@ enum StyleAssembler {
                 "symbol-placement": "line", "icon-image": "maqs-plate", "icon-text-fit": "both",
                 "text-field": ["get", "ref"], "text-font": boldFont, "text-size": 11,
             ] as JSON,
+            "filter": ["all", ["has", "ref"], ["!=", ["get", "ref"], ""]] as [Any],
             "paint": ["text-color": "#101620"] as JSON,
         ]
         return [
             trailLine("casing", paint: ["line-color": palette.casing, "line-width": 8]),
             trailLine("line", paint: ["line-color": palette.solidLine, "line-width": 4]),
-            trailLine("selected", filter: ["==", ["id"], -1] as [Any], paint: ["line-color": palette.accent, "line-width": 5]),
+            trailLine("selected", filter: ["==", ["get", "id"], -1] as [Any], paint: ["line-color": palette.accent, "line-width": 5]),
             plate,
         ]
     }
@@ -192,7 +200,7 @@ enum StyleAssembler {
                 "coalesce", ["image", ["concat", "maqs-place-", ["get", "kind"]]], ["image", "maqs-place-other"],
             ] as [Any],
             "text-field": nameExpression(inputs.labelLanguage),
-            "text-font": boldFont, "text-size": 13, "text-anchor": "top", "text-optional": true,
+            "text-font": boldFont, "text-size": 13, "text-anchor": "top", "text-offset": [0, 0.8], "text-optional": true,
             "symbol-sort-key": ["-", 0, ["get", "rank_score"]] as [Any],
         ]
         var layer: JSON = [
