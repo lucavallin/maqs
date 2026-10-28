@@ -6,7 +6,7 @@ public enum MapError: Error, Equatable, LocalizedError {
     case invalidStyle(String)
     /// MapLibre reported that the assembled style failed to load.
     case styleFailedToLoad
-    /// No basemap source is available: no installed region covers the view and `sources.json` names no basemap.
+    /// The `Maqs` instance the map was given is not configured with the basemap layer, which every map draws.
     case basemapNotConfigured
     /// A file bundled with the package is absent. The associated value is the file's last path component.
     case resourcesMissing(String)
@@ -18,7 +18,7 @@ public enum MapError: Error, Equatable, LocalizedError {
         case .styleFailedToLoad:
             "The map style failed to load. Check the style JSON and that the sources it names are reachable, then try again."
         case .basemapNotConfigured:
-            "The map has no basemap source. Install a region or provide sources.json with a basemap, then try again."
+            "The map needs the basemap layer. Add .basemap to the layers of the MaqsConfiguration the app creates Maqs with."
         case .resourcesMissing(let name):
             "The map resource \(name) is missing from the app bundle. Rebuild the app and make sure the Maqs package resources are included."
         }
