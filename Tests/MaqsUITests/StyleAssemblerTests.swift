@@ -184,13 +184,19 @@ import Testing
         let plate = try layer(style, "maqs-trails-veneto-plate")
         let layout = try #require(plate["layout"] as? JSON)
         #expect(layout["symbol-placement"] as? String == "line")
-        #expect(layout["icon-image"] as? String == "maqs-plate")
+        #expect(layout["icon-image"] as? String == "maqs-plate-light")
         #expect(layout["icon-text-fit"] as? String == "both")
         #expect(json(layout["text-field"]) == #"["get","ref"]"#)
         #expect(json(layout["text-font"]) == #"["noto_sans_bold"]"#)
         #expect(layout["text-size"] as? Double == 11)
         #expect((plate["paint"] as? JSON)?["text-color"] as? String == "#101620")
         #expect(json(plate["filter"]) == #"["all",["has","ref"],["!=",["get","ref"],""]]"#)
+    }
+
+    @Test func namesThePlateOfTheSchemeInUse() throws {
+        let style = try bundled(dark: true, Self.inputs(dark: true, overlays: Self.overlays(["veneto"])))
+        let layout = try #require(try layer(style, "maqs-trails-veneto-plate")["layout"] as? JSON)
+        #expect(layout["icon-image"] as? String == "maqs-plate-dark")
     }
 
     @Test func omitsTrailLayersWithoutTrails() throws {
@@ -203,7 +209,7 @@ import Testing
         let style = try bundled(dark: true, Self.inputs(dark: true, language: "de", overlays: Self.overlays(["veneto"])))
         let places = try layer(style, "maqs-places-veneto")
         let layout = try #require(places["layout"] as? JSON)
-        #expect(json(layout["icon-image"]) == #"["coalesce",["image",["concat","maqs-place-",["get","kind"]]],["image","maqs-place-other"]]"#)
+        #expect(json(layout["icon-image"]) == #"["coalesce",["image",["concat","maqs-place-",["get","kind"],"-dark"]],["image","maqs-place-other-dark"]]"#)
         #expect(json(layout["text-field"]) == #"["coalesce",["get","name_de"],["get","name"]]"#)
         #expect(json(layout["symbol-sort-key"]) == #"["-",0,["get","rank_score"]]"#)
         #expect(layout["text-size"] as? Double == 13)

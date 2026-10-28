@@ -164,7 +164,7 @@ enum StyleAssembler {
             sources[id] = ["type": "vector", "url": "pmtiles://" + overlay.fileURL.absoluteString] as JSON
             switch overlay.layer {
             case .trails:
-                if inputs.showsTrails { layers += trailLayers(id, palette) }
+                if inputs.showsTrails { layers += trailLayers(id, palette, dark: inputs.content.dark) }
             case .places:
                 places.append(placesLayer(id, inputs, palette))
             }
@@ -173,14 +173,14 @@ enum StyleAssembler {
         return (sources, layers + places)
     }
 
-    private static func trailLayers(_ source: String, _ palette: Palette) -> [JSON] {
+    private static func trailLayers(_ source: String, _ palette: Palette, dark: Bool) -> [JSON] {
         func trailLine(_ suffix: String, filter: Any? = nil, paint: JSON) -> JSON {
             line("\(source)-\(suffix)", source: source, sourceLayer: "trails", filter: filter, paint: paint)
         }
         let plate: JSON = [
             "id": "\(source)-plate", "type": "symbol", "source": source, "source-layer": "trails",
             "layout": [
-                "symbol-placement": "line", "icon-image": "maqs-plate", "icon-text-fit": "both",
+                "symbol-placement": "line", "icon-image": dark ? "maqs-plate-dark" : "maqs-plate-light", "icon-text-fit": "both",
                 "text-field": ["get", "ref"], "text-font": boldFont, "text-size": 11,
             ] as JSON,
             "filter": ["all", ["has", "ref"], ["!=", ["get", "ref"], ""]] as [Any],
@@ -195,9 +195,10 @@ enum StyleAssembler {
     }
 
     private static func placesLayer(_ id: String, _ inputs: StyleInputs, _ palette: Palette) -> JSON {
+        let scheme = inputs.content.dark ? "-dark" : "-light"
         var layout: JSON = [
             "icon-image": [
-                "coalesce", ["image", ["concat", "maqs-place-", ["get", "kind"]]], ["image", "maqs-place-other"],
+                "coalesce", ["image", ["concat", "maqs-place-", ["get", "kind"], scheme]], ["image", "maqs-place-other\(scheme)"],
             ] as [Any],
             "text-field": nameExpression(inputs.labelLanguage),
             "text-font": boldFont, "text-size": 13, "text-anchor": "top", "text-offset": [0, 0.8], "text-optional": true,
