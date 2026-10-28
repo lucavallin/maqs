@@ -31,14 +31,15 @@ import MaqsTestSupport
     func fixture(_ entry: ManifestEntry) throws -> Data { try Data(contentsOf: try Fixtures.url("test/\(entry.file)")) }
     var downloads: URL { tmp.url.appending(path: "downloads", directoryHint: .isDirectory) }
 
-    /// Routes `entry` to `body` (default: zeros of its listed size), delivered after `delay` seconds, and returns a
-    /// stream that yields each time a request for it reaches the stub.
-    func routeSlow(_ entry: ManifestEntry, delay: TimeInterval, body: Data? = nil) -> AsyncStream<Void> {
+    /// Routes `entry` to `body` (default: zeros of its listed size), delivered after `delay` seconds or, with a `gate`,
+    /// once the test releases it, and returns a stream that yields each time a request for it reaches the stub.
+    func routeSlow(_ entry: ManifestEntry, delay: TimeInterval = 0, gate: StubGate? = nil, body: Data? = nil)
+        -> AsyncStream<Void> {
         let (reached, continuation) = AsyncStream<Void>.makeStream()
         let body = body ?? Data(repeating: 0, count: Int(entry.bytes))
         server.route(entry.url) { _ in
             continuation.yield()
-            return StubResponse(status: 200, body: body, delay: delay)
+            return StubResponse(status: 200, body: body, delay: delay, gate: gate)
         }
         return reached
     }
@@ -232,11 +233,15 @@ import MaqsTestSupport
         let maqs = try maqs(layers: [.trails])
         _ = try await maqs.refreshCatalog()
         let main = try main(.trails)
+        let gate = StubGate()
+        defer { gate.release() }
         // A same-size body with other bytes: the install fails at the checksum, after the request.
-        let reached = routeSlow(main, delay: 0.5)
+        let reached = routeSlow(main, gate: gate)
         let first = Task { try await maqs.install(test) }
         await waitForRequests([reached])
-        let second = Task { try await maqs.install(test) }
+        // What install(_:) waits for, registered while the answer is held, so it can only join the running install.
+        let second = try #require(try await maqs.startInstall(test))
+        gate.release()
         let failure = MaqsError.download(.checksumMismatch(file: main.file))
         await #expect(throws: failure) { try await first.value }
         await #expect(throws: failure) { try await second.value }
@@ -347,8 +352,10 @@ import MaqsTestSupport
     func removeDuringInstall() async throws {
         let maqs = try maqs(layers: [.trails])
         _ = try await maqs.refreshCatalog()
-        // The real files, held for 0.3 s: an install that is not stopped finishes and writes its record.
-        let reached = try entries(.trails).map { routeSlow($0, delay: 0.3, body: try fixture($0)) }
+        // The real files, held until the test ends, so the install is still running when remove is called.
+        let gate = StubGate()
+        defer { gate.release() }
+        let reached = try entries(.trails).map { routeSlow($0, gate: gate, body: try fixture($0)) }
         let task = Task { try await maqs.install(test) }
         await waitForRequests(reached)
         try await maqs.remove(test)

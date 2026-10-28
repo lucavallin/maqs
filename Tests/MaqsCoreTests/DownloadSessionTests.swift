@@ -31,12 +31,19 @@ import MaqsTestSupport
         try String(contentsOf: layout.downloadURL(fileName: key), encoding: .utf8)
     }
 
-    /// Routes `key` to a delayed response and returns a stream that yields each time a request for it reaches the stub.
-    func routeDelayed(_ key: String, body: String, delay: TimeInterval) -> AsyncStream<Void> {
+    /// Routes `key` to `body` and returns a stream that yields each time a request for it reaches the stub. `gate`
+    /// holds the answer to the first request only: a later one, which a download that joins never sends, is answered
+    /// at once, so a download that fails to join fails the test's request count instead of waiting on the gate.
+    func routeHeld(_ key: String, body: String, gate: StubGate) -> AsyncStream<Void> {
         let (reached, continuation) = AsyncStream<Void>.makeStream()
+        let requests = Mutex(0)
         server.route(request(key).url) { _ in
             continuation.yield()
-            return StubResponse(status: 200, body: Data(body.utf8), delay: delay)
+            let isFirst = requests.withLock { count in
+                count += 1
+                return count == 1
+            }
+            return StubResponse(status: 200, body: Data(body.utf8), gate: isFirst ? gate : nil)
         }
         return reached
     }
@@ -124,7 +131,9 @@ import MaqsTestSupport
 
     @Test("cancelling a running download throws cancelled and leaves no destination file")
     func cancel() async throws {
-        let reached = routeDelayed("slow.bin", body: "slow", delay: 5)
+        let gate = StubGate()
+        defer { gate.release() }
+        let reached = routeHeld("slow.bin", body: "slow", gate: gate)
         let session = session()
         let task = Task { try await session.download(self.request("slow.bin")) { _ in } }
         var iterator = reached.makeAsyncIterator()
@@ -150,7 +159,9 @@ import MaqsTestSupport
 
     @Test("two downloads of one key share one request and both complete")
     func sharedTransfer() async throws {
-        let reached = routeDelayed("s.bin", body: "shared", delay: 2)
+        let gate = StubGate()
+        defer { gate.release() }
+        let reached = routeHeld("s.bin", body: "shared", gate: gate)
         let session = session()
         let first = Task { try await session.download(self.request("s.bin")) { _ in } }
         var reachedIterator = reached.makeAsyncIterator()
@@ -159,6 +170,8 @@ import MaqsTestSupport
         let second = Task { try await session.download(self.request("s.bin")) { joinedContinuation.yield($0) } }
         var joinedIterator = joined.makeAsyncIterator()
         _ = await joinedIterator.next()
+        // Both downloads wait on the one request before its answer is let through.
+        gate.release()
         try await first.value
         try await second.value
         #expect(server.requests.count == 1)
@@ -167,7 +180,9 @@ import MaqsTestSupport
 
     @Test("cancelling a shared transfer cancels every download waiting on it")
     func sharedCancel() async throws {
-        let reached = routeDelayed("sc.bin", body: "shared", delay: 5)
+        let gate = StubGate()
+        defer { gate.release() }
+        let reached = routeHeld("sc.bin", body: "shared", gate: gate)
         let session = session()
         let first = Task { try await session.download(self.request("sc.bin")) { _ in } }
         var reachedIterator = reached.makeAsyncIterator()
@@ -185,7 +200,9 @@ import MaqsTestSupport
 
     @Test("a download joins a running task for its key that it did not start, as after a relaunch")
     func joinsRestoredTask() async throws {
-        let reached = routeDelayed("o.bin", body: "restored", delay: 2)
+        let gate = StubGate()
+        defer { gate.release() }
+        let reached = routeHeld("o.bin", body: "restored", gate: gate)
         let session = session()
         let restored = session.urlSession.downloadTask(with: request("o.bin").url)
         restored.taskDescription = "o.bin"
@@ -193,7 +210,18 @@ import MaqsTestSupport
         var reachedIterator = reached.makeAsyncIterator()
         _ = await reachedIterator.next()
         let progress = Mutex<[Int64]>([])
-        try await session.download(request("o.bin")) { bytes in progress.withLock { $0.append(bytes) } }
+        let (joined, joinedContinuation) = AsyncStream<Void>.makeStream()
+        let download = Task {
+            try await session.download(self.request("o.bin")) { bytes in
+                progress.withLock { $0.append(bytes) }
+                joinedContinuation.yield()
+            }
+        }
+        var joinedIterator = joined.makeAsyncIterator()
+        _ = await joinedIterator.next()
+        // The download has joined the restored task, whose answer is still held.
+        gate.release()
+        try await download.value
         #expect(server.requests.count == 1)
         #expect(try downloaded("o.bin") == "restored")
         #expect(progress.withLock { $0.first } == 0)
