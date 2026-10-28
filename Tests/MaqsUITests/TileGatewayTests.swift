@@ -162,9 +162,9 @@ extension SharedGatewaySuite {
             #expect(counters.local == 1)
         }
 
-        /// MapLibre parses the bytes it is given and does not inflate them; it caches local answers either way, and
-        /// `max-age=0` keeps the gateway the authority without making the cached rows unusable offline.
-        @Test func aLocalTileIsServedInflatedAndAlreadyStale() async throws {
+        /// MapLibre parses the bytes it is given and does not inflate them. It caches local answers either way; with no
+        /// expiry it asks the gateway again on every load, never on a timer, and still draws the cached copy offline.
+        @Test func aLocalTileIsServedInflatedWithNoExpiry() async throws {
             let fixture = try Fixtures.url("test/test-basemap.v1.pmtiles")
             let tile = TileRequest(layer: .basemap, z: 14, x: 8749, y: 5822)
             let expected = try #require(try PMTilesArchive(url: fixture).tile(z: tile.z, x: tile.x, y: tile.y))
@@ -174,7 +174,8 @@ extension SharedGatewaySuite {
             #expect(data == expected)
             #expect(!data.starts(with: [0x1F, 0x8B]))
             #expect(response.value(forHTTPHeaderField: "Content-Encoding") == nil)
-            #expect(response.value(forHTTPHeaderField: "Cache-Control") == "max-age=0")
+            #expect(response.value(forHTTPHeaderField: "Cache-Control") == nil)
+            #expect(response.value(forHTTPHeaderField: "Expires") == nil)
         }
 
         @Test func aMissingTileInsideARegionIsEmpty() async throws {
@@ -184,7 +185,8 @@ extension SharedGatewaySuite {
             let (data, response) = try await get(Self.insideOther)
             #expect(response.statusCode == 204)
             #expect(data.isEmpty)
-            #expect(response.value(forHTTPHeaderField: "Cache-Control") == "max-age=0")
+            #expect(response.value(forHTTPHeaderField: "Cache-Control") == nil)
+            #expect(response.value(forHTTPHeaderField: "Expires") == nil)
             #expect(server.requests.isEmpty)
             #expect(counters.empty == 1)
         }
@@ -419,6 +421,8 @@ extension SharedGatewaySuite {
             let (data, response) = try await get(Self.outside)
             #expect(response.statusCode == 200)
             #expect(data == tile)
+            #expect(response.value(forHTTPHeaderField: "Cache-Control") == nil)
+            #expect(response.value(forHTTPHeaderField: "Expires") == nil)
             #expect(server.requests.isEmpty)
             #expect(counters.base == 1)
         }

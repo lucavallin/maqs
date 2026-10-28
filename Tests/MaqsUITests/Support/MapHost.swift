@@ -18,9 +18,8 @@ import UIKit
     /// Shows `map` with MapLibre's tile cache emptied first. The map must exist first: its initialiser prepares
     /// MapLibre's network, which must happen before the first view.
     ///
-    /// The cache is shared by every test and kept across runs, and what it holds changes what MapLibre asks for: a
-    /// tile answered `max-age=0` twice gets an expiry MapLibre moves into the future (it takes the repeat for clock
-    /// skew), and it does not ask the gateway again before then.
+    /// The cache is shared by every test and kept across runs, and what it holds changes what MapLibre asks for and
+    /// draws, so each map starts from an empty one.
     static func show(_ map: MaqsMap, size: CGSize = CGSize(width: 390, height: 600)) async throws -> MapHost {
         NetworkTripwire.install()
         let error: (any Error)? = await withCheckedContinuation { continuation in

@@ -402,11 +402,11 @@ final class GatewayState: Sendable {
     /// A local answer: 200 with the tile's bytes, or 204 with none.
     ///
     /// The bytes are inflated and carry no `Content-Encoding`: MapLibre parses what it is given and would fail on gzip.
-    /// MapLibre caches local answers whatever the header says; `max-age=0` marks the copy stale, so the gateway stays
-    /// the authority, and still lets MapLibre draw the copy offline, which `must-revalidate` would not.
+    /// There is no `Cache-Control` and no `Expires`: MapLibre turns an expiry already past into one in the future (it
+    /// takes it for clock skew). With none, it asks on every load and never on a timer, and still draws its copy offline.
     private static func localAnswer(_ data: Data?, for url: URL) -> TileAnswer {
         guard let response = HTTPURLResponse(url: url, statusCode: data == nil ? 204 : 200, httpVersion: "HTTP/1.1",
-                                             headerFields: ["Cache-Control": "max-age=0"])
+                                             headerFields: [:])
         else { return .failure(URLError(.badURL)) }
         return .response(response, data ?? Data())
     }
