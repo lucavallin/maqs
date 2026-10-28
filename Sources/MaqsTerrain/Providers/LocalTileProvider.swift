@@ -1,4 +1,5 @@
 import Foundation
+import MaqsPMTiles
 
 /// Elevation tiles from an installed PMTiles archive. Immutable over a `Sendable` archive.
 final class LocalTileProvider: TileProvider {
@@ -18,7 +19,12 @@ final class LocalTileProvider: TileProvider {
     /// Throws `PMTilesError` for an unreadable or corrupt archive, `TerrainError.notTerrain` for another kind of archive,
     /// including one whose metadata declares a `tile_size` other than 256 or 512.
     init(url: URL) throws {
-        let archive = try PMTilesArchive(url: url)
+        let archive: PMTilesArchive
+        do throws(PMTilesReadError) {
+            archive = try PMTilesArchive(url: url)
+        } catch {
+            throw PMTilesError(error)
+        }
         let tileSize = archive.declaresTileSize ? archive.tileSize : Self.defaultTileSize
         guard archive.header.tileType == Self.pngTileType || archive.header.tileType == Self.webpTileType,
             archive.tileSchema == nil || archive.tileSchema == "dem/terrarium",
@@ -33,11 +39,21 @@ final class LocalTileProvider: TileProvider {
     }
 
     func covers(_ key: TileKey) throws -> Bool {
-        try archive.contains(z: key.z, x: key.x, y: key.y)
+        do throws(PMTilesReadError) {
+            return try archive.contains(z: key.z, x: key.x, y: key.y)
+        } catch {
+            throw PMTilesError(error)
+        }
     }
 
     func load(_ key: TileKey) async throws -> TileLoad {
-        guard let data = try archive.tile(z: key.z, x: key.x, y: key.y) else { return .missing(.noData) }
+        let tile: Data?
+        do throws(PMTilesReadError) {
+            tile = try archive.tile(z: key.z, x: key.x, y: key.y)
+        } catch {
+            throw PMTilesError(error)
+        }
+        guard let data = tile else { return .missing(.noData) }
         return .tile(try TerrariumDecoder.decode(data, expectedSize: tileSize))
     }
 }

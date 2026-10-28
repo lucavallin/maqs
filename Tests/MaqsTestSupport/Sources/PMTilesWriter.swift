@@ -1,9 +1,10 @@
 import Foundation
-@testable import MaqsTerrain
+import MaqsPMTiles
 
 /// Writes small PMTiles v3 archives for tests: gzip directories and metadata, uncompressed tiles.
-enum PMTilesWriter {
-    static func varint(_ value: UInt64) -> [UInt8] {
+public enum PMTilesWriter {
+    /// The LEB128 varint encoding of `value`.
+    public static func varint(_ value: UInt64) -> [UInt8] {
         var value = value
         var bytes: [UInt8] = []
         repeat {
@@ -16,7 +17,7 @@ enum PMTilesWriter {
     }
 
     /// A decompressed directory; every offset is written explicitly (`offset + 1`).
-    static func encodeDirectory(_ entries: [DirectoryEntry]) -> Data {
+    package static func encodeDirectory(_ entries: [DirectoryEntry]) -> Data {
         var bytes = varint(UInt64(entries.count))
         var last: UInt64 = 0
         for entry in entries {
@@ -34,7 +35,7 @@ enum PMTilesWriter {
     }
 
     /// Lays out a whole archive from ready-made sections. `internalCompression` and `tileCompression` are PMTiles codes.
-    static func assemble(root: Data, leaves: Data = Data(), tileData: Data = Data(), metadata: Data,
+    public static func assemble(root: Data, leaves: Data = Data(), tileData: Data = Data(), metadata: Data,
                          internalCompression: UInt8 = 2, tileCompression: UInt8 = 1, tileType: UInt8 = 4,
                          minZoom: UInt8 = 0, maxZoom: UInt8 = 0, addressedTiles: UInt64 = 0) -> Data {
         let rootOffset: UInt64 = 127
@@ -58,7 +59,9 @@ enum PMTilesWriter {
         return header + root + metadata + leaves + tileData
     }
 
-    static func write(tiles: [(z: Int, x: Int, y: Int, data: Data)], to url: URL, leafEntries: Int? = nil,
+    /// Writes an archive of `tiles` to `url`. `leafEntries` splits the directory into leaves of that many entries; `minZoom`
+    /// and `maxZoom` override the header's range, which otherwise follows the tiles.
+    public static func write(tiles: [(z: Int, x: Int, y: Int, data: Data)], to url: URL, leafEntries: Int? = nil,
                       tileType: UInt8 = 4, metadata: [String: any Sendable] = ["tile_schema": "dem/terrarium"],
                       minZoom: Int? = nil, maxZoom: Int? = nil) throws {
         let sorted = tiles.map { (id: TileID.id(z: $0.z, x: $0.x, y: $0.y)!, data: $0.data) }.sorted { $0.id < $1.id }

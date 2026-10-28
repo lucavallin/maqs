@@ -1,6 +1,6 @@
 import Foundation
 import Testing
-@testable import MaqsTerrain
+@testable import MaqsPMTiles
 
 @Suite struct DirectoryTests {
     private func varint(_ value: UInt64) -> [UInt8] {

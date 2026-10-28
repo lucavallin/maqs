@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import MaqsPMTiles
 import MaqsTestSupport
 import Testing
 import UniformTypeIdentifiers

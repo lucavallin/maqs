@@ -2,14 +2,14 @@ import Compression
 import Foundation
 
 /// CRC-32 (IEEE 802.3, reflected), the checksum in a gzip trailer.
-enum CRC32 {
+package enum CRC32 {
     private static let table: [UInt32] = (0..<256).map { index in
         var value = UInt32(index)
         for _ in 0..<8 { value = value & 1 != 0 ? 0xEDB8_8320 ^ (value >> 1) : value >> 1 }
         return value
     }
 
-    static func checksum(_ data: Data) -> UInt32 {
+    package static func checksum(_ data: Data) -> UInt32 {
         var crc: UInt32 = 0xFFFF_FFFF
         for byte in data { crc = table[Int((crc ^ UInt32(byte)) & 0xFF)] ^ (crc >> 8) }
         return ~crc
@@ -29,15 +29,15 @@ enum Gzip {
     /// One RFC 1952 member; bytes after its trailer are ignored, as zlib does for the pipeline.
     ///
     /// Output past `limit` bytes is `sectionTooLarge`; the CRC-32 and length in the trailer are verified.
-    static func inflate(_ data: Data, limit: Int) throws(PMTilesError) -> Data {
+    static func inflate(_ data: Data, limit: Int) throws(PMTilesReadError) -> Data {
         let bytes = data.startIndex == 0 ? data : Data(data)
         let bodyStart = try headerLength(of: bytes)
         var output = Data()
         // The Xcode 26 SDK declares Data.withUnsafeBytes with an untyped rethrows, which would turn a typed
         // closure's error into `any Error`; the closure catches it instead.
-        var failure: PMTilesError?
+        var failure: PMTilesReadError?
         bytes.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
-            do throws(PMTilesError) {
+            do throws(PMTilesReadError) {
                 try inflateBody(raw, from: bodyStart, limit: limit, into: &output)
             } catch {
                 failure = error
@@ -64,7 +64,7 @@ enum Gzip {
     }
 
     /// The size of the member's header, with every field validated.
-    private static func headerLength(of data: Data) throws(PMTilesError) -> Int {
+    private static func headerLength(of data: Data) throws(PMTilesReadError) -> Int {
         guard data.count >= 10 else { throw .corruptCompressedData("gzip header is truncated") }
         guard data[0] == 0x1F, data[1] == 0x8B else { throw .corruptCompressedData("not a gzip stream") }
         guard data[2] == 8 else { throw .corruptCompressedData("gzip method is not deflate") }
@@ -97,7 +97,7 @@ enum Gzip {
 
     /// Inflates the DEFLATE stream starting at `start` into `output`.
     private static func inflateBody(_ input: UnsafeRawBufferPointer, from start: Int, limit: Int,
-                                    into output: inout Data) throws(PMTilesError) {
+                                    into output: inout Data) throws(PMTilesReadError) {
         let remaining = input.count - start
         guard remaining > 0, let base = input.baseAddress else { throw .corruptCompressedData("gzip body is truncated") }
         let placeholder = UnsafeMutablePointer<UInt8>.allocate(capacity: 1)

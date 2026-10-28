@@ -1,17 +1,24 @@
 import Foundation
 
 /// One directory entry. A `runLength` of 0 marks a pointer to a leaf directory.
-struct DirectoryEntry: Equatable, Sendable {
-    let tileID: UInt64
-    let offset: UInt64
-    let length: UInt64
-    let runLength: UInt64
+package struct DirectoryEntry: Equatable, Sendable {
+    package let tileID: UInt64
+    package let offset: UInt64
+    package let length: UInt64
+    package let runLength: UInt64
+
+    package init(tileID: UInt64, offset: UInt64, length: UInt64, runLength: UInt64) {
+        self.tileID = tileID
+        self.offset = offset
+        self.length = length
+        self.runLength = runLength
+    }
 }
 
 /// Decoding and lookup of PMTiles v3 directories (already decompressed). The bytes are untrusted.
 enum Directory {
     /// The entries of a decompressed directory; every count, varint and sum is checked.
-    static func decode(_ data: Data) throws(PMTilesError) -> [DirectoryEntry] {
+    static func decode(_ data: Data) throws(PMTilesReadError) -> [DirectoryEntry] {
         var reader = VarintReader(data: data)
         let count = try reader.next()
         // Each entry needs at least four bytes, so a larger count is corrupt and must not drive an allocation.
@@ -82,7 +89,7 @@ private struct VarintReader {
         self.position = data.startIndex
     }
 
-    mutating func next() throws(PMTilesError) -> UInt64 {
+    mutating func next() throws(PMTilesReadError) -> UInt64 {
         var result: UInt64 = 0
         for index in 0..<10 {
             guard position < data.endIndex else { throw .corruptDirectory("truncated varint") }
