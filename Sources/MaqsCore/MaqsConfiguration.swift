@@ -36,5 +36,5 @@ public struct MaqsConfiguration: Sendable {
     }
 
     /// The full `User-Agent` header value: the app's string followed by the package token.
-    var fullUserAgent: String { "\(userAgent) \(MaqsVersion.userAgentToken)" }
+    package var fullUserAgent: String { "\(userAgent) \(MaqsVersion.userAgentToken)" }
 }
