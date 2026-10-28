@@ -29,6 +29,16 @@ struct TileTemplates: Sendable, Equatable {
         return nil
     }
 
+    /// The URL of `tile` under these templates, or nil when they have no template for its layer or the URL they make
+    /// would not read back as the same tile.
+    func url(for tile: TileRequest) -> URL? {
+        guard let template = tile.layer == .basemap ? basemap : terrain else { return nil }
+        let string = template.replacingOccurrences(of: "{z}", with: String(tile.z))
+            .replacingOccurrences(of: "{x}", with: String(tile.x)).replacingOccurrences(of: "{y}", with: String(tile.y))
+        guard let url = URL(string: string), request(for: url) == tile else { return nil }
+        return url
+    }
+
     private static let maximumZoom = 22
 
     private enum Piece: Equatable {

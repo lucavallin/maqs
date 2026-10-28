@@ -11,12 +11,13 @@ struct ArchiveInfo: Sendable, Equatable {
 /// The tile templates the style names and the gateway matches.
 struct MapTemplates: Sendable, Equatable {
     var basemap: TileTemplate
-    /// `nil`: no hillshade.
+    /// The style's terrain source; `nil`: no hillshade.
     var terrain: TileTemplate?
+    /// What the gateway claims. It serves every map of the process, so it depends only on what the whole `Maqs` says:
+    /// terrain whenever `.terrain` is configured, whatever one map's hillshade switch says.
+    var gateway: TileTemplates
     /// Whether the gateway may ask the network: online tiles are on and `sources.json` names a basemap.
     var onlineAllowed: Bool
-
-    var gateway: TileTemplates { TileTemplates(basemap: basemap.template, terrain: terrain?.template) }
 }
 
 /// What the installed packs give the map: the gateway's routing table and the overlay sources of the style.
@@ -36,16 +37,20 @@ enum MapInputs {
     static let reservedTerrain = "https://maqs.invalid/terrain/{z}/{x}/{y}"
 
     /// The templates for the configured layers: the first `sources.json` entry of each layer, or the reserved host when
-    /// there is none (`onlineTiles` false). Terrain only when the app configured `.terrain` and wants hillshade.
+    /// there is none (`onlineTiles` false). The gateway gets terrain whenever the app configured `.terrain`; the style
+    /// only when it also wants hillshade.
     static func templates(sources: OnlineSources?, layers: Set<Layer>, showsHillshade: Bool) -> MapTemplates {
         let basemap = sources?.basemap.first.map(template)
             ?? TileTemplate(template: reservedBasemap, minZoom: 0, maxZoom: 14, tileSize: nil, attribution: [])
         var terrain: TileTemplate?
-        if layers.contains(.terrain) && showsHillshade {
+        if layers.contains(.terrain) {
             terrain = sources?.terrain.first.map(template)
                 ?? TileTemplate(template: reservedTerrain, minZoom: 0, maxZoom: 12, tileSize: 512, attribution: [])
         }
-        return MapTemplates(basemap: basemap, terrain: terrain, onlineAllowed: sources?.basemap.first != nil)
+        return MapTemplates(
+            basemap: basemap, terrain: showsHillshade ? terrain : nil,
+            gateway: TileTemplates(basemap: basemap.template, terrain: terrain?.template),
+            onlineAllowed: sources?.basemap.first != nil)
     }
 
     /// The basemap and terrain files of `packs`, whose headers ``content(packs:layers:catalog:archives:)`` needs.

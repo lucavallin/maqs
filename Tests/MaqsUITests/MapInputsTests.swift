@@ -84,6 +84,16 @@ import Testing
         #expect(templates.terrain == nil)
     }
 
+    /// Hillshade is one map's choice; the gateway serves every map of the process, so it keeps claiming terrain.
+    @Test func theGatewayTemplatesAreTheSameWithHillshadeOnAndOff() {
+        let on = MapInputs.templates(sources: Self.sources, layers: [.basemap, .terrain], showsHillshade: true)
+        let off = MapInputs.templates(sources: Self.sources, layers: [.basemap, .terrain], showsHillshade: false)
+        #expect(on.gateway == off.gateway)
+        #expect(off.gateway.terrain == "https://tiles.example/elevation/{z}/{x}/{y}")
+        let offline = MapInputs.templates(sources: nil, layers: [.basemap, .terrain], showsHillshade: false)
+        #expect(offline.gateway.terrain == "https://maqs.invalid/terrain/{z}/{x}/{y}")
+    }
+
     @Test func withOnlineTilesOffTheTemplatesNameTheReservedHost() {
         let templates = MapInputs.templates(sources: nil, layers: [.basemap, .terrain], showsHillshade: true)
         #expect(!templates.onlineAllowed)
