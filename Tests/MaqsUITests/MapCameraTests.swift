@@ -113,6 +113,38 @@ extension SharedGatewaySuite {
             }
         }
 
+        /// SwiftUI's layout direction decides which side leading and trailing are.
+        @Test func leadingAndTrailingInsetsFollowARightToLeftLayout() async throws {
+            let map = try newMap()
+            map.contentInsets = EdgeInsets(top: 10, leading: 100, bottom: 30, trailing: 20)
+            let host = try await MapHost.show(map, layoutDirection: .rightToLeft)
+            defer { host.close() }
+
+            #expect(host.mapView.contentInset == UIEdgeInsets(top: 10, left: 20, bottom: 30, right: 100))
+        }
+
+        /// MapLibre fits a box to the view's size at the call; before the first layout that is no size at all.
+        @Test func boundsShownBeforeTheViewHasASizeAreFittedOnceItHasOne() async throws {
+            let map = try newMap()
+            let host = try await MapHost.show(map, size: .zero)
+            defer { host.close() }
+            #expect(host.mapView.bounds.isEmpty)
+            let bounds = BoundingBox(minLon: 12.26, minLat: 46.11, maxLon: 12.32, maxLat: 46.15)
+
+            map.show(bounds)
+            host.resize(to: CGSize(width: 390, height: 600))
+
+            try await host.waitUntilDrawn()
+            try await waitForIdle(host)
+            let mapView = host.mapView
+            let southWest = mapView.convert(CLLocationCoordinate2D(latitude: 46.11, longitude: 12.26), toPointTo: mapView)
+            let northEast = mapView.convert(CLLocationCoordinate2D(latitude: 46.15, longitude: 12.32), toPointTo: mapView)
+            let width = northEast.x - southWest.x, height = southWest.y - northEast.y
+            #expect(width <= mapView.bounds.width + 1 && height <= mapView.bounds.height + 1)
+            #expect(width >= mapView.bounds.width * 0.9 || height >= mapView.bounds.height * 0.9,
+                    "the box fills the view in one direction: \(width) × \(height) in \(mapView.bounds.size)")
+        }
+
         @Test func pitchStaysWithinSixtyDegreesAndKeepsTheZoom() async throws {
             let (map, host) = try await shownMap()
             defer { host.close() }
@@ -157,26 +189,33 @@ extension SharedGatewaySuite {
             try await waitUntil { abs(signed(map.camera.heading)) < 0.01 }
         }
 
-        /// MapLibre throws a C++ exception, a crash, for a NaN coordinate; the map drops such input instead.
+        /// Bad input does nothing at all: MapLibre throws a C++ exception, a crash, for a NaN coordinate, and a call
+        /// with a NaN zoom or pitch, which MapLibre would drop, still cancels the camera move under way. So the bad
+        /// calls come while a move runs, and the checks wait for idle, when that move, or one bad input started, has
+        /// ended.
         @Test func invalidCameraInputIsIgnored() async throws {
             let (map, host) = try await shownMap { $0.userLocation = .provided }
             defer { host.close() }
             let mapView = host.mapView
-            let centre = mapView.centerCoordinate
-            let zoom = mapView.zoomLevel
+            let fix = TestRegion.center
+            map.provide(location(fix))
+            let target = offset(TestRegion.center, lat: 0.01, lon: 0.01)
+            map.show(target, zoom: 14)
 
             map.show(CLLocationCoordinate2D(latitude: .nan, longitude: 12.25), zoom: nil)
             map.show(CLLocationCoordinate2D(latitude: 95, longitude: 12.25), zoom: 14)
             map.show(TestRegion.center, zoom: .nan)
             map.show(BoundingBox(minLon: 12.27, minLat: 46.09, maxLon: 12.23, maxLat: 46.12))
             map.show(BoundingBox(minLon: .nan, minLat: 46.09, maxLon: 12.27, maxLat: 46.12))
+            map.show(BoundingBox(minLon: 12.23, minLat: 46.09, maxLon: 12.27, maxLat: 95))
             map.setPitch(.nan)
             map.provide(CLLocation(latitude: .nan, longitude: 12.25))
 
-            #expect(near(mapView.centerCoordinate, centre))
-            #expect(mapView.zoomLevel == zoom)
+            try await waitForIdle(host)
+            #expect(near(mapView.centerCoordinate, target))
+            #expect(abs(mapView.zoomLevel - 14) < 1e-6)
             #expect(mapView.camera.pitch == 0)
-            #expect(mapView.userLocation?.location == nil)
+            #expect(mapView.userLocation?.location.map { near($0.coordinate, fix) } == true)
         }
 
         // MARK: Following
@@ -404,10 +443,14 @@ extension SharedGatewaySuite {
                 $0 !== ours && $0.numberOfTapsRequired == 1 && $0.numberOfTouchesRequired == 1
             })
             let doubleTap = try #require(taps.first { $0.numberOfTapsRequired == 2 && $0.numberOfTouchesRequired == 1 })
+            // An app's own single tap on a view around the map.
+            let appTap = UITapGestureRecognizer()
+            try #require(host.mapView.superview).addGestureRecognizer(appTap)
 
             #expect(ours.delegate === coordinator)
             #expect(coordinator.gestureRecognizer(ours, shouldRecognizeSimultaneouslyWith: mapLibreTap))
             #expect(!coordinator.gestureRecognizer(ours, shouldRecognizeSimultaneouslyWith: doubleTap))
+            #expect(!coordinator.gestureRecognizer(ours, shouldRecognizeSimultaneouslyWith: appTap))
         }
 
         // MARK: Connectivity

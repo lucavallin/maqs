@@ -38,7 +38,7 @@ struct MapStyles: Equatable {
 /// a new `MaqsMap`. While a map exists, the main actor wakes every 5 s to read the gateway's pause and counters.
 ///
 /// The camera actions, such as ``show(_:zoom:)`` and ``resetNorth()``, animate the view that shows the map and do
-/// nothing before one does; only the mode of ``follow(_:)`` is kept for it.
+/// nothing before one does; only the mode of ``follow(_:)`` and the box of the last ``show(_:)`` are kept for it.
 @MainActor @Observable public final class MaqsMap {
     /// The style, accent, hillshade, label language and points of interest. A change rebuilds the style.
     public var configuration: MapConfiguration {
@@ -81,7 +81,8 @@ struct MapStyles: Equatable {
 
     /// Called on the main actor for every single tap on the map, with what the tap touched: the app's markers and
     /// lines and the overlays' trails and places in the 44-point square around the touch, topmost first, each once. A
-    /// tap on nothing has no hits. A double tap zooms the map and is not reported.
+    /// tap on nothing has no hits. A tap on the user's location is reported like any other, with no hit for the
+    /// location itself. A double tap zooms the map and is not reported.
     @ObservationIgnored public var onTap: ((MapTap) -> Void)?
 
     /// Room the app's chrome takes at the map's edges, such as a card along the bottom. The map's centre, the followed
@@ -164,6 +165,8 @@ struct MapStyles: Equatable {
     @ObservationIgnored private var connectivityTask: Task<Void, Never>?
     @ObservationIgnored private var readTask: Task<Void, Never>?
     @ObservationIgnored private var heartbeatTask: Task<Void, Never>?
+    /// A box ``show(_:)`` was given before a view could fit it: none showed the map yet, or it had no size.
+    @ObservationIgnored private var pendingBounds: BoundingBox?
 
     /// What `GatewayState.configure` was last given, to configure it again only when something changed.
     private struct GatewayKey: Equatable {
@@ -410,6 +413,7 @@ struct MapStyles: Equatable {
             logger.debug("map follow ignored: the user's location is hidden")
             return
         }
+        if mode != .none { pendingBounds = nil }
         if let coordinator {
             coordinator.follow(mode)
         } else if mode != followMode {
@@ -440,11 +444,13 @@ struct MapStyles: Equatable {
             logger.debug("map show ignored: the coordinate or the zoom is not valid")
             return
         }
+        pendingBounds = nil
         coordinator?.show(coordinate, zoom: zoom)
     }
 
-    /// Fits `bounds` in the view inside ``contentInsets`` and stops following. An inverted box or one off the earth
-    /// does nothing.
+    /// Fits `bounds` in the view inside ``contentInsets`` and stops following. Before the view is laid out, from
+    /// `onAppear` for example, the box is fitted at once when it has a size. A box of one point zooms in as far as the
+    /// map goes; an inverted box or one off the earth does nothing.
     public func show(_ bounds: BoundingBox) {
         let southWest = CLLocationCoordinate2D(latitude: bounds.minLat, longitude: bounds.minLon)
         let northEast = CLLocationCoordinate2D(latitude: bounds.maxLat, longitude: bounds.maxLon)
@@ -453,18 +459,19 @@ struct MapStyles: Equatable {
             logger.debug("map show ignored: the box is not valid")
             return
         }
-        coordinator?.show(southWest: southWest, northEast: northEast)
+        if let coordinator, coordinator.canFitBounds {
+            pendingBounds = nil
+            coordinator.show(bounds, animated: true)
+        } else {
+            pendingBounds = bounds
+        }
     }
 
     /// Moves the user's location to `location` while ``userLocation`` is ``UserLocationMode/provided``, and is
     /// ignored otherwise. Pass each fix the app records, so the map shows the same location as the app's data. A
-    /// location off the earth is dropped.
+    /// location off the earth is dropped (MapLibre checks it).
     public func provide(_ location: CLLocation) {
         guard userLocation == .provided else { return }
-        guard CLLocationCoordinate2DIsValid(location.coordinate) else {
-            logger.debug("map dropped a provided location that is not valid")
-            return
-        }
         coordinator?.provide(location)
     }
 
@@ -490,6 +497,12 @@ struct MapStyles: Equatable {
     func cameraDidSettle(_ camera: MapCamera) {
         if camera != self.camera { self.camera = camera }
         updateOffer(catalog: maqs.state.catalog, packs: maqs.state.packs)
+    }
+
+    /// The box ``show(_:)`` kept for a view that can fit it, once.
+    func takePendingBounds() -> BoundingBox? {
+        defer { pendingBounds = nil }
+        return pendingBounds
     }
 
     /// MapLibre changed how it follows the location: asked to, or because the user moved the map.

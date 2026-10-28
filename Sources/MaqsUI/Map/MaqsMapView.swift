@@ -37,11 +37,13 @@ extension MaqsMapView {
         }
 
         func makeUIView(context: Context) -> MLNMapView {
+            context.coordinator.setLayoutDirection(context.environment.layoutDirection)
             context.coordinator.apply(style, dark: dark)
             return context.coordinator.mapView
         }
 
         func updateUIView(_ mapView: MLNMapView, context: Context) {
+            context.coordinator.setLayoutDirection(context.environment.layoutDirection)
             context.coordinator.apply(style, dark: dark)
         }
 
@@ -95,6 +97,8 @@ extension MaqsMapView {
         /// MapLibre's own location manager, kept while the provided one is installed so ``UserLocationMode/system``
         /// gets it back.
         @ObservationIgnored private var systemLocationManager: (any MLNLocationManager)?
+        /// SwiftUI's layout direction, which says which side the leading and trailing insets are on.
+        @ObservationIgnored private var layoutDirection = LayoutDirection.leftToRight
 
         init(map: MaqsMap) {
             mapView = MLNMapView(frame: .zero, styleJSON: Self.emptyStyle)
@@ -144,11 +148,17 @@ extension MaqsMapView {
 
         // MARK: Camera and location
 
-        /// Sets the map's content insets, leading and trailing as the view's layout direction reads them. A negative
+        func setLayoutDirection(_ direction: LayoutDirection) {
+            guard direction != layoutDirection else { return }
+            layoutDirection = direction
+            showContentInsets()
+        }
+
+        /// Sets the map's content insets, leading and trailing as SwiftUI's layout direction reads them. A negative
         /// inset or one that is not finite counts as none.
         func showContentInsets() {
             guard let insets = map?.contentInsets else { return }
-            let rightToLeft = mapView.effectiveUserInterfaceLayoutDirection == .rightToLeft
+            let rightToLeft = layoutDirection == .rightToLeft
             func usable(_ value: CGFloat) -> CGFloat { value.isFinite ? max(value, 0) : 0 }
             let edges = UIEdgeInsets(
                 top: usable(insets.top), left: usable(rightToLeft ? insets.trailing : insets.leading),
@@ -213,10 +223,17 @@ extension MaqsMapView {
             mapView.setCenter(coordinate, zoomLevel: zoom ?? mapView.zoomLevel, animated: true)
         }
 
+        /// Whether the view has a size to fit a box to. MapLibre fits one to the size at the call, and below 64 points it
+        /// counts 64, so a box fitted before the first layout comes out far too small.
+        var canFitBounds: Bool {
+            !mapView.bounds.isEmpty
+        }
+
         /// MapLibre adds the content inset to the edge padding, so the box fits inside the app's insets.
-        func show(southWest: CLLocationCoordinate2D, northEast: CLLocationCoordinate2D) {
-            mapView.setVisibleCoordinateBounds(MLNCoordinateBounds(sw: southWest, ne: northEast), edgePadding: .zero,
-                                               animated: true, completionHandler: nil)
+        func show(_ bounds: BoundingBox, animated: Bool) {
+            let box = MLNCoordinateBounds(sw: CLLocationCoordinate2D(latitude: bounds.minLat, longitude: bounds.minLon),
+                                          ne: CLLocationCoordinate2D(latitude: bounds.maxLat, longitude: bounds.maxLon))
+            mapView.setVisibleCoordinateBounds(box, edgePadding: .zero, animated: animated, completionHandler: nil)
         }
 
         func provide(_ location: CLLocation) {
@@ -339,13 +356,15 @@ extension MaqsMapView {
             return hits
         }
 
-        /// MapLibre's own single tap begins only over an annotation, here the user's location, or while one is
-        /// selected, and selects or deselects it. Alone, it and the map's tap compete, and a tap on the location, or the
-        /// next tap after it, may never reach `onTap`. So both recognize: MapLibre's selection shows nothing, as the
-        /// map gives no annotation a callout, and the app gets the tap with what lies under it.
+        /// MapLibre's own single tap, on the map view itself, begins only over an annotation, here the user's location,
+        /// or while one is selected, and selects or deselects it. Alone, it and the map's tap compete, and a tap on the
+        /// location, or the next tap after it, may never reach `onTap`. So both recognize: MapLibre's selection shows
+        /// nothing, as the map gives no annotation a callout, and the app gets the tap with what lies under it. Taps
+        /// an app adds to other views are left to UIKit.
         func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                                shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
-            guard gestureRecognizer === tapRecognizer, let tap = other as? UITapGestureRecognizer else { return false }
+            guard gestureRecognizer === tapRecognizer, let tap = other as? UITapGestureRecognizer,
+                  tap.view === mapView else { return false }
             return tap.numberOfTapsRequired == 1 && tap.numberOfTouchesRequired == 1
         }
 
@@ -390,7 +409,12 @@ extension MaqsMapView {
             idlesSinceStyleLoad += 1
         }
 
+        /// The first layout with a size changes the region too: a box the map was asked to show before is fitted then,
+        /// at once.
         func mapView(_ mapView: MLNMapView, regionDidChangeWith reason: MLNCameraChangeReason, animated: Bool) {
+            if canFitBounds, let pending = map?.takePendingBounds() {
+                show(pending, animated: false)
+            }
             let bounds = mapView.visibleCoordinateBounds
             map?.cameraDidSettle(MapCamera(
                 center: mapView.centerCoordinate, zoom: mapView.zoomLevel, heading: mapView.direction,
