@@ -20,21 +20,23 @@ import UIKit
     ///
     /// The cache is shared by every test and kept across runs, and what it holds changes what MapLibre asks for and
     /// draws, so each map starts from an empty one.
-    static func show(_ map: MaqsMap, size: CGSize = CGSize(width: 390, height: 600)) async throws -> MapHost {
+    static func show(_ map: MaqsMap, size: CGSize = CGSize(width: 390, height: 600),
+                     layoutDirection: LayoutDirection = .leftToRight) async throws -> MapHost {
         NetworkTripwire.install()
         let error: (any Error)? = await withCheckedContinuation { continuation in
             MLNOfflineStorage.shared.clearAmbientCache { continuation.resume(returning: $0) }
         }
         if let error { throw error }
-        return try MapHost(map: map, size: size)
+        return try MapHost(map: map, size: size, layoutDirection: layoutDirection)
     }
 
-    private init(map: MaqsMap, size: CGSize) throws {
+    private init(map: MaqsMap, size: CGSize, layoutDirection: LayoutDirection) throws {
         self.map = map
         window = UIWindow(frame: CGRect(origin: .zero, size: size))
         // Whatever appearance the simulator has: the view picks its style from the colour scheme.
         window.overrideUserInterfaceStyle = .light
-        let controller = UIHostingController(rootView: MaqsMapView(map: map))
+        let controller = UIHostingController(
+            rootView: MaqsMapView(map: map).environment(\.layoutDirection, layoutDirection))
         window.rootViewController = controller
         window.makeKeyAndVisible()
         controller.view.layoutIfNeeded()
@@ -44,6 +46,12 @@ import UIKit
     func close() {
         window.isHidden = true
         window.rootViewController = nil
+    }
+
+    /// Gives the window, and with it the map view, a new size and lays it out at once.
+    func resize(to size: CGSize) {
+        window.frame = CGRect(origin: .zero, size: size)
+        window.rootViewController?.view.layoutIfNeeded()
     }
 
     /// Switches the window to light or dark, which makes the view load the style of that scheme.

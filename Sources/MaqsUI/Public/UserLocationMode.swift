@@ -5,6 +5,7 @@ public enum UserLocationMode: Sendable, Equatable {
     case hidden
     /// The map reads the location from the system itself.
     case system
-    /// The app passes each location to the map, for example the fixes it records.
+    /// The app passes each location to the map, for example the fixes it records. The map gets no heading this way:
+    /// ``FollowMode/heading`` follows the position only, while ``FollowMode/course`` turns with each location's course.
     case provided
 }
