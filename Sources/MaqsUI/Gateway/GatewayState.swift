@@ -41,6 +41,19 @@ enum TileAnswer: Sendable {
     case failure(any Error)
 }
 
+/// A line the gateway logs, reported to the test seam of ``GatewayState/resetForTesting(now:logSink:)`` next to the
+/// `os.Logger` call, so tests check what is logged without reading the log store, which lags on the simulator.
+enum GatewayLogEvent: Sendable, Equatable {
+    /// An archive cannot be read: its file name and the `PMTilesReadError` case. Logged once per archive.
+    case archiveUnreadable(file: String, error: String)
+    /// A tile came back 429.
+    case rateLimited
+    /// A pause began, with its length.
+    case pauseStarted(seconds: Int64)
+    /// A pause was seen over.
+    case pauseEnded
+}
+
 /// What `TileGateway` does with a request it accepted.
 enum TileStart: Sendable {
     /// Answer at once.
@@ -108,6 +121,12 @@ final class GatewayState: Sendable {
         /// The archives whose read error has been logged, so each is logged once.
         var reported: Set<URL> = []
         var now: @Sendable () -> ContinuousClock.Instant
+        /// Tests only: told of every line logged. Called with the lock held, so it must not call back into the gateway.
+        var logSink: (@Sendable (GatewayLogEvent) -> Void)?
+
+        func report(_ event: GatewayLogEvent) {
+            logSink?(event)
+        }
 
         /// Whether a pause runs; logs the end of one the first time it is seen over.
         mutating func pauseIsActive() -> Bool {
@@ -115,6 +134,7 @@ final class GatewayState: Sendable {
             if !active && pauseRunning {
                 pauseRunning = false
                 logger.notice("map online tiles resumed: the pause after a 429 is over")
+                report(.pauseEnded)
             }
             return active
         }
@@ -194,11 +214,13 @@ final class GatewayState: Sendable {
         state.withLock { $0.counters }
     }
 
-    /// Back to the state of a fresh process, with `now` as the clock. Tests share ``shared`` and call this first.
-    func resetForTesting(now: @escaping @Sendable () -> ContinuousClock.Instant = { .now }) {
+    /// Back to the state of a fresh process, with `now` as the clock and `logSink` told of every line logged (none by
+    /// default). Tests share ``shared`` and call this first.
+    func resetForTesting(now: @escaping @Sendable () -> ContinuousClock.Instant = { .now },
+                         logSink: (@Sendable (GatewayLogEvent) -> Void)? = nil) {
         let replaced = state.withLock { state in
             let old = state.online?.session
-            state = State(now: now)
+            state = State(now: now, logSink: logSink)
             return old
         }
         replaced?.invalidateAndCancel()
@@ -332,7 +354,14 @@ final class GatewayState: Sendable {
     }
 
     private func reportOnce(_ error: PMTilesReadError, archive: URL) {
-        guard state.withLock({ $0.reported.insert(archive).inserted }) else { return }
+        let first = state.withLock { state in
+            let first = state.reported.insert(archive).inserted
+            if first {
+                state.report(.archiveUnreadable(file: archive.lastPathComponent, error: String(describing: error)))
+            }
+            return first
+        }
+        guard first else { return }
         logger.error("map archive \(archive.lastPathComponent, privacy: .public) cannot be read (\(String(describing: error), privacy: .public)): its tiles are answered empty")
     }
 
@@ -341,12 +370,15 @@ final class GatewayState: Sendable {
     private func rateLimited(_ tile: TileRequest) {
         logger.error("map tile \(Self.describe(tile), privacy: .private): status 429")
         let seconds: Int64? = state.withLock { state in
+            state.report(.rateLimited)
             // A 429 during a pause answers a request sent before it began: the same burst, ignored.
             guard !state.pauseIsActive() else { return nil }
             let now = state.now()
             state.pause.rateLimited(at: now)
             state.pauseRunning = true
-            return state.pause.end.map { ($0 - now).components.seconds }
+            let seconds = state.pause.end.map { ($0 - now).components.seconds } ?? 0
+            state.report(.pauseStarted(seconds: seconds))
+            return seconds
         }
         if let seconds {
             logger.notice("map online tiles paused for \(seconds, privacy: .public) s after a 429")

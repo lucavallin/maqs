@@ -2,7 +2,6 @@ import Foundation
 import MaqsCore
 import MaqsPMTiles
 import MaqsTestSupport
-import OSLog
 import Synchronization
 import Testing
 
@@ -13,6 +12,13 @@ private final class TestClock: Sendable {
     private let instant = Mutex(ContinuousClock.now)
     var now: ContinuousClock.Instant { instant.withLock { $0 } }
     func advance(by duration: Duration) { instant.withLock { $0 += duration } }
+}
+
+/// Collects what the gateway reports through its log seam.
+private final class LogRecorder: Sendable {
+    private let recorded = Mutex<[GatewayLogEvent]>([])
+    var events: [GatewayLogEvent] { recorded.withLock { $0 } }
+    func record(_ event: GatewayLogEvent) { recorded.withLock { $0.append(event) } }
 }
 
 /// Stands in for the URL loading system when a test drives a `TileGateway` itself; records the failures it is told.
@@ -57,6 +63,7 @@ extension SharedGatewaySuite {
         private let server = StubServer()
         private let directory: TemporaryDirectory
         private let clock = TestClock()
+        private let logged = LogRecorder()
         /// MapLibre's side: a session whose tile requests reach the gateway.
         private let session: URLSession
 
@@ -65,8 +72,8 @@ extension SharedGatewaySuite {
             let configuration = URLSessionConfiguration.ephemeral
             configuration.protocolClasses = [TileGateway.self]
             session = URLSession(configuration: configuration)
-            let clock = clock
-            GatewayState.shared.resetForTesting(now: { clock.now })
+            let (clock, logged) = (clock, logged)
+            GatewayState.shared.resetForTesting(now: { clock.now }, logSink: { logged.record($0) })
         }
 
         // MARK: Helpers
@@ -142,23 +149,6 @@ extension SharedGatewaySuite {
             }
         }
 
-        /// This process's `ui` log messages since `start` that contain `needle`. The log store lags the call that
-        /// logged, by about five seconds in a full simulator run, so it is polled until a matching line shows up or
-        /// twenty seconds pass; a line that shows up ends the wait at once.
-        private static func uiLog(since start: Date, containing needle: String) async throws -> [String] {
-            let store = try OSLogStore(scope: .currentProcessIdentifier)
-            let subsystem = NSPredicate(format: "subsystem == %@ AND category == %@", "com.lucavallin.maqs", "ui")
-            let deadline = ContinuousClock.now + .seconds(20)
-            while true {
-                try Task.checkCancellation()
-                let lines = try store.getEntries(at: store.position(date: start), matching: subsystem)
-                    .compactMap { ($0 as? OSLogEntryLog)?.composedMessage }
-                    .filter { $0.contains(needle) }
-                if !lines.isEmpty || ContinuousClock.now >= deadline { return lines }
-                try await Task.sleep(for: .milliseconds(50))
-            }
-        }
-
         // MARK: Installed regions
 
         @Test func aTileInsideAnInstalledRegionComesFromItsArchive() async throws {
@@ -221,18 +211,16 @@ extension SharedGatewaySuite {
         }
 
         @Test func anUnreadableArchiveIsLoggedOnce() async throws {
-            // A name of its own, so a line another test logs cannot satisfy this one.
-            let name = "corrupt-\(UUID().uuidString).pmtiles"
+            let name = "corrupt.pmtiles"
             let url = directory.url.appending(path: name)
             try Data(repeating: 7, count: 300).write(to: url)
             configure()
             GatewayState.shared.setTable(Self.region(url))
-            let start = Date().addingTimeInterval(-1)
-            _ = try await get(Self.inside)
-            _ = try await get(Self.insideOther)
-            let lines = try await Self.uiLog(since: start, containing: name)
-            #expect(lines.count == 1)
-            #expect(lines.first?.contains("notPMTiles") == true)
+            for tile in [Self.inside, Self.insideOther, Self.inside] {
+                _ = try await get(tile)
+            }
+            #expect(counters.failed == 3)
+            #expect(logged.events == [.archiveUnreadable(file: name, error: "notPMTiles")])
         }
 
         /// Review Focus 3: the open descriptor keeps a removed file readable.
@@ -345,6 +333,18 @@ extension SharedGatewaySuite {
             #expect(try await failure(Self.outsideOther) == .notConnectedToInternet)
             #expect(server.requests.count == 1)
             #expect(GatewayState.shared.isPaused)
+        }
+
+        /// A pause is logged once when it starts, and once when it ends, the first time it is seen over.
+        @Test func aPauseIsLoggedWhenItStartsAndWhenItEnds() async throws {
+            server.route(try Self.url(Self.outside), status: 429, body: Data())
+            configure()
+            _ = try await failure(Self.outside)
+            #expect(logged.events == [.rateLimited, .pauseStarted(seconds: 60)])
+            clock.advance(by: .seconds(61))
+            #expect(!GatewayState.shared.isPaused)
+            #expect(!GatewayState.shared.isPaused)
+            #expect(logged.events == [.rateLimited, .pauseStarted(seconds: 60), .pauseEnded])
         }
 
         @Test func a429IsAnsweredFromABasePackThatCoversTheTile() async throws {
