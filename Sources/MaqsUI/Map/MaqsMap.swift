@@ -36,6 +36,9 @@ struct MapStyles: Equatable {
 ///
 /// The online sources are read with the packs: a refreshed `sources.json` takes effect at the next pack change or in
 /// a new `MaqsMap`. While a map exists, the main actor wakes every 5 s to read the gateway's pause and counters.
+///
+/// The camera actions, such as ``show(_:zoom:)`` and ``resetNorth()``, animate the view that shows the map and do
+/// nothing before one does; only the mode of ``follow(_:)`` is kept for it.
 @MainActor @Observable public final class MaqsMap {
     /// The style, accent, hillshade, label language and points of interest. A change rebuilds the style.
     public var configuration: MapConfiguration {
@@ -80,6 +83,31 @@ struct MapStyles: Equatable {
     /// lines and the overlays' trails and places in the 44-point square around the touch, topmost first, each once. A
     /// tap on nothing has no hits. A double tap zooms the map and is not reported.
     @ObservationIgnored public var onTap: ((MapTap) -> Void)?
+
+    /// Room the app's chrome takes at the map's edges, such as a card along the bottom. The map's centre, the followed
+    /// location and ``show(_:)`` keep to the rest of the view. The map adds no safe area of its own: count
+    /// the status bar or the home indicator in when the map runs under them. A change keeps the coordinate at the
+    /// centre, which moves to the middle of what is left.
+    public var contentInsets = EdgeInsets() {
+        didSet { if contentInsets != oldValue { coordinator?.showContentInsets() } }
+    }
+
+    /// Whether and from where the map shows the user's location, in the location blue. The map never asks for
+    /// permission. With ``UserLocationMode/system`` the location shows once the app has permission, and again when the
+    /// user allows it after denying it; with ``UserLocationMode/provided`` it is what the app passes to ``provide(_:)``.
+    /// Hiding the location stops following it.
+    public var userLocation: UserLocationMode = .hidden {
+        didSet {
+            guard userLocation != oldValue else { return }
+            coordinator?.showUserLocation()
+            if userLocation == .hidden && followMode != .none { followMode = .none }
+        }
+    }
+
+    /// How the camera follows the user's location now. It drops to ``FollowMode/none`` when the user pans the map, the
+    /// app shows a place or the location is hidden, and from heading or course to ``FollowMode/position`` when the map
+    /// turns north or the user rotates it.
+    public private(set) var followMode: FollowMode = .none
 
     /// Where the map looks, updated when the camera settles, not while it moves.
     public private(set) var camera = MapCamera(
@@ -372,6 +400,73 @@ struct MapStyles: Equatable {
         logger.info("map tile gateway configured: online \(key.onlineAllowed ? "allowed" : "off", privacy: .public), terrain \(key.templates.terrain == nil ? "off" : "on", privacy: .public)")
     }
 
+    // MARK: Camera actions
+
+    /// Makes the camera follow the user's location, or stop with ``FollowMode/none``; ``followMode`` says what it
+    /// does. Following needs the location shown: while ``userLocation`` is ``UserLocationMode/hidden`` only `.none`
+    /// does anything. A mode chosen before a ``MaqsMapView`` shows the map applies when it does.
+    public func follow(_ mode: FollowMode) {
+        guard mode == .none || userLocation != .hidden else {
+            logger.debug("map follow ignored: the user's location is hidden")
+            return
+        }
+        if let coordinator {
+            coordinator.follow(mode)
+        } else if mode != followMode {
+            followMode = mode
+        }
+    }
+
+    /// Turns the map to north. Following the heading or the course becomes following the position.
+    public func resetNorth() {
+        coordinator?.resetNorth()
+    }
+
+    /// Tilts the map `degrees` from looking straight down, kept within 0…60, at the same zoom. Not a number does
+    /// nothing.
+    public func setPitch(_ degrees: Double) {
+        guard !degrees.isNaN else {
+            logger.debug("map pitch ignored: not a number")
+            return
+        }
+        coordinator?.setPitch(min(max(degrees, 0), 60))
+    }
+
+    /// Centres the map on `coordinate` at `zoom`, or at the current zoom when it is `nil`, and stops following. A
+    /// coordinate off the earth or a zoom that is not finite does nothing.
+    public func show(_ coordinate: CLLocationCoordinate2D, zoom: Double?) {
+        guard CLLocationCoordinate2DIsValid(coordinate), zoom?.isFinite ?? true else {
+            logger.debug("map show ignored: the coordinate or the zoom is not valid")
+            return
+        }
+        coordinator?.show(coordinate, zoom: zoom)
+    }
+
+    /// Fits `bounds` in the view inside ``contentInsets`` and stops following. An inverted box or one off the earth
+    /// does nothing.
+    public func show(_ bounds: BoundingBox) {
+        let southWest = CLLocationCoordinate2D(latitude: bounds.minLat, longitude: bounds.minLon)
+        let northEast = CLLocationCoordinate2D(latitude: bounds.maxLat, longitude: bounds.maxLon)
+        guard CLLocationCoordinate2DIsValid(southWest), CLLocationCoordinate2DIsValid(northEast),
+              bounds.minLat <= bounds.maxLat, bounds.minLon <= bounds.maxLon else {
+            logger.debug("map show ignored: the box is not valid")
+            return
+        }
+        coordinator?.show(southWest: southWest, northEast: northEast)
+    }
+
+    /// Moves the user's location to `location` while ``userLocation`` is ``UserLocationMode/provided``, and is
+    /// ignored otherwise. Pass each fix the app records, so the map shows the same location as the app's data. A
+    /// location off the earth is dropped.
+    public func provide(_ location: CLLocation) {
+        guard userLocation == .provided else { return }
+        guard CLLocationCoordinate2DIsValid(location.coordinate) else {
+            logger.debug("map dropped a provided location that is not valid")
+            return
+        }
+        coordinator?.provide(location)
+    }
+
     // MARK: Called by the view
 
     func attach(_ coordinator: MaqsMapView.Coordinator) {
@@ -394,6 +489,11 @@ struct MapStyles: Equatable {
     func cameraDidSettle(_ camera: MapCamera) {
         if camera != self.camera { self.camera = camera }
         updateOffer(catalog: maqs.state.catalog, packs: maqs.state.packs)
+    }
+
+    /// MapLibre changed how it follows the location: asked to, or because the user moved the map.
+    func followModeDidChange(_ mode: FollowMode) {
+        if mode != followMode { followMode = mode }
     }
 
     /// The accent resolved for the scheme: the marker images are drawn in it, and the style's lines get its hex value.
