@@ -39,7 +39,8 @@ enum StyleAssembler {
         style["layers"] = layers
 
         do {
-            let data = try JSONSerialization.data(withJSONObject: style, options: [.withoutEscapingSlashes])
+            // Sorted keys make the text depend on the inputs only: the map loads a style only when the text changes.
+            let data = try JSONSerialization.data(withJSONObject: style, options: [.withoutEscapingSlashes, .sortedKeys])
             return String(decoding: data, as: UTF8.self)
         } catch {
             throw .invalidStyle("the assembled style cannot be written as JSON")

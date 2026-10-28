@@ -67,9 +67,9 @@ extension MaqsMapView {
         @ObservationIgnored private(set) var appliedStyle: String?
         private(set) var loadedStyle: String?
         @ObservationIgnored private var failedStyle: String?
-        /// How often an assembled style loaded and the map became idle, for whoever waits on the map.
+        /// How often an assembled style loaded, and how often the map became idle since the last load, for whoever
+        /// waits on the map.
         private(set) var styleLoads = 0
-        private(set) var idles = 0
         private(set) var idlesSinceStyleLoad = 0
         /// What MapLibre last said when it finished rendering the map. It says `true` even when no tile could be parsed.
         private(set) var renderedFully = false
@@ -130,7 +130,6 @@ extension MaqsMapView {
         }
 
         func mapViewDidBecomeIdle(_ mapView: MLNMapView) {
-            idles += 1
             idlesSinceStyleLoad += 1
         }
 

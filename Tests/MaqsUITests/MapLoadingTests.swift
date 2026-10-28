@@ -144,15 +144,16 @@ extension SharedGatewaySuite {
             #expect(map.routingTable.regions.isEmpty)
             host.mapView.setCenter(TestRegion.center, zoomLevel: 14, animated: false)
             // Each answer changes the counters, so the stub's requests are looked at again after every one: the next
-            // z14 tile of the old box goes to the provider's host, through the stub.
+            // z14 tile of the old box goes to the provider, through the stub.
+            let template = try #require(await maqs.onlineSources?.basemap.first?.tiles)
+            var oldBox: Set<URL> = []
+            for x in 8747...8751 {
+                for y in 5820...5823 { oldBox.insert(try tileURL(template, z: 14, x: x, y: y)) }
+            }
             let server = server
             try await waitUntil {
                 _ = map.gatewayCounters
-                return server.requests.contains { request in
-                    guard let url = request.url, url.host == "tiles.versatiles.org" else { return false }
-                    let tile = url.pathComponents.suffix(3).compactMap { Int($0) }
-                    return tile.count == 3 && tile[0] == 14 && (8747...8751).contains(tile[1]) && (5820...5823).contains(tile[2])
-                }
+                return server.requests.contains { $0.url.map(oldBox.contains) == true }
             }
             #expect(map.gatewayCounters.online > 0)
         }
@@ -210,19 +211,66 @@ extension SharedGatewaySuite {
             #expect(map.styles == styles)
         }
 
-        @Test func aStyleMapLibreFailsToLoadIsReportedAndTheLoadedStyleStays() async throws {
+        /// MapLibre's parser fails only on JSON it cannot read, which the assembler never writes; the coordinator is
+        /// handed some directly. MapLibre keeps drawing the old style but drops its `MLNStyle`, so the coordinator loads
+        /// the last good style again, and never hands over the failed JSON a second time.
+        @Test func aStyleMapLibreCannotParseIsReportedAndTheLoadedStyleComesBack() async throws {
             let maqs = try TestRegion.maqs(on: server, layers: [.basemap], in: directory)
             let map = try MaqsMap(maqs: maqs, configuration: MapConfiguration(), seams: seams())
             let host = try await MapHost.show(map)
             defer { host.close() }
             try await host.waitForStyle { $0.source(withIdentifier: "basemap") != nil }
-            let loaded = host.coordinator.loadedStyle
+            let coordinator = host.coordinator
+            let loaded = coordinator.loadedStyle
+            let loads = coordinator.styleLoads
 
-            host.coordinator.mapViewDidFailLoadingMap(host.mapView, withError: NSError(domain: "test", code: 1))
+            coordinator.apply("{")
 
+            try await waitUntil { coordinator.styleLoads > loads }
             #expect(map.lastError == .styleFailedToLoad)
-            #expect(host.coordinator.loadedStyle == loaded)
+            #expect(coordinator.loadedStyle == loaded)
             #expect(host.mapView.style?.source(withIdentifier: "basemap") != nil)
+            let reloads = coordinator.styleLoads
+            coordinator.apply("{")
+            #expect(coordinator.styleLoads == reloads)
+            #expect(host.mapView.style?.source(withIdentifier: "basemap") != nil)
+        }
+
+        /// The app's style can be invalid for a while; the packs are still followed, from the last base style that
+        /// built, so a removed pack's overlay never stays in the style pointing at a deleted file.
+        @Test func whileTheAppsStyleIsInvalidARemovedPacksOverlayStillGoes() async throws {
+            let maqs = try await TestRegion.install(on: server, layers: [.basemap, .trails], in: directory)
+            let map = try MaqsMap(maqs: maqs, configuration: MapConfiguration(), seams: seams())
+            try await waitUntil { map.styles?.light.contains("maqs-trails-test") == true }
+            map.configuration.style = .custom(light: Data(#"{"version":8,"sources":{},"layers":[]}"#.utf8), dark: nil)
+            #expect(map.lastError == .invalidStyle("the style has no \"basemap\" source"))
+
+            try await maqs.remove(TestRegion.id)
+
+            try await waitUntil { map.routingTable.regions.isEmpty }
+            #expect(map.styles?.light.contains("maqs-trails-test") == false)
+            #expect(map.styles?.dark.contains("maqs-trails-test") == false)
+            #expect(map.lastError == .invalidStyle("the style has no \"basemap\" source"))
+        }
+
+        /// A region's box comes from the catalog, so a new catalog can move it; no pack changes for that.
+        @Test func aCatalogChangeUpdatesTheInstalledRegionsBox() async throws {
+            let maqs = try await TestRegion.install(on: server, layers: [.basemap], in: directory)
+            let map = try MaqsMap(maqs: maqs, configuration: MapConfiguration(), seams: seams())
+            try await waitUntil { !map.routingTable.regions.isEmpty }
+            #expect(map.routingTable.regions.first?.bbox
+                == BoundingBox(minLon: 12.21, minLat: 46.08, maxLon: 12.29, maxLat: 46.13))
+            let wider = BoundingBox(minLon: 12.0, minLat: 46.0, maxLon: 12.5, maxLat: 46.3)
+            let manifest = try Fixtures.manifestJSON { object in
+                var regions = object["regions"] as? [[String: Any]] ?? []
+                regions[0]["bbox"] = [wider.minLon, wider.minLat, wider.maxLon, wider.maxLat]
+                object["regions"] = regions
+            }
+            server.route(Fixtures.manifestURL, headers: ["Content-Type": "application/json"], body: manifest)
+
+            _ = try await maqs.refreshCatalog(policy: .always)
+
+            try await waitUntil { map.routingTable.regions.first?.bbox == wider }
         }
     }
 }
