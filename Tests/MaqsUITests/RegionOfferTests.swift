@@ -117,6 +117,15 @@ import Testing
         #expect(offer?.id == .region("triveneto"))
     }
 
+    /// Right after an install the packs say installed while the catalog, rebuilt a moment later, still says not.
+    @Test func aRegionThePacksShowInstalledIsNotOfferedBeforeTheCatalogCatchesUp() throws {
+        let stale = try catalog()
+        #expect(status(stale, "veneto") == .notInstalled)
+        let pack = try installedPack("veneto", in: stale)
+        #expect(RegionOffer.region(at: padova, catalog: stale, packs: [.region("veneto"): .installed(pack)]) == nil)
+        #expect(RegionOffer.region(at: nevegal, catalog: stale, packs: [.region("triveneto"): .installed(pack)]) == nil)
+    }
+
     @Test func aFailedOrNotInstalledStateStillOffers() throws {
         let offer = RegionOffer.region(at: padova, catalog: try catalog(), packs: [.region("veneto"): .notInstalled])
         #expect(offer?.id == .region("veneto"))
