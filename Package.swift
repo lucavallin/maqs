@@ -22,11 +22,17 @@ let package = Package(
             swiftSettings: warningsAsErrors
         ),
         .target(
+            name: "MaqsPMTiles",
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
             name: "MaqsTerrain",
+            dependencies: ["MaqsPMTiles"],
             swiftSettings: warningsAsErrors
         ),
         .target(
             name: "MaqsTestSupport",
+            dependencies: ["MaqsPMTiles"],
             path: "Tests/MaqsTestSupport",
             sources: ["Sources"],
             resources: [.copy("Fixtures")],
@@ -40,6 +46,11 @@ let package = Package(
         .testTarget(
             name: "MaqsDataTests",
             dependencies: ["MaqsData", "MaqsTestSupport"],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MaqsPMTilesTests",
+            dependencies: ["MaqsPMTiles", "MaqsTestSupport"],
             swiftSettings: warningsAsErrors
         ),
         .testTarget(

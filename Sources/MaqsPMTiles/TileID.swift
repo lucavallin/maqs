@@ -1,7 +1,7 @@
 /// PMTiles v3 tile ids: the position of a tile along the Hilbert curve, after every tile of the lower zooms.
-enum TileID {
+package enum TileID {
     /// The id of tile `z/x/y`, or `nil` outside zoom 0...31 and `0..<2^z` for `x` and `y`.
-    static func id(z: Int, x: Int, y: Int) -> UInt64? {
+    package static func id(z: Int, x: Int, y: Int) -> UInt64? {
         guard (0...31).contains(z), x >= 0, y >= 0 else { return nil }
         let n = UInt64(1) << UInt64(z)
         var x = UInt64(x)

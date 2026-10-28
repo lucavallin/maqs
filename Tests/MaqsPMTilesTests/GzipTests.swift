@@ -1,7 +1,7 @@
 import Foundation
 import MaqsTestSupport
 import Testing
-@testable import MaqsTerrain
+@testable import MaqsPMTiles
 
 @Suite struct GzipTests {
     private let payload = Data(String(repeating: "terrain tile bytes ", count: 200).utf8)

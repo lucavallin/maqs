@@ -1,5 +1,6 @@
 import CoreLocation
 import Foundation
+import MaqsPMTiles
 import MaqsTestSupport
 import Synchronization
 import Testing

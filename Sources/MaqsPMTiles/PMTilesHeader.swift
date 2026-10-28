@@ -1,25 +1,25 @@
 import Foundation
 
 /// The compressions this reader decodes; PMTiles codes 1 and 2.
-enum PMTilesCompression: UInt8, Sendable {
+package enum PMTilesCompression: UInt8, Sendable {
     case none = 1
     case gzip = 2
 }
 
 /// The fixed 127-byte PMTiles v3 header. Every section is checked to lie inside the file.
-struct PMTilesHeader: Sendable, Equatable {
+package struct PMTilesHeader: Sendable, Equatable {
     static let size = 127
     private static let magic = Array("PMTiles".utf8)
 
     var rootOffset, rootLength, metadataOffset, metadataLength, leafOffset, leafLength, tileDataOffset, tileDataLength: UInt64
     var addressedTiles: UInt64
     var clustered: Bool
-    var internalCompression, tileCompression: PMTilesCompression
-    var tileType: UInt8
-    var minZoom, maxZoom: Int
-    var bounds: (west: Double, south: Double, east: Double, north: Double)
+    package var internalCompression, tileCompression: PMTilesCompression
+    package var tileType: UInt8
+    package var minZoom, maxZoom: Int
+    package var bounds: (west: Double, south: Double, east: Double, north: Double)
 
-    static func == (lhs: PMTilesHeader, rhs: PMTilesHeader) -> Bool {
+    package static func == (lhs: PMTilesHeader, rhs: PMTilesHeader) -> Bool {
         lhs.rootOffset == rhs.rootOffset && lhs.rootLength == rhs.rootLength
             && lhs.metadataOffset == rhs.metadataOffset && lhs.metadataLength == rhs.metadataLength
             && lhs.leafOffset == rhs.leafOffset && lhs.leafLength == rhs.leafLength
@@ -31,7 +31,7 @@ struct PMTilesHeader: Sendable, Equatable {
     }
 
     /// Parses the first bytes of a file of `fileSize` bytes.
-    static func parse(_ bytes: Data, fileSize: UInt64) throws(PMTilesError) -> PMTilesHeader {
+    static func parse(_ bytes: Data, fileSize: UInt64) throws(PMTilesReadError) -> PMTilesHeader {
         let bytes = bytes.startIndex == 0 ? bytes : Data(bytes)
         // A file that cannot even start with the magic is not an archive; one that starts right is just cut short.
         guard bytes.prefix(magic.count).elementsEqual(magic.prefix(bytes.count)) else { throw .notPMTiles }

@@ -3,7 +3,7 @@ import Synchronization
 
 /// A local PMTiles v3 archive, read with positioned reads on one descriptor held open for the archive's lifetime
 /// (a removed file stays readable). Every offset and length is checked before it is used.
-final class PMTilesArchive: Sendable {
+package final class PMTilesArchive: Sendable {
     private static let maxDirectoryBytes = 16 << 20
     private static let maxTileBytes = 64 << 20
     private static let maxMetadataBytes = 8 << 20
@@ -38,20 +38,20 @@ final class PMTilesArchive: Sendable {
         }
     }
 
-    let url: URL
-    let header: PMTilesHeader
+    package let url: URL
+    package let header: PMTilesHeader
     /// The metadata's `tile_schema`, when present.
-    let tileSchema: String?
+    package let tileSchema: String?
     /// Whether the metadata has a `tile_size` entry, whatever its value.
-    let declaresTileSize: Bool
+    package let declaresTileSize: Bool
     /// The metadata's `tile_size` when it is a whole number.
-    let tileSize: Int?
+    package let tileSize: Int?
     private let file: OpenFile
     private let rootEntries: [DirectoryEntry]
     private let leafCache = Mutex(LeafCache())
 
     /// Opens the archive and checks its header, root directory and metadata.
-    init(url: URL) throws(PMTilesError) {
+    package init(url: URL) throws(PMTilesReadError) {
         let descriptor = open(url.path(percentEncoded: false), O_RDONLY | O_CLOEXEC)
         guard descriptor >= 0 else { throw .unreadableFile }
         let file = OpenFile(descriptor: descriptor)
@@ -73,12 +73,12 @@ final class PMTilesArchive: Sendable {
     }
 
     /// Whether the archive holds tile `z/x/y`. Tiles outside the zoom and coordinate range are absent.
-    func contains(z: Int, x: Int, y: Int) throws(PMTilesError) -> Bool {
+    package func contains(z: Int, x: Int, y: Int) throws(PMTilesReadError) -> Bool {
         try locate(z: z, x: x, y: y) != nil
     }
 
     /// The decompressed tile, or `nil` when the archive has no such tile.
-    func tile(z: Int, x: Int, y: Int) throws(PMTilesError) -> Data? {
+    package func tile(z: Int, x: Int, y: Int) throws(PMTilesReadError) -> Data? {
         guard let entry = try locate(z: z, x: x, y: y) else { return nil }
         let raw = try Self.read(file, offset: header.tileDataOffset + entry.offset, length: Int(entry.length))
         switch header.tileCompression {
@@ -88,7 +88,7 @@ final class PMTilesArchive: Sendable {
     }
 
     /// The directory entry of a tile, with its size and position validated; `nil` when absent.
-    private func locate(z: Int, x: Int, y: Int) throws(PMTilesError) -> DirectoryEntry? {
+    private func locate(z: Int, x: Int, y: Int) throws(PMTilesReadError) -> DirectoryEntry? {
         guard let tileID = TileID.id(z: z, x: x, y: y) else { return nil }
         guard var entry = Directory.find(rootEntries, tileID: tileID) else { return nil }
         if entry.runLength == 0 {
@@ -106,7 +106,7 @@ final class PMTilesArchive: Sendable {
         return entry
     }
 
-    private func leafDirectory(_ pointer: DirectoryEntry) throws(PMTilesError) -> [DirectoryEntry] {
+    private func leafDirectory(_ pointer: DirectoryEntry) throws(PMTilesReadError) -> [DirectoryEntry] {
         if let cached = leafCache.withLock({ $0.value(for: pointer.offset) }) { return cached }
         let (end, overflow) = pointer.offset.addingReportingOverflow(pointer.length)
         guard !overflow, end <= header.leafLength else {
@@ -123,7 +123,7 @@ final class PMTilesArchive: Sendable {
 
     /// A section of the file, inflated when the archive's internal compression says so, with `cap` applied to both sizes.
     private static func section(_ file: OpenFile, header: PMTilesHeader, offset: UInt64, length: UInt64,
-                                cap: Int) throws(PMTilesError) -> Data {
+                                cap: Int) throws(PMTilesReadError) -> Data {
         guard length <= UInt64(cap) else { throw .sectionTooLarge }
         let raw = try read(file, offset: offset, length: Int(length))
         switch header.internalCompression {
@@ -133,7 +133,7 @@ final class PMTilesArchive: Sendable {
     }
 
     /// Only `tile_schema` and `tile_size` are used; anything else in the metadata is ignored.
-    private static func metadata(_ file: OpenFile, header: PMTilesHeader) throws(PMTilesError) -> [String: Any] {
+    private static func metadata(_ file: OpenFile, header: PMTilesHeader) throws(PMTilesReadError) -> [String: Any] {
         guard header.metadataLength > 0 else { return [:] }
         let data = try section(file, header: header, offset: header.metadataOffset, length: header.metadataLength,
                                cap: maxMetadataBytes)
@@ -144,7 +144,7 @@ final class PMTilesArchive: Sendable {
     }
 
     /// `length` bytes at `offset`. A short read means the file shrank or was cut: `truncated`, unless `allowShort`.
-    private static func read(_ file: OpenFile, offset: UInt64, length: Int, allowShort: Bool = false) throws(PMTilesError) -> Data {
+    private static func read(_ file: OpenFile, offset: UInt64, length: Int, allowShort: Bool = false) throws(PMTilesReadError) -> Data {
         guard offset <= UInt64(Int64.max) else { throw .truncated }
         let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: max(length, 1))
         defer { buffer.deallocate() }

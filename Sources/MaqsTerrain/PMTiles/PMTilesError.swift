@@ -1,4 +1,5 @@
 import Foundation
+import MaqsPMTiles
 
 /// Why a PMTiles file could not be read. A file that throws any of these is damaged, truncated or not a PMTiles archive.
 public enum PMTilesError: Error, Equatable, LocalizedError {
@@ -38,6 +39,23 @@ public enum PMTilesError: Error, Equatable, LocalizedError {
             "This map file declares a section larger than this app accepts. Remove the region and install it again."
         case .unreadableFile:
             "This map file cannot be read. Check that the region is still installed, or install it again."
+        }
+    }
+}
+
+extension PMTilesError {
+    /// The public error for one the reader raised, case for case.
+    init(_ error: PMTilesReadError) {
+        switch error {
+        case .notPMTiles: self = .notPMTiles
+        case .unsupportedVersion(let version): self = .unsupportedVersion(version)
+        case .unsupportedCompression(let code): self = .unsupportedCompression(code)
+        case .truncated: self = .truncated
+        case .corruptDirectory(let detail): self = .corruptDirectory(detail)
+        case .corruptCompressedData(let detail): self = .corruptCompressedData(detail)
+        case .sectionTooLarge: self = .sectionTooLarge
+        case .nestedLeafDirectory: self = .nestedLeafDirectory
+        case .unreadableFile: self = .unreadableFile
         }
     }
 }

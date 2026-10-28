@@ -1,5 +1,5 @@
 import Testing
-@testable import MaqsTerrain
+@testable import MaqsPMTiles
 
 @Suite struct TileIDTests {
     @Test func idsMatchThePipeline() throws {

@@ -1,7 +1,7 @@
 import Foundation
 import MaqsTestSupport
 import Testing
-@testable import MaqsTerrain
+@testable import MaqsPMTiles
 
 @Suite struct PMTilesArchiveTests {
     private static let fixtureNames = [
@@ -17,11 +17,11 @@ import Testing
         (3, 4, 4, Data("dddd".utf8)), (3, 7, 7, Data("eeeee".utf8)),
     ]
 
-    private func expect(_ error: PMTilesError, sourceLocation: SourceLocation = #_sourceLocation, when body: () throws -> Void) {
+    private func expect(_ error: PMTilesReadError, sourceLocation: SourceLocation = #_sourceLocation, when body: () throws -> Void) {
         do {
             try body()
             Issue.record("did not throw \(error)", sourceLocation: sourceLocation)
-        } catch let thrown as PMTilesError {
+        } catch let thrown as PMTilesReadError {
             #expect(thrown == error, sourceLocation: sourceLocation)
         } catch {
             Issue.record("unexpected \(error)", sourceLocation: sourceLocation)
@@ -32,7 +32,7 @@ import Testing
         do {
             try body()
             Issue.record("did not throw", sourceLocation: sourceLocation)
-        } catch let thrown as PMTilesError {
+        } catch let thrown as PMTilesReadError {
             guard case .corruptDirectory = thrown else {
                 Issue.record("expected corruptDirectory, got \(thrown)", sourceLocation: sourceLocation)
                 return

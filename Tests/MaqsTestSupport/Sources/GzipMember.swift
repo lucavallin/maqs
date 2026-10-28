@@ -1,11 +1,11 @@
 import Compression
 import Foundation
-@testable import MaqsTerrain
+import MaqsPMTiles
 
 /// Builds RFC 1952 gzip members with chosen header fields, for tests of `Gzip`.
-enum GzipMember {
+public enum GzipMember {
     /// Raw DEFLATE of `payload` (what `COMPRESSION_ZLIB` encodes).
-    static func deflate(_ payload: Data) -> Data {
+    public static func deflate(_ payload: Data) -> Data {
         guard !payload.isEmpty else { return Data([0x03, 0x00]) }
         let capacity = payload.count * 2 + 1024
         var out = [UInt8](repeating: 0, count: capacity)
@@ -16,7 +16,8 @@ enum GzipMember {
         return Data(out.prefix(written))
     }
 
-    static func make(_ payload: Data, extra: Data? = nil, name: String? = nil, comment: String? = nil,
+    /// A whole gzip member around `payload`, with the optional header fields (extra, name, comment, header CRC) set as asked.
+    public static func make(_ payload: Data, extra: Data? = nil, name: String? = nil, comment: String? = nil,
                      headerCRC: Bool = false) -> Data {
         var flags: UInt8 = 0
         if headerCRC { flags |= 0x02 }
