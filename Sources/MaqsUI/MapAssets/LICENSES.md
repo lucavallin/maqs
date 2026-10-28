@@ -10,18 +10,18 @@ Noto Sans by Google, rendered to MapLibre SDF glyph ranges by VersaTiles
 SHA-256 `f58be6be2eb3d127b6ff1c90d828b69ff4807d1d88cd13a43930943fda0e334e`).
 The versatiles-fonts README names the font as OFL-licensed; the archive carries no licence file, so the
 official text is reproduced below, copied from https://openfontlicense.org/documents/OFL.txt on 2026-10-28.
+The copyright line is the one in the Noto Sans source repository for the Latin, Greek and Cyrillic ranges
+the package bundles (0-1023 and 8192-8447), read on 2026-10-28 from
+https://raw.githubusercontent.com/notofonts/latin-greek-cyrillic/main/OFL.txt
+(the versatiles-fonts `fonts/Noto Sans/LICENSE` at v3.0.0 holds the licence text but no copyright line).
 The glyph files are a converted form of the font software; they are bundled, not sold on their own.
 
 ```text
-Copyright (c) <dates>, <Copyright Holder> (<URL|email>),
-with Reserved Font Name <Reserved Font Name>.
-Copyright (c) <dates>, <additional Copyright Holder> (<URL|email>),
-with Reserved Font Name <additional Reserved Font Name>.
-Copyright (c) <dates>, <additional Copyright Holder> (<URL|email>).
+Copyright 2022 The Noto Project Authors (https://github.com/notofonts/latin-greek-cyrillic)
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
 This license is copied below, and is also available with a FAQ at:
-https://openfontlicense.org
+https://scripts.sil.org/OFL
 
 
 -----------------------------------------------------------
