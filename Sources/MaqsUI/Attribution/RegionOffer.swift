@@ -8,7 +8,8 @@ enum RegionOffer {
     ///
     /// `nil` too when any installed region (installed, update available or partially installed) covers the centre,
     /// when the centre is not a valid coordinate, or when every candidate is queued or downloading. Only regions
-    /// are offered, never base packs, and an update is not an offer.
+    /// are offered, never base packs, and an update is not an offer. A region `packs` shows installed counts as
+    /// installed whatever the catalog says: right after an install the catalog can lag behind the packs.
     static func region(
         at centre: CLLocationCoordinate2D, catalog: Catalog?, packs: [PackID: PackState]
     ) -> PackSummary? {
@@ -20,6 +21,7 @@ enum RegionOffer {
         }
         let here = catalog.regions.filter(covers)
         for region in here {
+            if case .installed = packs[region.id] { return nil }
             switch region.status {
             case .installed, .updateAvailable, .partiallyInstalled: return nil
             case .notInstalled: break
