@@ -66,7 +66,7 @@ enum TileRouter {
     }
 
     private static func holds(_ archive: LocalArchive, _ request: TileRequest) -> Bool {
-        archive.layer == request.layer && (archive.minZoom...archive.maxZoom).contains(request.z)
+        archive.layer == request.layer && archive.minZoom <= request.z && request.z <= archive.maxZoom
             && intersects(tileBox(request), archive.bounds)
     }
 
