@@ -10,6 +10,10 @@ let package = Package(
         .library(name: "MaqsCore", targets: ["MaqsCore"]),
         .library(name: "MaqsData", targets: ["MaqsData"]),
         .library(name: "MaqsTerrain", targets: ["MaqsTerrain"]),
+        .library(name: "MaqsUI", targets: ["MaqsUI"]),
+    ],
+    dependencies: [
+        .package(url: "https://github.com/maplibre/maplibre-gl-native-distribution", "6.31.0"..<"7.0.0"),
     ],
     targets: [
         .target(
@@ -28,6 +32,15 @@ let package = Package(
         .target(
             name: "MaqsTerrain",
             dependencies: ["MaqsPMTiles"],
+            swiftSettings: warningsAsErrors
+        ),
+        .target(
+            name: "MaqsUI",
+            dependencies: [
+                "MaqsCore", "MaqsPMTiles",
+                .product(name: "MapLibre", package: "maplibre-gl-native-distribution", condition: .when(platforms: [.iOS])),
+            ],
+            resources: [.process("Resources")],
             swiftSettings: warningsAsErrors
         ),
         .target(
@@ -56,6 +69,11 @@ let package = Package(
         .testTarget(
             name: "MaqsTerrainTests",
             dependencies: ["MaqsTerrain", "MaqsTestSupport"],
+            swiftSettings: warningsAsErrors
+        ),
+        .testTarget(
+            name: "MaqsUITests",
+            dependencies: ["MaqsUI", "MaqsCore", "MaqsData", "MaqsTestSupport"],
             swiftSettings: warningsAsErrors
         ),
     ],
