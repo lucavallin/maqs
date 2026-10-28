@@ -102,10 +102,12 @@ import MaqsTestSupport
         _ = try await maqs.refreshCatalog()
         let regionEntry = try #require(manifest.regions[0].entries(for: .basemap)?.first)
         let oldBase = try #require(manifest.base[0].entries(for: .basemap)?.first)
+        let gate = StubGate()
+        defer { gate.release() }
         let (reached, signal) = AsyncStream<Void>.makeStream()
         server.route(regionEntry.url) { _ in
             signal.yield()
-            return StubResponse(status: 200, body: Data(repeating: 0, count: Int(regionEntry.bytes)), delay: 30)
+            return StubResponse(status: 200, body: Data(repeating: 0, count: Int(regionEntry.bytes)), gate: gate)
         }
         let first = Task { try await maqs.install(region) }
         var iterator = reached.makeAsyncIterator()
@@ -188,10 +190,12 @@ import MaqsTestSupport
         _ = try await maqs.refreshCatalog()
         let regionEntry = try #require(manifest.regions[0].entries(for: .basemap)?.first)
         let baseEntry = try #require(manifest.base[0].entries(for: .basemap)?.first)
+        let gate = StubGate()
+        defer { gate.release() }
         let (reached, signal) = AsyncStream<Void>.makeStream()
         server.route(regionEntry.url) { _ in
             signal.yield()
-            return StubResponse(status: 200, body: Data(repeating: 0, count: Int(regionEntry.bytes)), delay: 30)
+            return StubResponse(status: 200, body: Data(repeating: 0, count: Int(regionEntry.bytes)), gate: gate)
         }
         let isDownloading: @MainActor (PackID) -> Bool = { id in
             if case .downloading? = maqs.state.packs[id] { true } else { false }
