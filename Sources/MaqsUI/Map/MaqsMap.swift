@@ -3,7 +3,6 @@ import CoreLocation
 import Foundation
 import MaqsCore
 import MaqsPMTiles
-import Observation
 import SwiftUI
 import UIKit
 
@@ -34,6 +33,9 @@ struct MapStyles: Equatable {
 /// before any map view exists in the process: its initialiser puts the gateway in front of MapLibre's network, which
 /// MapLibre reads once, when its first view is created. A map view created earlier, even by other code, leaves every
 /// tile of the process outside the gateway.
+///
+/// The online sources are read with the packs: a refreshed `sources.json` takes effect at the next pack change or in
+/// a new `MaqsMap`. While a map exists, the main actor wakes every 5 s to read the gateway's pause and counters.
 @MainActor @Observable public final class MaqsMap {
     /// The style, accent, hillshade, label language and points of interest. A change rebuilds the style.
     public var configuration: MapConfiguration {
@@ -58,11 +60,12 @@ struct MapStyles: Equatable {
     public private(set) var uninstalledRegion: PackSummary?
 
     /// Whether online tiles are paused because the provider answered 429. The map then draws what it has and asks
-    /// again when the pause ends.
+    /// again when the pause ends. It is read from the gateway every 5 s, so it can trail the pause by up to that.
     public private(set) var onlineTilesPaused = false
 
     /// The last thing that went wrong: an app style that is not valid, or a style MapLibre failed to load. The map
-    /// keeps the style it had. `nil` again after the next style is built.
+    /// keeps drawing from the last style that built and still follows the packs. `nil` again once the app's style
+    /// builds.
     public private(set) var lastError: MapError?
 
     // MARK: Read by the view and by tests
@@ -82,7 +85,12 @@ struct MapStyles: Equatable {
     @ObservationIgnored private let seams: MapSeams
     /// The online sources and installed content of the last pack read; the style is rebuilt from these.
     @ObservationIgnored private var sources: OnlineSources?
+    @ObservationIgnored private var installedPacks: [InstalledPack] = []
     @ObservationIgnored private var content = InstalledContent.none
+    /// The catalog last seen: a region's box comes from it.
+    @ObservationIgnored private var catalogSeen: Catalog?
+    /// The base styles of the last build that succeeded; the style is built from them while the app's is invalid.
+    @ObservationIgnored private var lastGoodBases: (light: Data, dark: Data)?
     @ObservationIgnored private var packsRead = false
     /// What the packs said last time, with transient states (queued, downloading, failed) folded together, so download
     /// progress does not read the packs again.
@@ -180,13 +188,18 @@ struct MapStyles: Equatable {
             Task { @MainActor [weak self] in self?.observePacks() }
         }
         updateOffer(catalog: catalog, packs: packs)
+        let catalogChanged = catalog != catalogSeen
+        catalogSeen = catalog
         let snapshot = packs.mapValues { state -> InstalledPack? in
             if case .installed(let pack) = state { return pack }
             return nil
         }
-        guard snapshot != packSnapshot else { return }
-        packSnapshot = snapshot
-        readPacks(packs.keys.sorted { Self.describe($0) < Self.describe($1) })
+        if snapshot != packSnapshot {
+            packSnapshot = snapshot
+            readPacks(packs.keys.sorted { Self.describe($0) < Self.describe($1) })
+        } else if catalogChanged && packsRead {
+            refreshContent()
+        }
     }
 
     /// Reads every pack's installed files (a pack being updated keeps its old files until the update ends), the headers
@@ -211,16 +224,25 @@ struct MapStyles: Equatable {
     private func packsChanged(_ packs: [InstalledPack], sources: OnlineSources?, infos: [URL: ArchiveInfo]) {
         let listed = Set(MapInputs.tileArchives(of: packs))
         archiveInfos = archiveInfos.merging(infos) { _, new in new }.filter { listed.contains($0.key) }
+        let rebuild = !packsRead || sources != self.sources
+        installedPacks = packs
         self.sources = sources
-        let content = MapInputs.content(packs: packs, layers: maqs.configuration.layers, catalog: maqs.state.catalog,
-                                        archives: archiveInfos)
+        packsRead = true
+        refreshContent(rebuild: rebuild)
+    }
+
+    /// Works out the installed content from the last packs read and the current catalog, and rebuilds the style when
+    /// it changed or `rebuild` asks for it.
+    private func refreshContent(rebuild: Bool = false) {
+        let content = MapInputs.content(packs: installedPacks, layers: maqs.configuration.layers,
+                                        catalog: maqs.state.catalog, archives: archiveInfos)
+        guard rebuild || content != self.content else { return }
         if content != self.content || !packsRead {
-            let ids = packs.map { Self.describe($0.id) }.joined(separator: ", ")
+            let ids = installedPacks.map { Self.describe($0.id) }.joined(separator: ", ")
             logger.info("map packs: \(ids.isEmpty ? "none" : ids, privacy: .public)")
         }
         self.content = content
         if routingTable != content.table { routingTable = content.table }
-        packsRead = true
         rebuildStyles()
     }
 
@@ -259,23 +281,44 @@ struct MapStyles: Equatable {
         let templates = MapInputs.templates(sources: sources, layers: maqs.configuration.layers,
                                             showsHillshade: configuration.showsHillshade)
         configureGateway(templates)
-        let built: MapStyles
         do {
-            built = MapStyles(light: try assemble(templates, dark: false), dark: try assemble(templates, dark: true))
+            let bases = try baseStyles()
+            let built = try build(from: bases, templates)
+            lastGoodBases = bases
+            lastError = nil
+            publish(built)
         } catch {
             logger.error("map style not built: \(String(describing: error), privacy: .public)")
             lastError = error
-            return
+            // The packs are still followed, from the last base style that built: a removed pack's overlay must not
+            // stay in the style pointing at a deleted file.
+            guard let lastGoodBases else { return }
+            do {
+                publish(try build(from: lastGoodBases, templates))
+            } catch {
+                logger.error("map style not built from the last good base: \(String(describing: error), privacy: .public)")
+            }
         }
-        lastError = nil
+    }
+
+    private func publish(_ built: MapStyles) {
         if built != styles { styles = built }
     }
 
-    private func assemble(_ templates: MapTemplates, dark: Bool) throws(MapError) -> String {
-        let base: Data = switch configuration.style {
-        case .default: try BundledAssets.defaultStyle(dark: dark)
-        case .custom(let light, let darkStyle): dark ? darkStyle ?? light : light
+    /// The light and dark base styles the configuration names.
+    private func baseStyles() throws(MapError) -> (light: Data, dark: Data) {
+        switch configuration.style {
+        case .default: (try BundledAssets.defaultStyle(dark: false), try BundledAssets.defaultStyle(dark: true))
+        case .custom(let light, let dark): (light, dark ?? light)
         }
+    }
+
+    private func build(from bases: (light: Data, dark: Data), _ templates: MapTemplates) throws(MapError) -> MapStyles {
+        MapStyles(light: try assemble(bases.light, templates, dark: false),
+                  dark: try assemble(bases.dark, templates, dark: true))
+    }
+
+    private func assemble(_ base: Data, _ templates: MapTemplates, dark: Bool) throws(MapError) -> String {
         let inputs = StyleInputs(
             basemap: templates.basemap, terrain: templates.terrain, glyphs: BundledAssets.glyphsTemplate,
             sprite: BundledAssets.spriteURL, labelLanguage: configuration.labelLanguage ?? Self.deviceLanguage,

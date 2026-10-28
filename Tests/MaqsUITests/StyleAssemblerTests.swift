@@ -87,6 +87,17 @@ import Testing
         #expect(terrain["attribution"] as? String == "Terrain")
     }
 
+    /// The map compares the JSON it built with the JSON MapLibre shows and loads a style only when they differ, so the
+    /// same inputs must give the same text: a reload clears what the map added at run time.
+    @Test func theSameInputsGiveTheSameJSON() throws {
+        let base = try BundledAssets.defaultStyle(dark: false)
+        let inputs = Self.inputs(overlays: Self.overlays(["veneto", "test"]))
+        let first = try StyleAssembler.assemble(base, inputs)
+        for _ in 0..<5 {
+            #expect(try StyleAssembler.assemble(base, inputs) == first)
+        }
+    }
+
     @Test func removesTheHillshadeAndTheTerrainSourceWithoutTerrain() throws {
         let style = try bundled(dark: false, Self.inputs(terrain: nil))
         #expect(sources(style)["terrain"] == nil)
