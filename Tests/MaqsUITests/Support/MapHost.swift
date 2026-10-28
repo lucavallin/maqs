@@ -15,8 +15,8 @@ import UIKit
 
     var mapView: MLNMapView { coordinator.mapView }
 
-    /// Shows `map` with MapLibre's tile cache emptied first. The map must exist first: its initialiser prepares
-    /// MapLibre's network, which must happen before the first view.
+    /// Shows `map` in light mode, with MapLibre's tile cache emptied first. The map must exist first: its initialiser
+    /// prepares MapLibre's network, which must happen before the first view.
     ///
     /// The cache is shared by every test and kept across runs, and what it holds changes what MapLibre asks for and
     /// draws, so each map starts from an empty one.
@@ -32,6 +32,8 @@ import UIKit
     private init(map: MaqsMap, size: CGSize) throws {
         self.map = map
         window = UIWindow(frame: CGRect(origin: .zero, size: size))
+        // Whatever appearance the simulator has: the view picks its style from the colour scheme.
+        window.overrideUserInterfaceStyle = .light
         let controller = UIHostingController(rootView: MaqsMapView(map: map))
         window.rootViewController = controller
         window.makeKeyAndVisible()
@@ -42,6 +44,11 @@ import UIKit
     func close() {
         window.isHidden = true
         window.rootViewController = nil
+    }
+
+    /// Switches the window to light or dark, which makes the view load the style of that scheme.
+    func setInterfaceStyle(_ style: UIUserInterfaceStyle) {
+        window.overrideUserInterfaceStyle = style
     }
 
     /// Waits until a style the map assembled has loaded and satisfies `check`.
