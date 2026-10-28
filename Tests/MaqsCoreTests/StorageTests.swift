@@ -190,9 +190,22 @@ import MaqsTestSupport
     }
 
     // On the iOS Simulator the protection class read back from a file is not the one the code set (observed on the
-    // simulator leg, 2026-10-27), so both tests, which read it back, run on macOS only.
+    // simulator leg, 2026-10-27), so both tests, which read it back, run on macOS only. The macOS CI runner refuses a
+    // class on a directory with EINVAL (macos-26-arm64, 2026-10-28), so they run where the probe finds one kept.
     #if os(macOS)
-    @Test("an installed file is readable after first unlock")
+    /// Whether a temporary directory keeps the protection class set on it, which both tests need to start from.
+    static var volumeKeepsProtectionClasses: Bool {
+        guard let tmp = try? TemporaryDirectory() else { return false }
+        do {
+            try setProtection(.complete, at: tmp.url)
+            return try protection(of: tmp.url) == .complete
+        } catch {
+            return false
+        }
+    }
+
+    @Test("an installed file is readable after first unlock",
+          .enabled(if: volumeKeepsProtectionClasses, "the volume does not keep a directory's protection class"))
     func installedFileProtection() throws {
         let tmp = try TemporaryDirectory()
         let store = try PackStore(root: tmp.url)
@@ -208,7 +221,8 @@ import MaqsTestSupport
         #expect(try Self.protection(of: destination) == .completeUntilFirstUserAuthentication)
     }
 
-    @Test("pack.json is readable after first unlock")
+    @Test("pack.json is readable after first unlock",
+          .enabled(if: volumeKeepsProtectionClasses, "the volume does not keep a directory's protection class"))
     func recordProtection() throws {
         let tmp = try TemporaryDirectory()
         let store = try PackStore(root: tmp.url)
