@@ -1,0 +1,465 @@
+import Foundation
+import MaqsCore
+import MaqsPMTiles
+import MaqsTestSupport
+import OSLog
+import Synchronization
+import Testing
+
+@testable import MaqsUI
+
+/// A clock the test moves by hand.
+private final class TestClock: Sendable {
+    private let instant = Mutex(ContinuousClock.now)
+    var now: ContinuousClock.Instant { instant.withLock { $0 } }
+    func advance(by duration: Duration) { instant.withLock { $0 += duration } }
+}
+
+/// Stands in for the URL loading system when a test drives a `TileGateway` itself; records the failures it is told.
+private final class RecordingClient: NSObject, URLProtocolClient, Sendable {
+    private let failures = Mutex<[URLError.Code?]>([])
+    private let responses = Mutex(0)
+
+    /// The `URLError` code of each failure, nil for an error of another kind.
+    var failureCodes: [URLError.Code?] { failures.withLock { $0 } }
+    var responseCount: Int { responses.withLock { $0 } }
+
+    func urlProtocol(_ protocol: URLProtocol, wasRedirectedTo request: URLRequest, redirectResponse: URLResponse) {}
+    func urlProtocol(_ protocol: URLProtocol, cachedResponseIsValid cachedResponse: CachedURLResponse) {}
+    func urlProtocol(_ protocol: URLProtocol, didReceive response: URLResponse,
+                     cacheStoragePolicy policy: URLCache.StoragePolicy) {
+        responses.withLock { $0 += 1 }
+    }
+    func urlProtocol(_ protocol: URLProtocol, didLoad data: Data) {}
+    func urlProtocolDidFinishLoading(_ protocol: URLProtocol) {}
+    func urlProtocol(_ protocol: URLProtocol, didFailWithError error: any Error) {
+        failures.withLock { $0.append((error as? URLError)?.code) }
+    }
+    func urlProtocol(_ protocol: URLProtocol, didReceive challenge: URLAuthenticationChallenge) {}
+    func urlProtocol(_ protocol: URLProtocol, didCancel challenge: URLAuthenticationChallenge) {}
+}
+
+extension SharedGatewaySuite {
+    @Suite(.timeLimit(.minutes(1))) struct TileGatewayTests {
+        private static let host = "tiles.gateway.invalid"
+        private static let templates = TileTemplates(
+            basemap: "https://\(host)/osm/{z}/{x}/{y}", terrain: "https://\(host)/elevation/{z}/{x}/{y}")
+        private static let userAgent = "Test/1 Maqs/0.1.0"
+        /// Around Nevegal, the installed region of these tests.
+        private static let regionBox = BoundingBox(minLon: 12.0, minLat: 45.9, maxLon: 12.4, maxLat: 46.2)
+        /// Around Paris, far from the region: a base pack's box.
+        private static let baseBox = BoundingBox(minLon: 2.0, minLat: 48.5, maxLon: 2.8, maxLat: 49.0)
+        private static let inside = tile(lon: 12.20, lat: 46.07)
+        private static let insideOther = tile(lon: 12.25, lat: 46.10)
+        private static let outside = tile(lon: 2.35, lat: 48.85)
+        private static let outsideOther = tile(lon: 2.40, lat: 48.85)
+
+        private let server = StubServer()
+        private let directory: TemporaryDirectory
+        private let clock = TestClock()
+        /// MapLibre's side: a session whose tile requests reach the gateway.
+        private let session: URLSession
+
+        init() throws {
+            directory = try TemporaryDirectory()
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.protocolClasses = [TileGateway.self]
+            session = URLSession(configuration: configuration)
+            let clock = clock
+            GatewayState.shared.resetForTesting(now: { clock.now })
+        }
+
+        // MARK: Helpers
+
+        /// The z14 tile (by default) that holds a point.
+        private static func tile(_ layer: TileLayer = .basemap, z: Int = 14, lon: Double, lat: Double) -> TileRequest {
+            let n = Double(1 << z)
+            let latitude = lat * .pi / 180
+            let x = Int((lon + 180) / 360 * n)
+            let y = Int((1 - log(tan(latitude) + 1 / cos(latitude)) / .pi) / 2 * n)
+            return TileRequest(layer: layer, z: z, x: x, y: y)
+        }
+
+        private static func url(_ tile: TileRequest) throws -> URL {
+            let path = tile.layer == .basemap ? "osm" : "elevation"
+            return try #require(URL(string: "https://\(host)/\(path)/\(tile.z)/\(tile.x)/\(tile.y)"))
+        }
+
+        private static func archive(_ pack: PackID, _ url: URL, layer: TileLayer = .basemap,
+                                    bounds: BoundingBox) -> LocalArchive {
+            LocalArchive(pack: pack, layer: layer, url: url, minZoom: 0, maxZoom: 14, bounds: bounds, dataDate: nil)
+        }
+
+        /// A table with one installed region, `test`, whose basemap is the archive at `url`.
+        private static func region(_ url: URL) -> RoutingTable {
+            RoutingTable(
+                regions: [InstalledRegion(id: "test", bbox: regionBox,
+                                          archives: [archive(.region("test"), url, bounds: regionBox)])],
+                basePacks: [])
+        }
+
+        /// A table with no region and one base pack, whose basemap is the archive at `url`.
+        private static func basePack(_ url: URL) -> RoutingTable {
+            RoutingTable(regions: [], basePacks: [archive(.base("base-test"), url, bounds: baseBox)])
+        }
+
+        private func configure(onlineAllowed: Bool = true, sessionConfiguration: URLSessionConfiguration? = nil) {
+            GatewayState.shared.configure(GatewayConfiguration(
+                templates: Self.templates, onlineAllowed: onlineAllowed, userAgent: Self.userAgent,
+                sessionConfiguration: sessionConfiguration ?? server.configuration))
+        }
+
+        /// Writes an archive of uncompressed tiles into the test's directory.
+        private func writeArchive(_ name: String, _ tiles: [(TileRequest, Data)]) throws -> URL {
+            let url = directory.url.appending(path: name)
+            try PMTilesWriter.write(tiles: tiles.map { (z: $0.0.z, x: $0.0.x, y: $0.0.y, data: $0.1) }, to: url,
+                                    metadata: [:])
+            return url
+        }
+
+        private func get(_ tile: TileRequest, headers: [String: String] = [:]) async throws -> (Data, HTTPURLResponse) {
+            var request = URLRequest(url: try Self.url(tile))
+            for (name, value) in headers { request.setValue(value, forHTTPHeaderField: name) }
+            let (data, response) = try await session.data(for: request)
+            return (data, try #require(response as? HTTPURLResponse))
+        }
+
+        /// The code of the `URLError` a tile request fails with; nil, and a recorded issue, when it does not fail so.
+        private func failure(_ tile: TileRequest) async throws -> URLError.Code? {
+            let url = try Self.url(tile)
+            let error = await #expect(throws: URLError.self) { _ = try await session.data(from: url) }
+            return error?.code
+        }
+
+        private var counters: GatewayCounters { GatewayState.shared.counters }
+
+        /// Waits until `condition` holds, polling rather than sleeping; the cancellation check lets the suite's time
+        /// limit end the wait should the condition never come true.
+        private static func waitUntil(_ condition: () -> Bool) async throws {
+            while !condition() {
+                try Task.checkCancellation()
+                await Task.yield()
+            }
+        }
+
+        /// This process's `ui` log messages since `start` that contain `needle`. The log store lags the call that
+        /// logged, by about five seconds in a full simulator run, so it is polled until a matching line shows up or
+        /// twenty seconds pass; a line that shows up ends the wait at once.
+        private static func uiLog(since start: Date, containing needle: String) async throws -> [String] {
+            let store = try OSLogStore(scope: .currentProcessIdentifier)
+            let subsystem = NSPredicate(format: "subsystem == %@ AND category == %@", "com.lucavallin.maqs", "ui")
+            let deadline = ContinuousClock.now + .seconds(20)
+            while true {
+                try Task.checkCancellation()
+                let lines = try store.getEntries(at: store.position(date: start), matching: subsystem)
+                    .compactMap { ($0 as? OSLogEntryLog)?.composedMessage }
+                    .filter { $0.contains(needle) }
+                if !lines.isEmpty || ContinuousClock.now >= deadline { return lines }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+        }
+
+        // MARK: Installed regions
+
+        @Test func aTileInsideAnInstalledRegionComesFromItsArchive() async throws {
+            let tile = Data("region tile".utf8)
+            configure()
+            GatewayState.shared.setTable(Self.region(try writeArchive("region.pmtiles", [(Self.inside, tile)])))
+            let (data, response) = try await get(Self.inside)
+            #expect(response.statusCode == 200)
+            #expect(data == tile)
+            #expect(server.requests.isEmpty)
+            #expect(counters.local == 1)
+        }
+
+        /// MapLibre parses the bytes it is given and does not inflate them; it caches local answers either way, and
+        /// `max-age=0` keeps the gateway the authority without making the cached rows unusable offline.
+        @Test func aLocalTileIsServedInflatedAndAlreadyStale() async throws {
+            let fixture = try Fixtures.url("test/test-basemap.v1.pmtiles")
+            let tile = TileRequest(layer: .basemap, z: 14, x: 8749, y: 5822)
+            let expected = try #require(try PMTilesArchive(url: fixture).tile(z: tile.z, x: tile.x, y: tile.y))
+            configure()
+            GatewayState.shared.setTable(Self.region(fixture))
+            let (data, response) = try await get(tile)
+            #expect(data == expected)
+            #expect(!data.starts(with: [0x1F, 0x8B]))
+            #expect(response.value(forHTTPHeaderField: "Content-Encoding") == nil)
+            #expect(response.value(forHTTPHeaderField: "Cache-Control") == "max-age=0")
+        }
+
+        @Test func aMissingTileInsideARegionIsEmpty() async throws {
+            configure()
+            GatewayState.shared.setTable(
+                Self.region(try writeArchive("region.pmtiles", [(Self.inside, Data("tile".utf8))])))
+            let (data, response) = try await get(Self.insideOther)
+            #expect(response.statusCode == 204)
+            #expect(data.isEmpty)
+            #expect(response.value(forHTTPHeaderField: "Cache-Control") == "max-age=0")
+            #expect(server.requests.isEmpty)
+            #expect(counters.empty == 1)
+        }
+
+        @Test func aLayerTheRegionLacksIsEmptyNeverOnline() async throws {
+            configure()
+            GatewayState.shared.setTable(
+                Self.region(try writeArchive("region.pmtiles", [(Self.inside, Data("tile".utf8))])))
+            let (_, response) = try await get(Self.tile(.terrain, z: 12, lon: 12.20, lat: 46.07))
+            #expect(response.statusCode == 204)
+            #expect(server.requests.isEmpty)
+        }
+
+        @Test func anUnreadableArchiveAnswersEmptyAndCountsAFailure() async throws {
+            let url = directory.url.appending(path: "corrupt.pmtiles")
+            try Data(repeating: 7, count: 300).write(to: url)
+            configure()
+            GatewayState.shared.setTable(Self.region(url))
+            let (data, response) = try await get(Self.inside)
+            #expect(response.statusCode == 204)
+            #expect(data.isEmpty)
+            #expect(server.requests.isEmpty)
+            #expect(counters.failed == 1)
+        }
+
+        @Test func anUnreadableArchiveIsLoggedOnce() async throws {
+            // A name of its own, so a line another test logs cannot satisfy this one.
+            let name = "corrupt-\(UUID().uuidString).pmtiles"
+            let url = directory.url.appending(path: name)
+            try Data(repeating: 7, count: 300).write(to: url)
+            configure()
+            GatewayState.shared.setTable(Self.region(url))
+            let start = Date().addingTimeInterval(-1)
+            _ = try await get(Self.inside)
+            _ = try await get(Self.insideOther)
+            let lines = try await Self.uiLog(since: start, containing: name)
+            #expect(lines.count == 1)
+            #expect(lines.first?.contains("notPMTiles") == true)
+        }
+
+        /// Review Focus 3: the open descriptor keeps a removed file readable.
+        @Test func anArchiveDeletedAfterItWasOpenedStillAnswers() async throws {
+            let first = Data("first".utf8)
+            let second = Data("second".utf8)
+            let url = try writeArchive("region.pmtiles", [(Self.inside, first), (Self.insideOther, second)])
+            configure()
+            GatewayState.shared.setTable(Self.region(url))
+            #expect(try await get(Self.inside).0 == first)
+            try FileManager.default.removeItem(at: url)
+            #expect(try await get(Self.insideOther).0 == second)
+        }
+
+        @Test func aTableThatNoLongerListsAnArchiveClosesIt() async throws {
+            let url = try writeArchive("region.pmtiles", [(Self.inside, Data("tile".utf8))])
+            configure()
+            GatewayState.shared.setTable(Self.region(url))
+            _ = try await get(Self.inside)
+            try FileManager.default.removeItem(at: url)
+            GatewayState.shared.setTable(RoutingTable(regions: [], basePacks: []))
+            // Listed again: the archive must be opened anew, and the file is gone.
+            GatewayState.shared.setTable(Self.region(url))
+            let (_, response) = try await get(Self.inside)
+            #expect(response.statusCode == 204)
+            #expect(counters.failed == 1)
+        }
+
+        // MARK: Online
+
+        @Test func aTileOutsideEveryRegionGoesOnlineWithTheAppsUserAgent() async throws {
+            let body = Data("online tile".utf8)
+            server.route(try Self.url(Self.outside), body: body)
+            configure()
+            let (data, response) = try await get(Self.outside, headers: ["If-None-Match": "\"v1\""])
+            #expect(response.statusCode == 200)
+            #expect(data == body)
+            #expect(server.requests.count == 1)
+            let sent = try #require(server.requests.first)
+            #expect(sent.value(forHTTPHeaderField: "User-Agent") == Self.userAgent)
+            #expect(sent.value(forHTTPHeaderField: "If-None-Match") == "\"v1\"")
+            #expect(sent.value(forHTTPHeaderField: "Pragma") == nil)
+            #expect(sent.value(forHTTPHeaderField: "Cache-Control")?.contains("no-cache") != true)
+            #expect(counters.online == 1)
+        }
+
+        /// URLSession has decoded the body by the time the gateway sees it, so the headers that describe the encoded
+        /// bytes would be wrong for MapLibre; the caching headers are the provider's and pass unchanged.
+        @Test func anOnlineResponseKeepsItsCachingHeadersAndLosesItsEncodingOnes() async throws {
+            let headers = ["Cache-Control": "max-age=21600", "ETag": "\"v2\"", "Content-Encoding": "gzip"]
+            server.route(try Self.url(Self.outside), headers: headers, body: Data("online tile".utf8))
+            configure()
+            let (_, response) = try await get(Self.outside)
+            #expect(response.value(forHTTPHeaderField: "Cache-Control") == "max-age=21600")
+            #expect(response.value(forHTTPHeaderField: "ETag") == "\"v2\"")
+            #expect(response.value(forHTTPHeaderField: "Content-Encoding") == nil)
+            #expect(response.value(forHTTPHeaderField: "Content-Length") == nil)
+        }
+
+        @Test func anOnlineErrorStatusIsPassedBack() async throws {
+            server.route(try Self.url(Self.outside), status: 404, body: Data())
+            configure()
+            let (_, response) = try await get(Self.outside)
+            #expect(response.statusCode == 404)
+            #expect(!GatewayState.shared.isPaused)
+        }
+
+        @Test func a429PausesOnlineTiles() async throws {
+            server.route(try Self.url(Self.outside), status: 429, body: Data())
+            configure()
+            #expect(try await failure(Self.outside) == .notConnectedToInternet)
+            #expect(GatewayState.shared.isPaused)
+            clock.advance(by: .seconds(59))
+            #expect(try await failure(Self.outsideOther) == .notConnectedToInternet)
+            #expect(server.requests.count == 1)
+            #expect(GatewayState.shared.isPaused)
+        }
+
+        @Test func a429IsAnsweredFromABasePackThatCoversTheTile() async throws {
+            let tile = Data("base tile".utf8)
+            server.route(try Self.url(Self.outside), status: 429, body: Data())
+            configure()
+            GatewayState.shared.setTable(Self.basePack(try writeArchive("base.pmtiles", [(Self.outside, tile)])))
+            let (data, _) = try await get(Self.outside)
+            #expect(data == tile)
+            #expect(GatewayState.shared.isPaused)
+            #expect(counters.base == 1)
+        }
+
+        /// A tile after the pause is a success outside it, so the next pause is 60 s again.
+        @Test func onlineTilesResumeWhenThePauseIsOver() async throws {
+            server.route(try Self.url(Self.outside), status: 429, body: Data())
+            let body = Data("online tile".utf8)
+            server.route(try Self.url(Self.outsideOther), body: body)
+            configure()
+            _ = try await failure(Self.outside)
+            clock.advance(by: .seconds(61))
+            #expect(!GatewayState.shared.isPaused)
+            #expect(try await get(Self.outsideOther).0 == body)
+            _ = try await failure(Self.outside)
+            #expect(server.requests.count == 3)
+            clock.advance(by: .seconds(59))
+            #expect(GatewayState.shared.isPaused)
+            clock.advance(by: .seconds(2))
+            #expect(!GatewayState.shared.isPaused)
+        }
+
+        /// A 200 for a request sent before the 429 came back says nothing about the server's limit now.
+        @Test func aTileFromBeforeThePauseDoesNotUndoTheDoubling() async throws {
+            let gate = StubGate()
+            defer { gate.release() }
+            let body = Data("online tile".utf8)
+            server.route(try Self.url(Self.outsideOther)) { _ in StubResponse(status: 200, body: body, gate: gate) }
+            server.route(try Self.url(Self.outside), status: 429, body: Data())
+            configure()
+            let early = Task { try await get(Self.outsideOther) }
+            try await Self.waitUntil { server.requests.count == 1 }
+            #expect(try await failure(Self.outside) == .notConnectedToInternet)
+            gate.release()
+            #expect(try await early.value.0 == body)
+            clock.advance(by: .seconds(61))
+            #expect(!GatewayState.shared.isPaused)
+            _ = try await failure(Self.outside)
+            // The second 429 starts a 120 s pause, not 60 s.
+            clock.advance(by: .seconds(119))
+            #expect(GatewayState.shared.isPaused)
+            clock.advance(by: .seconds(2))
+            #expect(!GatewayState.shared.isPaused)
+        }
+
+        @Test(arguments: [URLError.Code.cannotConnectToHost, .timedOut, .networkConnectionLost])
+        func aConnectionFailureFallsBackToABasePack(_ code: URLError.Code) async throws {
+            let tile = Data("base tile".utf8)
+            server.route(try Self.url(Self.outside)) { _ in StubResponse(transportError: code) }
+            configure()
+            GatewayState.shared.setTable(Self.basePack(try writeArchive("base.pmtiles", [(Self.outside, tile)])))
+            let (data, _) = try await get(Self.outside)
+            #expect(data == tile)
+            #expect(server.requests.count == 1)
+            #expect(counters.base == 1)
+        }
+
+        @Test func withNoNetworkABasePackAnswers() async throws {
+            let tile = Data("base tile".utf8)
+            configure()
+            GatewayState.shared.setTable(Self.basePack(try writeArchive("base.pmtiles", [(Self.outside, tile)])))
+            GatewayState.shared.setOffline(true)
+            let (data, response) = try await get(Self.outside)
+            #expect(response.statusCode == 200)
+            #expect(data == tile)
+            #expect(server.requests.isEmpty)
+            #expect(counters.base == 1)
+        }
+
+        @Test func withOnlineTilesOffNothingReachesTheNetwork() async throws {
+            server.route(try Self.url(Self.outside), body: Data("online tile".utf8))
+            configure(onlineAllowed: false)
+            #expect(try await failure(Self.outside) == .notConnectedToInternet)
+            #expect(server.requests.isEmpty)
+            #expect(counters.failed == 1)
+        }
+
+        // MARK: The gateway's own session
+
+        @Test func theGatewaysOwnRequestsNeverComeBackToIt() async throws {
+            let configuration = server.configuration
+            configuration.protocolClasses = [TileGateway.self] + (configuration.protocolClasses ?? [])
+            let body = Data("online tile".utf8)
+            server.route(try Self.url(Self.outside), body: body)
+            configure(sessionConfiguration: configuration)
+            #expect(try await get(Self.outside).0 == body)
+            #expect(server.requests.count == 1)
+        }
+
+        @Test func theSessionConfigurationGivenIsCopiedNotChanged() throws {
+            let configuration = server.configuration
+            let cache = URLCache(memoryCapacity: 1 << 20, diskCapacity: 0)
+            configuration.urlCache = cache
+            configure(sessionConfiguration: configuration)
+            #expect(configuration.httpAdditionalHeaders?["User-Agent"] == nil)
+            #expect(configuration.urlCache === cache)
+            #expect(configuration.requestCachePolicy == .useProtocolCachePolicy)
+        }
+
+        // MARK: Which requests are the gateway's
+
+        @Test(arguments: [
+            "https://tiles.gateway.invalid/osm/23/0/0",
+            "https://tiles.gateway.invalid/osm/14/16384/5850",
+            "https://tiles.gateway.invalid/osm/14/8710/16384",
+            "https://tiles.gateway.invalid/osm/14/-1/5850",
+            "https://tiles.gateway.invalid/osm/14/8710/-1",
+            "https://tiles.gateway.invalid/osm/14/1.5/5850",
+            "https://tiles.gateway.invalid/osm/14/a/5850",
+            "https://tiles.gateway.invalid/osm/14/8710/5850/extra",
+            "https://tiles.gateway.invalid/osm/14/8710/5850?x=1",
+            "https://other.invalid/osm/14/8710/5850",
+            "http://tiles.gateway.invalid/osm/14/8710/5850",
+        ])
+        func malformedTileURLsAreNotOurs(_ string: String) throws {
+            configure()
+            let url = try #require(URL(string: string))
+            #expect(!TileGateway.canInit(with: URLRequest(url: url)))
+        }
+
+        @Test func aTileOfTheTemplatesIsOursOnceConfigured() throws {
+            let request = URLRequest(url: try Self.url(Self.inside))
+            #expect(!TileGateway.canInit(with: request))
+            configure()
+            #expect(TileGateway.canInit(with: request))
+        }
+
+        /// Accepted while its URL was a tile, started after the templates changed: no routing, no request.
+        @Test func aRequestThatStopsBeingATileFailsAsNotConnected() throws {
+            configure()
+            let request = URLRequest(url: try Self.url(Self.outside))
+            #expect(TileGateway.canInit(with: request))
+            GatewayState.shared.configure(GatewayConfiguration(
+                templates: TileTemplates(basemap: "https://elsewhere.invalid/{z}/{x}/{y}", terrain: nil),
+                onlineAllowed: true, userAgent: Self.userAgent, sessionConfiguration: server.configuration))
+            let client = RecordingClient()
+            let gateway = TileGateway(request: request, cachedResponse: nil, client: client)
+            gateway.startLoading()
+            #expect(client.failureCodes == [.notConnectedToInternet])
+            #expect(client.responseCount == 0)
+            #expect(server.requests.isEmpty)
+            #expect(counters.passedThrough == 1)
+        }
+    }
+}
