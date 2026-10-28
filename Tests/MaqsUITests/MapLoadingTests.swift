@@ -224,14 +224,14 @@ extension SharedGatewaySuite {
             let loaded = coordinator.loadedStyle
             let loads = coordinator.styleLoads
 
-            coordinator.apply("{")
+            coordinator.apply("{", dark: false)
 
             try await waitUntil { coordinator.styleLoads > loads }
             #expect(map.lastError == .styleFailedToLoad)
             #expect(coordinator.loadedStyle == loaded)
             #expect(host.mapView.style?.source(withIdentifier: "basemap") != nil)
             let reloads = coordinator.styleLoads
-            coordinator.apply("{")
+            coordinator.apply("{", dark: false)
             #expect(coordinator.styleLoads == reloads)
             #expect(host.mapView.style?.source(withIdentifier: "basemap") != nil)
         }

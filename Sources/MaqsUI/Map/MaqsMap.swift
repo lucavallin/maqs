@@ -42,10 +42,44 @@ struct MapStyles: Equatable {
         didSet { if configuration != oldValue { rebuildStyles() } }
     }
 
+    /// The lines the app draws, such as routes or tracks. Replacing them redraws the lines without a style change, so
+    /// a track that grows by a point is cheap to show.
+    public var lines: [MapLine] = [] {
+        didSet { if lines != oldValue { coordinator?.showLines() } }
+    }
+
+    /// The one line drawn in the accent; every other solid line is grey. An id no line has marks none.
+    public var activeLineID: MapLine.ID? {
+        didSet { if activeLineID != oldValue { coordinator?.showLines() } }
+    }
+
+    /// The markers the app draws. Markers that look the same share one image, drawn when the first of them appears.
+    public var markers: [MapMarker] = [] {
+        didSet { coordinator?.showMarkers() }
+    }
+
+    /// The one selected marker, drawn larger with an accent halo above the others. An id no marker has selects none.
+    public var selectedMarkerID: MapMarker.ID? {
+        didSet { if selectedMarkerID != oldValue { coordinator?.showMarkers() } }
+    }
+
     /// The trails and places of the installed regions that the map draws.
     public var overlays: MapOverlays {
         didSet { if overlays != oldValue { rebuildStyles() } }
     }
+
+    /// The trail drawn in the accent above the others, in the region the feature names; `nil` for none. Pass a trail:
+    /// a ``MapHit/trail(_:)`` hit's feature, or a trail's region and feature id from `MaqsData`. Places count their ids
+    /// apart, so a place's feature would name some other trail. The trails overlay must be shown (``overlays``) for the
+    /// trail to be seen.
+    public var selectedOverlayFeature: OverlayFeature? {
+        didSet { if selectedOverlayFeature != oldValue { coordinator?.showSelectedOverlayFeature() } }
+    }
+
+    /// Called on the main actor for every single tap on the map, with what the tap touched: the app's markers and
+    /// lines and the overlays' trails and places in the 44-point square around the touch, topmost first, each once. A
+    /// tap on nothing has no hits. A double tap zooms the map and is not reported.
+    @ObservationIgnored public var onTap: ((MapTap) -> Void)?
 
     /// Where the map looks, updated when the camera settles, not while it moves.
     public private(set) var camera = MapCamera(
@@ -324,7 +358,7 @@ struct MapStyles: Equatable {
             sprite: BundledAssets.spriteURL, labelLanguage: configuration.labelLanguage ?? Self.deviceLanguage,
             pointsOfInterest: configuration.pointsOfInterest, overlays: content.overlays,
             visiblePlaceKinds: overlays.places, showsTrails: overlays.trails,
-            content: ContentStyle(dark: dark, accentHex: Self.hex(configuration.accent, dark: dark)))
+            content: ContentStyle(dark: dark, accentHex: Self.hex(accentColor(dark: dark))))
         return try StyleAssembler.assemble(base, inputs)
     }
 
@@ -362,6 +396,11 @@ struct MapStyles: Equatable {
         updateOffer(catalog: maqs.state.catalog, packs: maqs.state.packs)
     }
 
+    /// The accent resolved for the scheme: the marker images are drawn in it, and the style's lines get its hex value.
+    func accentColor(dark: Bool) -> UIColor {
+        UIColor(configuration.accent).resolvedColor(with: UITraitCollection(userInterfaceStyle: dark ? .dark : .light))
+    }
+
     // MARK: The gateway's pause and counters
 
     private func readGateway() {
@@ -389,11 +428,10 @@ struct MapStyles: Equatable {
         Locale.current.language.languageCode?.identifier
     }
 
-    /// The accent as `#RRGGBB`, resolved for the scheme.
-    private static func hex(_ color: Color, dark: Bool) -> String {
-        let resolved = UIColor(color).resolvedColor(with: UITraitCollection(userInterfaceStyle: dark ? .dark : .light))
+    /// A resolved colour as `#RRGGBB`.
+    private static func hex(_ color: UIColor) -> String {
         var (red, green, blue, alpha): (CGFloat, CGFloat, CGFloat, CGFloat) = (0, 0, 0, 0)
-        resolved.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
+        color.getRed(&red, green: &green, blue: &blue, alpha: &alpha)
         let bytes = [red, green, blue].map { Int((min(max($0, 0), 1) * 255).rounded()) }
         return String(format: "#%02X%02X%02X", bytes[0], bytes[1], bytes[2])
     }
