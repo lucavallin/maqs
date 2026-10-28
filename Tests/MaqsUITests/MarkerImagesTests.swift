@@ -76,14 +76,44 @@ import UIKit
         #expect(halo.b > halo.r)
     }
 
-    @Test func hiddenMarkersUseTheHiddenGrey() throws {
+    private func close(_ p: (r: UInt8, g: UInt8, b: UInt8, a: UInt8), _ r: Int, _ g: Int, _ b: Int) -> Bool {
+        abs(Int(p.r) - r) <= 3 && abs(Int(p.g) - g) <= 3 && abs(Int(p.b) - b) <= 3 && p.a == 255
+    }
+
+    @Test(arguments: [false, true])
+    func hiddenMarkersReadGreyAndDifferFromNormal(dark: Bool) throws {
         let center = MarkerImages.canvasSide / 2
-        let inner = MarkerImages.circleDiameter / 2 - MarkerImages.ringWidth - 2
-        let light = try pixel(render(.count(3), hidden: true), x: center, y: center - inner)
-        let dark = try pixel(render(.count(3), hidden: true, dark: true), x: center, y: center - inner)
-        // The half-transparent grey sits on the white disc: about 135 in light, about 242 in dark.
-        #expect(light.r > 100 && light.r < 170)
-        #expect(dark.r > light.r + 60)
+        // Inside the disc, clear of the centred glyph.
+        let x = center + MarkerImages.circleDiameter / 2 - MarkerImages.ringWidth - 3
+        let grey = dark ? (115, 121, 128) : (138, 143, 150)
+        let all: [MarkerContent] = [.dot, .count(3), .symbol(swatch(.white), fill: .orange), .plate("12")]
+        for content in all {
+            let hidden = try pixel(render(content, hidden: true, dark: dark), x: x, y: center)
+            #expect(close(hidden, grey.0, grey.1, grey.2))
+            let normal = try pixel(render(content, dark: dark), x: x, y: center)
+            let distance = abs(Int(hidden.r) - Int(normal.r)) + abs(Int(hidden.g) - Int(normal.g)) + abs(Int(hidden.b) - Int(normal.b))
+            #expect(distance > 40)
+        }
+    }
+
+    @Test func hiddenGlyphsAreWhiteOnTheGreyAndPlateTextIsDark() throws {
+        let center = MarkerImages.canvasSide / 2
+        let dot = try pixel(render(.dot, hidden: true), x: center, y: center)
+        #expect(dot.r > 240 && dot.g > 240 && dot.b > 240)
+        let plate = render(.plate("88"), hidden: true)
+        var darkest = 255
+        for dx in stride(from: -6.0, through: 6.0, by: 1) {
+            for dy in stride(from: -5.0, through: 5.0, by: 1) {
+                darkest = min(darkest, Int(try pixel(plate, x: center + dx, y: center + dy).r))
+            }
+        }
+        #expect(darkest < 80)
+    }
+
+    @Test func hiddenPhotoIsDesaturatedOverTheGrey() throws {
+        let center = MarkerImages.canvasSide / 2
+        let p = try pixel(render(.image(swatch(.red)), hidden: true), x: center, y: center)
+        #expect(abs(Int(p.r) - Int(p.g)) < 40 && abs(Int(p.g) - Int(p.b)) < 40)
     }
 
     @Test func namesAreStableAndDistinct() {
@@ -92,28 +122,39 @@ import UIKit
         for (index, content) in contents().enumerated() {
             for hidden in [false, true] {
                 for selected in [false, true] {
-                    let name = MarkerImages.name(for: content, hidden: hidden, selected: selected)
-                    #expect(name.hasPrefix("maqs-marker-"))
-                    #expect(name == MarkerImages.name(for: again[index], hidden: hidden, selected: selected))
-                    seen.insert(name)
+                    for dark in [false, true] {
+                        let name = MarkerImages.name(for: content, hidden: hidden, selected: selected, accent: Self.accent, dark: dark)
+                        #expect(name.hasPrefix("maqs-marker-"))
+                        #expect(name == MarkerImages.name(for: again[index], hidden: hidden, selected: selected, accent: Self.accent, dark: dark))
+                        seen.insert(name)
+                    }
                 }
             }
         }
-        #expect(seen.count == 20)
+        #expect(seen.count == 40)
+    }
+
+    @Test func theAccentChangesTheName() {
+        let other = UIColor(red: 1, green: 0.33, blue: 0, alpha: 1)
+        #expect(MarkerImages.name(for: .dot, hidden: false, selected: false, accent: Self.accent, dark: false)
+            != MarkerImages.name(for: .dot, hidden: false, selected: false, accent: other, dark: false))
     }
 
     @Test func imagesWithDifferentPixelsGetDifferentNames() {
-        let green = MarkerImages.name(for: .image(swatch(.green)), hidden: false, selected: false)
-        let red = MarkerImages.name(for: .image(swatch(.red)), hidden: false, selected: false)
+        let green = MarkerImages.name(for: .image(swatch(.green)), hidden: false, selected: false, accent: Self.accent, dark: false)
+        let red = MarkerImages.name(for: .image(swatch(.red)), hidden: false, selected: false, accent: Self.accent, dark: false)
         #expect(green != red)
     }
 
     @Test func placeKindsHaveImagesAndUnknownKindsFallBack() {
         for kind in MarkerImages.placeKinds {
-            #expect(MarkerImages.placeKindName(kind) == "maqs-place-\(kind)")
+            #expect(MarkerImages.placeKindName(kind, dark: false) == "maqs-place-\(kind)-light")
+            #expect(MarkerImages.placeKindName(kind, dark: true) == "maqs-place-\(kind)-dark")
             #expect(MarkerImages.placeKindImage(kind, dark: false).size.width > 0)
         }
-        #expect(MarkerImages.placeKindName("spaceport") == "maqs-place-other")
+        #expect(MarkerImages.placeKindName("spaceport", dark: true) == "maqs-place-other-dark")
+        #expect(MarkerImages.plateName(dark: false) == "maqs-plate-light")
+        #expect(MarkerImages.plateName(dark: true) == "maqs-plate-dark")
     }
 
     @Test func plateIsStretchableRedWhiteRed() throws {
