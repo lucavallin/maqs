@@ -65,14 +65,14 @@ import MaqsTestSupport
         #expect(!exists(store.layout.packDirectory(id)))
     }
 
-    /// Routes `entry` to a body of its listed size, delivered after `delay` seconds, and returns a stream that yields
-    /// each time a request for it reaches the stub.
-    func routeSlow(_ entry: ManifestEntry, delay: TimeInterval) -> AsyncStream<Void> {
+    /// Routes `entry` to a body of its listed size, held until the test releases `gate`, and returns a stream that
+    /// yields each time a request for it reaches the stub.
+    func routeHeld(_ entry: ManifestEntry, gate: StubGate) -> AsyncStream<Void> {
         let (reached, continuation) = AsyncStream<Void>.makeStream()
         let body = Data(repeating: 0, count: Int(entry.bytes))
         server.route(entry.url) { _ in
             continuation.yield()
-            return StubResponse(status: 200, body: body, delay: delay)
+            return StubResponse(status: 200, body: body, gate: gate)
         }
         return reached
     }
@@ -160,11 +160,13 @@ import MaqsTestSupport
 
     @Test("a 404 is a network error with the status and cancels the other running download")
     func notFound() async throws {
-        _ = routeSlow(main(.places), delay: 30)
+        let gate = StubGate()
+        defer { gate.release() }
+        _ = routeHeld(main(.places), gate: gate)
         server.route(overlay(.places).url, status: 404, body: Data())
         await #expect(throws: DownloadError.network(statusCode: 404)) { try await run(try plan([.places])) }
         try expectNothingInstalled()
-        // Not cancelled, the slow download would finish after 30 s and leave its file here.
+        // Not cancelled, the held download would finish when the gate opens and leave its file here.
         #expect(!exists(downloadURL(main(.places))))
     }
 
@@ -292,7 +294,9 @@ import MaqsTestSupport
     @Test("cancelling the install cancels every running download and leaves no record, no pack file and no download")
     func cancel() async throws {
         let plan = try plan([.trails])
-        let streams = plan.jobs.map { routeSlow($0.entry, delay: 30) }
+        let gate = StubGate()
+        defer { gate.release() }
+        let streams = plan.jobs.map { routeHeld($0.entry, gate: gate) }
         let task = Task { try await run(plan) }
         for stream in streams {
             var iterator = stream.makeAsyncIterator()
@@ -301,7 +305,7 @@ import MaqsTestSupport
         task.cancel()
         await #expect(throws: DownloadError.cancelled) { _ = try await task.value }
         try expectNothingInstalled()
-        // Not cancelled, a download would finish after 30 s and leave its file here.
+        // Not cancelled, a download would finish when the gate opens and leave its file here.
         for job in plan.jobs { #expect(!exists(downloadURL(job.entry))) }
     }
 }

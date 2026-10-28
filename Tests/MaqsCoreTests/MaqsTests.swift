@@ -31,15 +31,14 @@ import MaqsTestSupport
     func fixture(_ entry: ManifestEntry) throws -> Data { try Data(contentsOf: try Fixtures.url("test/\(entry.file)")) }
     var downloads: URL { tmp.url.appending(path: "downloads", directoryHint: .isDirectory) }
 
-    /// Routes `entry` to `body` (default: zeros of its listed size), delivered after `delay` seconds or, with a `gate`,
-    /// once the test releases it, and returns a stream that yields each time a request for it reaches the stub.
-    func routeSlow(_ entry: ManifestEntry, delay: TimeInterval = 0, gate: StubGate? = nil, body: Data? = nil)
-        -> AsyncStream<Void> {
+    /// Routes `entry` to `body` (default: zeros of its listed size), held until the test releases `gate`, and returns a
+    /// stream that yields each time a request for it reaches the stub.
+    func routeHeld(_ entry: ManifestEntry, gate: StubGate, body: Data? = nil) -> AsyncStream<Void> {
         let (reached, continuation) = AsyncStream<Void>.makeStream()
         let body = body ?? Data(repeating: 0, count: Int(entry.bytes))
         server.route(entry.url) { _ in
             continuation.yield()
-            return StubResponse(status: 200, body: body, delay: delay, gate: gate)
+            return StubResponse(status: 200, body: body, gate: gate)
         }
         return reached
     }
@@ -90,10 +89,12 @@ import MaqsTestSupport
         let maqs = try maqs()
         server.route(Fixtures.manifestURL, status: 429, body: Data())
         await #expect(throws: MaqsError.manifest(.rateLimited)) { _ = try await maqs.refreshCatalog(policy: .always) }
+        let gate = StubGate()
+        defer { gate.release() }
         let (reached, signal) = AsyncStream<Void>.makeStream()
         server.route(Fixtures.manifestURL) { _ in
             signal.yield()
-            return StubResponse(status: 200, body: Data(), delay: 30)
+            return StubResponse(status: 200, body: Data(), gate: gate)
         }
         let task = Task { try await maqs.refreshCatalog(policy: .always) }
         await waitForRequests([reached])
@@ -121,7 +122,9 @@ import MaqsTestSupport
     func keepsDownloadsDuringInstall() async throws {
         let maqs = try maqs(layers: [.trails])
         _ = try await maqs.refreshCatalog()
-        let reached = try entries(.trails).map { routeSlow($0, delay: 30) }
+        let gate = StubGate()
+        defer { gate.release() }
+        let reached = try entries(.trails).map { routeHeld($0, gate: gate) }
         let task = Task { try await maqs.install(test) }
         await waitForRequests(reached)
         let stale = downloads.appending(path: String(repeating: "0", count: 64) + "-old.v1.sqlite")
@@ -236,7 +239,7 @@ import MaqsTestSupport
         let gate = StubGate()
         defer { gate.release() }
         // A same-size body with other bytes: the install fails at the checksum, after the request.
-        let reached = routeSlow(main, gate: gate)
+        let reached = routeHeld(main, gate: gate)
         let first = Task { try await maqs.install(test) }
         await waitForRequests([reached])
         // What install(_:) waits for, registered while the answer is held, so it can only join the running install.
@@ -264,7 +267,9 @@ import MaqsTestSupport
     func cancel() async throws {
         let maqs = try maqs(layers: [.trails])
         _ = try await maqs.refreshCatalog()
-        let reached = try entries(.trails).map { routeSlow($0, delay: 30) }
+        let gate = StubGate()
+        defer { gate.release() }
+        let reached = try entries(.trails).map { routeHeld($0, gate: gate) }
         let task = Task { try await maqs.install(test) }
         await waitForRequests(reached)
         await maqs.cancelInstall(test)
@@ -281,7 +286,9 @@ import MaqsTestSupport
         let installed = try #require(await maqs.installedPack(test))
         let grown = try self.maqs(layers: [.places, .trails])
         _ = try await grown.refreshCatalog()
-        let reached = try entries(.trails).map { routeSlow($0, delay: 30) }
+        let gate = StubGate()
+        defer { gate.release() }
+        let reached = try entries(.trails).map { routeHeld($0, gate: gate) }
         let task = Task { try await grown.install(test) }
         await waitForRequests(reached)
         await grown.cancelInstall(test)
@@ -293,8 +300,10 @@ import MaqsTestSupport
     func retryAfterCancel() async throws {
         let maqs = try maqs(layers: [.trails])
         _ = try await maqs.refreshCatalog()
+        let gate = StubGate()
+        defer { gate.release() }
         let entries = try entries(.trails)
-        let reached = entries.map { routeSlow($0, delay: 30) }
+        let reached = entries.map { routeHeld($0, gate: gate) }
         let first = Task { try await maqs.install(test) }
         await waitForRequests(reached)
         // New requests get the real files; the held ones stay held until they are cancelled.
@@ -306,11 +315,12 @@ import MaqsTestSupport
         #expect(maqs.state.packs[test] == .installed(pack))
     }
 
-    /// Starts an install of the `test` region whose requests are held, waits until they reach the stub, and routes
-    /// the real files for every later request, so an install that is not stopped installs the pack.
-    func startHeldInstall(_ maqs: Maqs) async throws -> Task<Void, any Error> {
+    /// Starts an install of the `test` region whose requests are held until the test releases `gate`, waits until they
+    /// reach the stub, and routes the real files for every later request, so an install that is not stopped installs
+    /// the pack.
+    func startHeldInstall(_ maqs: Maqs, gate: StubGate) async throws -> Task<Void, any Error> {
         let entries = try entries(.trails)
-        let reached = entries.map { routeSlow($0, delay: 30) }
+        let reached = entries.map { routeHeld($0, gate: gate) }
         let first = Task { try await maqs.install(test) }
         await waitForRequests(reached)
         for entry in entries { server.route(entry.url, body: try fixture(entry)) }
@@ -321,7 +331,9 @@ import MaqsTestSupport
     func cancelRetryWhileSettling() async throws {
         let maqs = try maqs(layers: [.trails])
         _ = try await maqs.refreshCatalog()
-        let first = try await startHeldInstall(maqs)
+        let gate = StubGate()
+        defer { gate.release() }
+        let first = try await startHeldInstall(maqs, gate: gate)
         let requests = server.requests.count
         let pack = test
         let retry = try await retryWhileSettling(pack, on: maqs) { $0.cancelInstall(pack) }
@@ -336,7 +348,9 @@ import MaqsTestSupport
     func removeRetryWhileSettling() async throws {
         let maqs = try maqs(layers: [.trails])
         _ = try await maqs.refreshCatalog()
-        let first = try await startHeldInstall(maqs)
+        let gate = StubGate()
+        defer { gate.release() }
+        let first = try await startHeldInstall(maqs, gate: gate)
         let retry = try await retryWhileSettling(test, on: maqs)
         try await maqs.remove(test)
         let directory = tmp.url.appending(path: "packs/region-test")
@@ -355,7 +369,7 @@ import MaqsTestSupport
         // The real files, held until the test ends, so the install is still running when remove is called.
         let gate = StubGate()
         defer { gate.release() }
-        let reached = try entries(.trails).map { routeSlow($0, gate: gate, body: try fixture($0)) }
+        let reached = try entries(.trails).map { routeHeld($0, gate: gate, body: try fixture($0)) }
         let task = Task { try await maqs.install(test) }
         await waitForRequests(reached)
         try await maqs.remove(test)
