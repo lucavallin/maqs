@@ -1,4 +1,5 @@
 #if canImport(MapLibre)
+import CoreLocation
 import MapLibre
 import MaqsCore
 import SwiftUI
@@ -51,7 +52,8 @@ extension MaqsMapView {
 
     /// Owns the `MLNMapView`, hands it the styles `MaqsMap` assembles and reports back what MapLibre does. Every
     /// MapLibre call happens here, on the main actor.
-    @MainActor @Observable final class Coordinator: NSObject, @preconcurrency MLNMapViewDelegate {
+    @MainActor @Observable final class Coordinator: NSObject, @preconcurrency MLNMapViewDelegate,
+        UIGestureRecognizerDelegate {
         /// The style the view starts with. A real style comes once the delegate is set, because MapLibre loads a style
         /// synchronously inside its initialiser and inside the `styleJSON` setter, and a delegate set later never hears
         /// of the first load. A view created without a style would fetch MapLibre's demo style from its own host.
@@ -88,6 +90,11 @@ extension MaqsMapView {
         private(set) var idlesSinceStyleLoad = 0
         /// What MapLibre last said when it finished rendering the map. It says `true` even when no tile could be parsed.
         private(set) var renderedFully = false
+        /// The location manager of ``UserLocationMode/provided``, installed only in that mode.
+        let providedLocationManager = ProvidedLocationManager()
+        /// MapLibre's own location manager, kept while the provided one is installed so ``UserLocationMode/system``
+        /// gets it back.
+        @ObservationIgnored private var systemLocationManager: (any MLNLocationManager)?
 
         init(map: MaqsMap) {
             mapView = MLNMapView(frame: .zero, styleJSON: Self.emptyStyle)
@@ -95,6 +102,7 @@ extension MaqsMapView {
             self.map = map
             super.init()
             mapView.delegate = self
+            tapRecognizer.delegate = self
             tapRecognizer.addTarget(self, action: #selector(handleTap(_:)))
             for recognizer in mapView.gestureRecognizers ?? [] {
                 if let doubleTap = recognizer as? UITapGestureRecognizer, doubleTap.numberOfTapsRequired == 2 {
@@ -111,8 +119,14 @@ extension MaqsMapView {
             mapView.showsScale = false
             // The app asks for location permission; MapLibre asking itself raises an exception without the usage text.
             mapView.shouldRequestAuthorizationToUseLocationServices = false
+            // The insets are the app's. Left unset, MapLibre puts the safe area over them on every layout whenever a
+            // view controller holds the view directly, reading that controller's deprecated scroll-view setting.
+            mapView.automaticallyAdjustsContentInset = false
             mapView.tintColor = Self.locationColor
             map.attach(self)
+            showContentInsets()
+            showUserLocation()
+            follow(map.followMode)
         }
 
         /// Loads `style`, the dark one when `dark` says so, unless it is already loaded or MapLibre has rejected it.
@@ -126,6 +140,76 @@ extension MaqsMapView {
 
         func detach() {
             map?.detach(self)
+        }
+
+        // MARK: Camera and location
+
+        /// Sets the map's content insets, leading and trailing as the view's layout direction reads them. A negative
+        /// inset or one that is not finite counts as none.
+        func showContentInsets() {
+            guard let insets = map?.contentInsets else { return }
+            let rightToLeft = mapView.effectiveUserInterfaceLayoutDirection == .rightToLeft
+            func usable(_ value: CGFloat) -> CGFloat { value.isFinite ? max(value, 0) : 0 }
+            let edges = UIEdgeInsets(
+                top: usable(insets.top), left: usable(rightToLeft ? insets.trailing : insets.leading),
+                bottom: usable(insets.bottom), right: usable(rightToLeft ? insets.leading : insets.trailing))
+            mapView.setContentInset(edges, animated: mapView.window != nil, completionHandler: nil)
+        }
+
+        /// Shows or hides the user's location, with the manager the map's mode needs.
+        func showUserLocation() {
+            guard let map else { return }
+            switch map.userLocation {
+            case .hidden:
+                mapView.showsUserLocation = false
+            case .system where mapView.locationManager === providedLocationManager:
+                install(systemLocationManager)
+            case .provided where mapView.locationManager !== providedLocationManager:
+                systemLocationManager = mapView.locationManager
+                install(providedLocationManager)
+            case .system, .provided:
+                mapView.showsUserLocation = true
+            }
+        }
+
+        /// Puts `manager` in, or MapLibre's default for `nil`, and shows the location. MapLibre starts a manager only
+        /// when the location turns on, so the location goes off for the swap, which stops following; it resumes after.
+        private func install(_ manager: (any MLNLocationManager)?) {
+            let mode = map?.followMode ?? .none
+            mapView.showsUserLocation = false
+            mapView.locationManager = manager
+            mapView.showsUserLocation = true
+            follow(mode)
+        }
+
+        /// MapLibre reports the mode back through the delegate, which updates the map's ``MaqsMap/followMode``.
+        func follow(_ mode: FollowMode) {
+            mapView.setUserTrackingMode(MLNUserTrackingMode(mode), animated: true, completionHandler: nil)
+        }
+
+        func resetNorth() {
+            mapView.resetNorth()
+        }
+
+        /// Tilts the camera at the same distance from the centre, so the zoom stays.
+        func setPitch(_ degrees: Double) {
+            let camera = mapView.camera
+            mapView.setCamera(MLNMapCamera(lookingAtCenter: camera.centerCoordinate, acrossDistance: camera.viewingDistance,
+                                           pitch: degrees, heading: camera.heading), animated: true)
+        }
+
+        func show(_ coordinate: CLLocationCoordinate2D, zoom: Double?) {
+            mapView.setCenter(coordinate, zoomLevel: zoom ?? mapView.zoomLevel, animated: true)
+        }
+
+        /// MapLibre adds the content inset to the edge padding, so the box fits inside the app's insets.
+        func show(southWest: CLLocationCoordinate2D, northEast: CLLocationCoordinate2D) {
+            mapView.setVisibleCoordinateBounds(MLNCoordinateBounds(sw: southWest, ne: northEast), edgePadding: .zero,
+                                               animated: true, completionHandler: nil)
+        }
+
+        func provide(_ location: CLLocation) {
+            providedLocationManager.provide(location)
         }
 
         // MARK: Content
@@ -244,6 +328,16 @@ extension MaqsMapView {
             return hits
         }
 
+        /// MapLibre's own single tap begins only over an annotation, here the user's location, or while one is
+        /// selected, and selects or deselects it. Alone, it and the map's tap compete, and a tap on the location, or the
+        /// next tap after it, may never reach `onTap`. So both recognize: MapLibre's selection shows nothing, as the
+        /// map gives no annotation a callout, and the app gets the tap with what lies under it.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+            guard gestureRecognizer === tapRecognizer, let tap = other as? UITapGestureRecognizer else { return false }
+            return tap.numberOfTapsRequired == 1 && tap.numberOfTouchesRequired == 1
+        }
+
         // MARK: MLNMapViewDelegate
 
         /// A load drops every image and every GeoJSON payload added at run time, whoever started it (a new style, the
@@ -293,6 +387,20 @@ extension MaqsMapView {
                 visibleBounds: BoundingBox(minLon: bounds.sw.longitude, minLat: bounds.sw.latitude,
                                            maxLon: bounds.ne.longitude, maxLat: bounds.ne.latitude)))
         }
+
+        /// Every change of MapLibre's tracking comes here: the map's own, a pan (none), a rotation or north-up
+        /// (heading and course become follow), a hidden or denied location (none).
+        func mapView(_ mapView: MLNMapView, didChange mode: MLNUserTrackingMode, animated: Bool) {
+            map?.followModeDidChange(FollowMode(mode))
+        }
+
+        /// MapLibre turns the location off when the system denies it and does not turn it on again when the user
+        /// allows it later; with ``UserLocationMode/system`` the map does.
+        func mapView(_ mapView: MLNMapView, didChangeLocationManagerAuthorization manager: any MLNLocationManager) {
+            guard map?.userLocation == .system, !mapView.showsUserLocation,
+                  [.authorizedWhenInUse, .authorizedAlways].contains(manager.authorizationStatus) else { return }
+            mapView.showsUserLocation = true
+        }
     }
 
     /// What the features of a `maqs-` layer are, told by the layer's source: the app's markers or lines, or one
@@ -334,6 +442,29 @@ extension MaqsMapView {
         /// not as the vector tile feature id.
         private static func featureID(_ feature: any MLNFeature) -> Int64? {
             (feature.attribute(forKey: "id") as? NSNumber)?.int64Value
+        }
+    }
+}
+
+private extension MLNUserTrackingMode {
+    init(_ mode: FollowMode) {
+        switch mode {
+        case .none: self = MLNUserTrackingMode.none
+        case .position: self = .follow
+        case .heading: self = .followWithHeading
+        case .course: self = .followWithCourse
+        }
+    }
+}
+
+private extension FollowMode {
+    /// A mode MapLibre adds later counts as none.
+    init(_ mode: MLNUserTrackingMode) {
+        switch mode {
+        case .follow: self = .position
+        case .followWithHeading: self = .heading
+        case .followWithCourse: self = .course
+        default: self = FollowMode.none
         }
     }
 }
