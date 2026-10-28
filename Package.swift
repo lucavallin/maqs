@@ -40,7 +40,7 @@ let package = Package(
                 "MaqsCore", "MaqsPMTiles",
                 .product(name: "MapLibre", package: "maplibre-gl-native-distribution", condition: .when(platforms: [.iOS])),
             ],
-            resources: [.process("Resources")],
+            resources: [.copy("MapAssets")],
             swiftSettings: warningsAsErrors
         ),
         .target(
