@@ -552,14 +552,13 @@ extension SharedGatewaySuite {
             #expect(TileGateway.canInit(with: request))
         }
 
-        /// Accepted while its URL was a tile, started after the templates changed: no routing, no request.
-        @Test func aRequestThatStopsBeingATileFailsAsNotConnected() throws {
+        /// Accepted while its URL was a terrain tile, started after the templates lost their terrain: nothing current
+        /// can fetch it and no base pack holds terrain, so it fails as not connected and is counted as a stale template.
+        @Test func aRetiredTileWhoseLayerHasNoTemplateNowFailsAsNotConnected() throws {
             configure()
-            let request = URLRequest(url: try Self.url(Self.outside))
+            let request = URLRequest(url: try Self.url(Self.tile(.terrain, z: 12, lon: 2.35, lat: 48.85)))
             #expect(TileGateway.canInit(with: request))
-            GatewayState.shared.configure(GatewayConfiguration(
-                templates: TileTemplates(basemap: "https://elsewhere.invalid/{z}/{x}/{y}", terrain: nil),
-                onlineAllowed: true, userAgent: Self.userAgent, sessionConfiguration: server.configuration))
+            reconfigure(TileTemplates(basemap: "https://\(Self.nextHost)/osm/{z}/{x}/{y}", terrain: nil))
             let client = RecordingClient()
             let gateway = TileGateway(request: request, cachedResponse: nil, client: client)
             gateway.startLoading()
@@ -567,6 +566,62 @@ extension SharedGatewaySuite {
             #expect(client.responseCount == 0)
             #expect(server.requests.isEmpty)
             #expect(counters.passedThrough == 1)
+        }
+
+        // MARK: Retired templates
+
+        /// The host of the templates the tests below reconfigure to; the old ones stay retired, still claimed.
+        private static let nextHost = "tiles.next.invalid"
+        private static let nextTemplates = TileTemplates(
+            basemap: "https://\(nextHost)/osm/{z}/{x}/{y}", terrain: "https://\(nextHost)/elevation/{z}/{x}/{y}")
+
+        private func reconfigure(_ templates: TileTemplates) {
+            GatewayState.shared.configure(GatewayConfiguration(
+                templates: templates, onlineAllowed: true, userAgent: Self.userAgent,
+                sessionConfiguration: server.configuration))
+        }
+
+        private static func nextURL(_ tile: TileRequest) throws -> URL {
+            try #require(URL(string: "https://\(nextHost)/osm/\(tile.z)/\(tile.x)/\(tile.y)"))
+        }
+
+        /// A style of this process may still name the templates the gateway had before: their tiles stay its own.
+        @Test func aTileOfARetiredTemplateIsStillClaimedAndAnsweredLocally() async throws {
+            let tile = Data("region tile".utf8)
+            configure()
+            GatewayState.shared.setTable(Self.region(try writeArchive("region.pmtiles", [(Self.inside, tile)])))
+            reconfigure(Self.nextTemplates)
+            #expect(TileGateway.canInit(with: URLRequest(url: try Self.url(Self.inside))))
+            let (data, response) = try await get(Self.inside)
+            #expect(response.statusCode == 200)
+            #expect(data == tile)
+            #expect(server.requests.isEmpty)
+            #expect(counters.local == 1)
+        }
+
+        /// Online, a retired template's tile is fetched from the current template, without the old URL's validators.
+        @Test func aTileOfARetiredTemplateGoesOnlineThroughTheCurrentTemplate() async throws {
+            configure()
+            reconfigure(Self.nextTemplates)
+            let current = try Self.nextURL(Self.outside)
+            let body = Data("current provider".utf8)
+            server.route(current, body: body)
+            let (data, response) = try await get(Self.outside, headers: ["If-None-Match": "\"old\""])
+            #expect(response.statusCode == 200)
+            #expect(data == body)
+            #expect(response.url == (try Self.url(Self.outside)))
+            #expect(server.requests.map(\.url) == [current])
+            #expect(server.requests.first?.value(forHTTPHeaderField: "If-None-Match") == nil)
+            #expect(server.requests.first?.value(forHTTPHeaderField: "User-Agent") == Self.userAgent)
+            #expect(counters.online == 1)
+        }
+
+        @Test func aTileOfARetiredTemplateAsksNoNetworkWhileOffline() async throws {
+            configure()
+            reconfigure(Self.nextTemplates)
+            GatewayState.shared.setOffline(true)
+            #expect(try await failure(Self.outside) == .notConnectedToInternet)
+            #expect(server.requests.isEmpty)
         }
     }
 }

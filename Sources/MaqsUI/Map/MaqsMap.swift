@@ -249,14 +249,16 @@ struct MapStyles: Equatable {
 
     // MARK: Style
 
-    /// Assembles the light and dark styles from the current inputs and hands the gateway what they need, the table
-    /// first. The gateway's templates change only together with a style that names them: a tile request that no
-    /// longer matches the templates is failed, so a style that fails to build keeps the templates it was built with.
+    /// Hands the gateway the table and the templates, then assembles the light and dark styles. The gateway's templates
+    /// come only from what the whole `Maqs` says (the online sources and the configured layers), never from one map's
+    /// hillshade switch, and the gateway keeps claiming every template set it had before: no tile URL a style of this
+    /// process names reaches the network unclaimed, whatever another map or a change of sources did.
     private func rebuildStyles() {
         guard packsRead else { return }
         GatewayState.shared.setTable(content.table)
         let templates = MapInputs.templates(sources: sources, layers: maqs.configuration.layers,
                                             showsHillshade: configuration.showsHillshade)
+        configureGateway(templates)
         let built: MapStyles
         do {
             built = MapStyles(light: try assemble(templates, dark: false), dark: try assemble(templates, dark: true))
@@ -265,7 +267,6 @@ struct MapStyles: Equatable {
             lastError = error
             return
         }
-        configureGateway(templates)
         lastError = nil
         if built != styles { styles = built }
     }
@@ -291,7 +292,7 @@ struct MapStyles: Equatable {
         GatewayState.shared.configure(GatewayConfiguration(
             templates: key.templates, onlineAllowed: key.onlineAllowed, userAgent: maqs.configuration.fullUserAgent,
             sessionConfiguration: seams.gatewaySession))
-        logger.info("map tile gateway configured: online \(key.onlineAllowed ? "allowed" : "off", privacy: .public), hillshade \(key.templates.terrain == nil ? "off" : "on", privacy: .public)")
+        logger.info("map tile gateway configured: online \(key.onlineAllowed ? "allowed" : "off", privacy: .public), terrain \(key.templates.terrain == nil ? "off" : "on", privacy: .public)")
     }
 
     // MARK: Called by the view

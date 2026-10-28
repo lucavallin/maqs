@@ -32,6 +32,12 @@ extension SharedGatewaySuite {
 
         private var counters: GatewayCounters { GatewayState.shared.counters }
 
+        /// A tile's URL under a `sources.json` template.
+        private func tileURL(_ template: String, z: Int, x: Int, y: Int) throws -> URL {
+            try #require(URL(string: template.replacingOccurrences(of: "{z}", with: String(z))
+                .replacingOccurrences(of: "{x}", with: String(x)).replacingOccurrences(of: "{y}", with: String(y))))
+        }
+
         /// The ids of the `maqs-` sources an installed region added to the loaded style.
         private func regionSources(_ host: MapHost, _ region: String) -> [String] {
             (host.mapView.style?.sources ?? []).map(\.identifier)
@@ -149,6 +155,27 @@ extension SharedGatewaySuite {
                 }
             }
             #expect(map.gatewayCounters.online > 0)
+        }
+
+        /// Hillshade is one map's choice, the gateway every map's: a second map without hillshade leaves the terrain
+        /// tiles of the first one claimed, so they never reach the network unclaimed.
+        @Test func aSecondMapWithoutHillshadeLeavesTheTerrainTilesClaimed() async throws {
+            let maqs = try TestRegion.maqs(on: server, layers: [.basemap, .terrain], in: directory)
+            let shown = try MaqsMap(maqs: maqs, configuration: MapConfiguration(), seams: seams())
+            let host = try await MapHost.show(shown)
+            defer { host.close() }
+            try await host.waitForStyle { $0.source(withIdentifier: "terrain") != nil }
+            let template = try #require(await maqs.onlineSources?.terrain.first?.tiles)
+            let terrainTile = URLRequest(url: try tileURL(template, z: 12, x: 2187, y: 1455))
+            #expect(TileGateway.canInit(with: terrainTile))
+
+            let second = try MaqsMap(maqs: maqs, configuration: MapConfiguration(showsHillshade: false), seams: seams())
+            try await waitUntil { second.styles != nil }
+
+            let light = try #require(second.styles?.light)
+            let style = try #require(try JSONSerialization.jsonObject(with: Data(light.utf8)) as? [String: Any])
+            #expect((style["sources"] as? [String: Any])?["terrain"] == nil)
+            #expect(TileGateway.canInit(with: terrainTile))
         }
 
         @Test func aRateLimitedTilePausesOnlineTilesAndTheMapSaysSo() async throws {

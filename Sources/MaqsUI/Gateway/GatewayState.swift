@@ -30,8 +30,9 @@ struct GatewayCounters: Sendable, Equatable {
     /// Requests that got no tile because something failed: an archive that cannot be read (answered 204), a network
     /// error that is not a connection failure, or no network answer and no base pack (answered as not connected).
     var failed = 0
-    /// Requests accepted as tiles that were no longer tiles of the current templates when they started. Each is failed
-    /// as not connected, so MapLibre asks again and the current templates decide; the gateway sends none of them.
+    /// Requests the gateway claims but cannot serve because their template is stale: a tile of a retired template whose
+    /// layer the current templates lack, outside every installed pack, or a request that matches no template any more
+    /// when it starts. Each is failed as not connected; the gateway sends none of them.
     var passedThrough = 0
 }
 
@@ -110,6 +111,9 @@ final class GatewayState: Sendable {
 
     private struct State {
         var online: Online?
+        /// Every other template set `configure` was given in this process, newest first. A style of this process may
+        /// still name one, so their tiles stay claimed.
+        var retired: [TileTemplates] = []
         var table = RoutingTable(regions: [], basePacks: [])
         var offline = false
         var pause = RateLimitPause()
@@ -146,16 +150,23 @@ final class GatewayState: Sendable {
             return online
         }
 
-        /// The tile `url` asks for and where it goes; nil when it is not a tile of the current templates.
+        /// The tile `url` asks for under the current templates or a retired set; nil when it is no tile of any.
+        func tile(for url: URL) -> TileRequest? {
+            guard let online else { return nil }
+            return online.templates.request(for: url) ?? retired.lazy.compactMap { $0.request(for: url) }.first
+        }
+
+        /// The tile `url` asks for and where it goes; nil when it is no tile of the current or a retired template.
         mutating func decide(_ url: URL) -> (TileRequest, Decision)? {
-            guard let online, let tile = online.templates.request(for: url) else { return nil }
+            guard let tile = tile(for: url) else { return nil }
             switch TileRouter.route(tile, in: table) {
             case .local(let archive):
                 return (tile, .local(archive))
             case .empty:
                 return (tile, .empty)
             case .online:
-                return (tile, reachable() == nil ? .fallback : .online)
+                guard let current = reachable() else { return (tile, .fallback) }
+                return (tile, current.templates.url(for: tile) == nil ? .stale : .online)
             }
         }
     }
@@ -166,6 +177,8 @@ final class GatewayState: Sendable {
         case empty
         case online
         case fallback
+        /// A retired template's tile whose layer the current templates lack: the fallback, or a stale-template failure.
+        case stale
     }
 
     private let state: Mutex<State>
@@ -178,13 +191,23 @@ final class GatewayState: Sendable {
 
     /// Replaces the templates, the online switch, the User-Agent and the session; the pause, the table and the counters
     /// stay. Requests already sent finish on the old session, which is invalidated once they have.
+    ///
+    /// The templates replaced are retired, not forgotten: a style of this process may still name them, and a tile URL
+    /// the gateway does not claim goes straight to the network, inside installed regions and with online tiles off too.
+    /// A retired template's tile is served like a current one: from an installed pack by its tile id, and online only
+    /// through the current template.
     func configure(_ configuration: GatewayConfiguration) {
         let online = Online(templates: configuration.templates, allowed: configuration.onlineAllowed,
                             userAgent: configuration.userAgent, session: Self.session(for: configuration))
         let replaced = state.withLock { state in
-            let old = state.online?.session
+            let old = state.online
+            if let previous = old?.templates, previous != online.templates {
+                state.retired.removeAll { $0 == previous }
+                state.retired.insert(previous, at: 0)
+            }
+            state.retired.removeAll { $0 == online.templates }
             state.online = online
-            return old
+            return old?.session
         }
         replaced?.finishTasksAndInvalidate()
     }
@@ -228,10 +251,10 @@ final class GatewayState: Sendable {
 
     // MARK: Read by TileGateway
 
-    /// Whether `request` asks for a tile of the current templates.
+    /// Whether `request` asks for a tile of the current templates or of a retired set.
     func isTile(_ request: URLRequest) -> Bool {
-        guard let url = request.url, let templates = state.withLock({ $0.online?.templates }) else { return false }
-        return templates.request(for: url) != nil
+        guard let url = request.url else { return false }
+        return state.withLock { $0.tile(for: url) } != nil
     }
 
     /// Decides what a request gets: an answer at once, or a trip to the network.
@@ -248,6 +271,8 @@ final class GatewayState: Sendable {
             return .answer(Self.localAnswer(nil, for: url))
         case .fallback:
             return .answer(fallback(tile, for: url))
+        case .stale:
+            return .answer(fallback(tile, for: url, stale: true))
         case .online:
             return .online(OnlineTile(tile: tile, url: url, request: request))
         }
@@ -262,11 +287,13 @@ final class GatewayState: Sendable {
     /// pause) the fallback answers instead.
     ///
     /// The request keeps MapLibre's headers, the conditional ones included, except `User-Agent`: that is always the
-    /// configured one, whatever MapLibre's session was given.
+    /// configured one, whatever MapLibre's session was given. It goes to the current template: a retired template's
+    /// tile is fetched from the current one, and fails as a stale template when no current template has its layer.
     func send(_ online: OnlineTile, completion: @escaping @Sendable (TileAnswer) -> Void) -> TileSend {
-        let task: URLSessionDataTask? = state.withLock { state in
-            guard let current = state.reachable() else { return nil }
-            var outbound = online.request
+        enum Outcome { case sent(URLSessionDataTask), unreachable, stale }
+        let outcome: Outcome = state.withLock { state in
+            guard let current = state.reachable() else { return .unreachable }
+            guard var outbound = Self.outbound(online, through: current.templates) else { return .stale }
             outbound.setValue(current.userAgent, forHTTPHeaderField: "User-Agent")
             // There is no cache to ignore; the policy only says so. MapLibre's ambient cache is the cache.
             outbound.cachePolicy = .reloadIgnoringLocalCacheData
@@ -275,10 +302,26 @@ final class GatewayState: Sendable {
                 completion(self.finish(online, data: data, response: response, error: error))
             }
             task.resume()
-            return task
+            return .sent(task)
         }
-        guard let task else { return .answer(fallback(online.tile, for: online.url)) }
-        return .sent(task)
+        switch outcome {
+        case .sent(let task): return .sent(task)
+        case .unreachable: return .answer(fallback(online.tile, for: online.url))
+        case .stale: return .answer(fallback(online.tile, for: online.url, stale: true))
+        }
+    }
+
+    /// What goes out for `online` under `templates`: MapLibre's request as it came when its URL is a tile of those
+    /// templates; for a tile of a retired template, the same request on the current template's URL, without the
+    /// validators MapLibre kept for the old URL. Nil when the current templates have no template for the tile's layer.
+    private static func outbound(_ online: OnlineTile, through templates: TileTemplates) -> URLRequest? {
+        if templates.request(for: online.url) == online.tile { return online.request }
+        guard let url = templates.url(for: online.tile) else { return nil }
+        var request = online.request
+        request.url = url
+        request.setValue(nil, forHTTPHeaderField: "If-None-Match")
+        request.setValue(nil, forHTTPHeaderField: "If-Modified-Since")
+        return request
     }
 
     /// The configuration of the gateway's current session (a copy), for tests.
@@ -312,12 +355,14 @@ final class GatewayState: Sendable {
     // MARK: Routing
 
     /// The answer when the network cannot give one: a base pack's tile, or a connection error.
-    private func fallback(_ tile: TileRequest, for url: URL) -> TileAnswer {
+    /// `stale`: the tile is a retired template's whose layer no current template serves, so a missing base pack is a
+    /// stale-template failure rather than a network one.
+    private func fallback(_ tile: TileRequest, for url: URL, stale: Bool = false) -> TileAnswer {
         switch state.withLock({ TileRouter.fallback(tile, in: $0.table) }) {
         case .local(let archive):
             return read(tile, from: archive, for: url, counting: \.base)
         case .unavailable:
-            count(\.failed)
+            count(stale ? \.passedThrough : \.failed)
             return .failure(URLError(.notConnectedToInternet))
         }
     }
