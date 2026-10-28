@@ -126,6 +126,12 @@ struct MapStyles: Equatable {
     /// again when the pause ends. It is read from the gateway every 5 s, so it can trail the pause by up to that.
     public private(set) var onlineTilesPaused = false
 
+    /// The credits of the sources the map draws, for ``MapAttributionView`` or the app's own credits: the basemap's
+    /// always, the hillshade's while it draws, the trails' and places' while their overlays show. A layer drawn from
+    /// the online source carries the source's `sources.json` credits, one an installed pack provides the manifest's,
+    /// each with its page when the manifest names one. They follow every style the map builds and the catalog.
+    public private(set) var credits: [MapCredit] = []
+
     /// The last thing that went wrong: an app style that is not valid, or a style MapLibre failed to load. The map
     /// keeps drawing from the last style that built and still follows the packs. `nil` again once the app's style
     /// builds.
@@ -139,6 +145,10 @@ struct MapStyles: Equatable {
     private(set) var routingTable = InstalledContent.none.table
     /// The gateway's counters as of its last read, every ``MapSeams/gatewayReadInterval``.
     private(set) var gatewayCounters = GatewayCounters()
+    /// What ``credits`` comes from besides the manifest: the layers and sources of the last style published.
+    @ObservationIgnored private(set) var creditInputs: CreditInputs?
+    /// The drawn layers that get no credit at all, each logged when it first has none.
+    @ObservationIgnored private(set) var uncreditedLayers: Set<Layer> = []
     /// The coordinator of the view showing this map, which owns the MapLibre view.
     @ObservationIgnored private(set) weak var coordinator: MaqsMapView.Coordinator?
 
@@ -265,6 +275,7 @@ struct MapStyles: Equatable {
         } else if catalogChanged && packsRead {
             refreshContent()
         }
+        if catalogChanged { updateCredits() }
     }
 
     /// Reads every pack's installed files (a pack being updated keeps its old files until the update ends), the headers
@@ -351,7 +362,7 @@ struct MapStyles: Equatable {
             let built = try build(from: bases, templates)
             lastGoodBases = bases
             lastError = nil
-            publish(built)
+            publish(built, templates)
         } catch {
             logger.error("map style not built: \(String(describing: error), privacy: .public)")
             lastError = error
@@ -359,15 +370,33 @@ struct MapStyles: Equatable {
             // stay in the style pointing at a deleted file.
             guard let lastGoodBases else { return }
             do {
-                publish(try build(from: lastGoodBases, templates))
+                publish(try build(from: lastGoodBases, templates), templates)
             } catch {
                 logger.error("map style not built from the last good base: \(String(describing: error), privacy: .public)")
             }
         }
     }
 
-    private func publish(_ built: MapStyles) {
+    private func publish(_ built: MapStyles, _ templates: MapTemplates) {
         if built != styles { styles = built }
+        creditInputs = MapInputs.creditInputs(templates: templates, content: content, overlays: overlays)
+        updateCredits()
+    }
+
+    /// Works out ``credits`` for the published style with the catalog's manifest entries. A drawn layer that gets no
+    /// credit at all is logged when it first has none, and the credits known are published all the same.
+    private func updateCredits() {
+        guard let inputs = creditInputs else { return }
+        let manifest = maqs.state.catalog?.attribution ?? []
+        let uncredited = Credits.uncredited(drawn: inputs.drawn, online: inputs.online, manifest: manifest,
+                                            installed: inputs.installed)
+        for layer in uncredited where !uncreditedLayers.contains(layer) {
+            logger.error("no credit for the drawn \(layer.rawValue, privacy: .public) layer")
+        }
+        uncreditedLayers = Set(uncredited)
+        let credits = Credits.credits(drawn: inputs.drawn, online: inputs.online, manifest: manifest,
+                                      installed: inputs.installed)
+        if credits != self.credits { self.credits = credits }
     }
 
     /// The light and dark base styles the configuration names.

@@ -157,6 +157,60 @@ import Testing
         #expect(content.table.regions.first?.archives.map(\.layer) == [.basemap])
     }
 
+    // MARK: Credit inputs
+
+    private var everyLayer: Set<Layer> { [.basemap, .terrain, .trails, .places] }
+
+    @Test func theBasemapAlwaysDrawsAndTerrainWithHillshadeEachWithItsOnlineCredits() {
+        let on = MapInputs.templates(sources: Self.sources, layers: [.basemap, .terrain], showsHillshade: true)
+        #expect(MapInputs.creditInputs(templates: on, content: .none, overlays: MapOverlays()) == CreditInputs(
+            drawn: [.basemap, .terrain], online: [.basemap: ["© OSM"], .terrain: ["© DEM"]], installed: []))
+        let off = MapInputs.templates(sources: Self.sources, layers: [.basemap, .terrain], showsHillshade: false)
+        #expect(MapInputs.creditInputs(templates: off, content: .none, overlays: MapOverlays()) == CreditInputs(
+            drawn: [.basemap], online: [.basemap: ["© OSM"]], installed: []))
+    }
+
+    @Test func withOnlineTilesOffNoLayerHasAnOnlineCredit() {
+        let templates = MapInputs.templates(sources: nil, layers: [.basemap, .terrain], showsHillshade: true)
+        let inputs = MapInputs.creditInputs(templates: templates, content: .none, overlays: MapOverlays())
+        #expect(inputs.drawn == [.basemap, .terrain])
+        #expect(inputs.online.values.allSatisfy { $0.isEmpty })
+    }
+
+    @Test func shownOverlaysOfAnInstalledRegionDrawAndEveryLayerIsInstalled() throws {
+        let templates = MapInputs.templates(sources: Self.sources, layers: everyLayer, showsHillshade: true)
+        let content = MapInputs.content(packs: [region], layers: everyLayer, catalog: try catalog(), archives: infos)
+        let every = MapInputs.creditInputs(templates: templates, content: content,
+                                           overlays: MapOverlays(trails: true, places: nil))
+        #expect(every.drawn == everyLayer)
+        #expect(every.installed == everyLayer)
+        let somePlaces = MapInputs.creditInputs(templates: templates, content: content,
+                                                overlays: MapOverlays(places: ["peak"]))
+        #expect(somePlaces.drawn == [.basemap, .terrain, .places])
+    }
+
+    @Test func hiddenOverlaysAndOverlaysWithNothingInstalledDoNotDraw() throws {
+        let templates = MapInputs.templates(sources: Self.sources, layers: everyLayer, showsHillshade: true)
+        let content = MapInputs.content(packs: [region], layers: everyLayer, catalog: try catalog(), archives: infos)
+        #expect(MapInputs.creditInputs(templates: templates, content: content, overlays: MapOverlays()).drawn
+            == [.basemap, .terrain])
+        #expect(MapInputs.creditInputs(templates: templates, content: .none,
+                                       overlays: MapOverlays(trails: true, places: nil)).drawn == [.basemap, .terrain])
+    }
+
+    @Test func aBasePackProvidesTheBasemapAndAnUnreadableArchiveNothing() throws {
+        let templates = MapInputs.templates(sources: nil, layers: [.basemap, .terrain], showsHillshade: true)
+        let basePack = MapInputs.content(packs: [base], layers: [.basemap], catalog: try catalog(), archives: infos)
+        #expect(MapInputs.creditInputs(templates: templates, content: basePack, overlays: MapOverlays()).installed
+            == [.basemap])
+        var unreadable = infos
+        unreadable[URL(filePath: "/packs/test-terrain.v1.pmtiles")] = nil
+        let withoutTerrain = MapInputs.content(packs: [region], layers: [.basemap, .terrain], catalog: try catalog(),
+                                               archives: unreadable)
+        #expect(MapInputs.creditInputs(templates: templates, content: withoutTerrain, overlays: MapOverlays()).installed
+            == [.basemap])
+    }
+
     @Test func withoutACatalogTheRegionCoversItsArchives() {
         let wide = BoundingBox(minLon: 12.0, minLat: 46.0, maxLon: 12.3, maxLat: 46.2)
         var archives = infos

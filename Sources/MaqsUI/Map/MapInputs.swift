@@ -28,6 +28,16 @@ struct InstalledContent: Sendable, Equatable {
     static let none = InstalledContent(table: RoutingTable(regions: [], basePacks: []), overlays: [])
 }
 
+/// What the credits of a style are worked out from (``Credits``), besides the manifest's entries.
+struct CreditInputs: Sendable, Equatable {
+    /// The layers the style draws.
+    var drawn: Set<Layer>
+    /// The credits of the online source each drawn tile layer names; none on the reserved host.
+    var online: [Layer: [String]]
+    /// The layers an installed pack gives the map a tile archive or an overlay for.
+    var installed: Set<Layer>
+}
+
 /// Turns the online sources and the installed packs into what the style and the gateway need. Pure, so it is tested on
 /// every platform.
 enum MapInputs {
@@ -91,6 +101,30 @@ enum MapInputs {
             }
         }
         return InstalledContent(table: RoutingTable(regions: regions, basePacks: basePacks), overlays: overlays)
+    }
+
+    /// What the style built from `templates`, `content` and `overlays` draws, and where its data comes from: the
+    /// basemap always, terrain when the style has hillshade, trails and places while they are shown and a region has
+    /// their overlay. The online credits stay while the device is offline, because the map still draws the tiles it
+    /// cached.
+    static func creditInputs(templates: MapTemplates, content: InstalledContent, overlays: MapOverlays) -> CreditInputs {
+        var drawn: Set<Layer> = [.basemap]
+        var online: [Layer: [String]] = [.basemap: templates.basemap.attribution]
+        if let terrain = templates.terrain {
+            drawn.insert(.terrain)
+            online[.terrain] = terrain.attribution
+        }
+        for overlay in content.overlays {
+            switch overlay.layer {
+            case .trails where overlays.trails: drawn.insert(.trails)
+            case .places where overlays.places != []: drawn.insert(.places)
+            default: break
+            }
+        }
+        let archives = content.table.regions.flatMap(\.archives) + content.table.basePacks
+        let installed = archives.map { $0.layer == .basemap ? Layer.basemap : .terrain }
+            + content.overlays.map { $0.layer == .trails ? Layer.trails : .places }
+        return CreditInputs(drawn: drawn, online: online, installed: Set(installed))
     }
 
     private static func template(_ source: TileSource) -> TileTemplate {
