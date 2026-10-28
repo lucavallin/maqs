@@ -59,12 +59,9 @@ extension SharedGatewaySuite {
         }
 
         @Test func insideTheInstalledTestRegionTheMapMakesNoNetworkRequest() async throws {
-            let maqs = try await TestRegion.install(
-                on: server, layers: [.basemap, .terrain, .trails, .places], in: directory)
-            try TestRegion.failEveryRequest(on: server)
+            let maqs = try await TestRegion.installEveryMapLayer(on: server, in: directory)
             let requestsAfterInstall = server.requests.count
-            let map = try MaqsMap(maqs: maqs, configuration: MapConfiguration(), seams: seams())
-            map.overlays = MapOverlays(trails: true, places: nil)
+            let map = try TestRegion.mapShowingEveryOverlay(maqs, seams: seams())
             let host = try await MapHost.show(map)
             defer { host.close() }
             host.mapView.setCenter(TestRegion.center, zoomLevel: 13, animated: false)

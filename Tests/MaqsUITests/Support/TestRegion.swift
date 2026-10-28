@@ -3,6 +3,9 @@ import Foundation
 import MaqsTestSupport
 
 @testable import MaqsCore
+#if canImport(MapLibre)
+@testable import MaqsUI
+#endif
 
 /// The `test` region of the `data-ci` fixtures, installed through `MaqsCore` from a stub server.
 enum TestRegion {
@@ -13,10 +16,12 @@ enum TestRegion {
     static let center = CLLocationCoordinate2D(latitude: 46.105, longitude: 12.25)
 
     /// A `Maqs` storing into `directory` whose every request reaches `server`. Nothing is served until the test routes it.
-    @MainActor static func maqs(on server: StubServer, layers: Set<Layer>, in directory: TemporaryDirectory) throws -> Maqs {
+    @MainActor static func maqs(on server: StubServer, layers: Set<Layer>, in directory: TemporaryDirectory,
+                                onlineTiles: Bool = true) throws -> Maqs {
         var configuration = MaqsConfiguration(layers: layers, userAgent: userAgent)
         configuration.storageDirectory = directory.url
         configuration.urlSessionConfiguration = server.configuration
+        configuration.onlineTiles = onlineTiles
         return try Maqs(configuration: configuration)
     }
 
@@ -37,4 +42,24 @@ enum TestRegion {
             server.route(url, failing)
         }
     }
+
+    /// The region installed with every layer a map draws (basemap, terrain, trails and places); from then on every
+    /// request of the release fails. With ``mapShowingEveryOverlay(_:seams:)``, the setup of the
+    /// headline map, which draws inside the region with no network.
+    @MainActor static func installEveryMapLayer(on server: StubServer, in directory: TemporaryDirectory) async throws -> Maqs {
+        let maqs = try await install(on: server, layers: [.basemap, .terrain, .trails, .places], in: directory)
+        try failEveryRequest(on: server)
+        return maqs
+    }
 }
+
+#if canImport(MapLibre)
+extension TestRegion {
+    /// A map of `maqs` that shows the trails and every kind of place.
+    @MainActor static func mapShowingEveryOverlay(_ maqs: Maqs, seams: MapSeams) throws -> MaqsMap {
+        let map = try MaqsMap(maqs: maqs, configuration: MapConfiguration(), seams: seams)
+        map.overlays = MapOverlays(trails: true, places: nil)
+        return map
+    }
+}
+#endif

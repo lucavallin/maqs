@@ -51,4 +51,22 @@ import Testing
             drawn: [.basemap], online: [.terrain: ["© Mapterhorn"]], manifest: manifest, installed: [.terrain])
         #expect(result.isEmpty)
     }
+
+    /// Terrain drawn from an online source that names no credit and from a pack the manifest has no entry for: it is
+    /// reported, and the basemap's credit is still listed.
+    @Test func aDrawnLayerWithNoCreditIsReportedAndTheOthersAreStillListed() {
+        let online: [Layer: [String]] = [.basemap: ["VersaTiles"], .terrain: []]
+        let installed: Set<Layer> = [.terrain]
+        #expect(Credits.uncredited(drawn: [.basemap, .terrain], online: online, manifest: [], installed: installed)
+            == [.terrain])
+        #expect(Credits.credits(drawn: [.basemap, .terrain], online: online, manifest: [], installed: installed)
+            == [MapCredit(text: "VersaTiles", url: nil)])
+    }
+
+    @Test func noLayerIsReportedWhenEveryDrawnLayerHasACredit() {
+        let result = Credits.uncredited(
+            drawn: [.basemap, .terrain, .trails], online: [.basemap: ["VersaTiles"]], manifest: manifest,
+            installed: [.terrain, .trails])
+        #expect(result.isEmpty)
+    }
 }

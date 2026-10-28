@@ -29,4 +29,15 @@ enum Credits {
         }
         return result
     }
+
+    /// The `drawn` layers that get no credit at all from these inputs, in credit order: their sources are drawn
+    /// without the credit they require, so the map reports them.
+    static func uncredited(
+        drawn: Set<Layer>, online: [Layer: [String]], manifest: [Attribution], installed: Set<Layer>
+    ) -> [Layer] {
+        order.filter { layer in
+            drawn.contains(layer)
+                && credits(drawn: [layer], online: online, manifest: manifest, installed: installed).isEmpty
+        }
+    }
 }
