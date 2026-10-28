@@ -187,15 +187,26 @@ extension MaqsMapView {
             mapView.setUserTrackingMode(MLNUserTrackingMode(mode), animated: true, completionHandler: nil)
         }
 
+        /// Whether a camera change may animate. While MapLibre follows the location, each location or heading update
+        /// cancels a running animation and moves on without its pitch, and without its bearing unless it follows the
+        /// course, so a change made then would stop partway: it is made at once instead.
+        private var cameraMayAnimate: Bool {
+            mapView.userTrackingMode == .none
+        }
+
         func resetNorth() {
-            mapView.resetNorth()
+            if cameraMayAnimate {
+                mapView.resetNorth()
+            } else {
+                mapView.setDirection(0, animated: false)
+            }
         }
 
         /// Tilts the camera at the same distance from the centre, so the zoom stays.
         func setPitch(_ degrees: Double) {
             let camera = mapView.camera
             mapView.setCamera(MLNMapCamera(lookingAtCenter: camera.centerCoordinate, acrossDistance: camera.viewingDistance,
-                                           pitch: degrees, heading: camera.heading), animated: true)
+                                           pitch: degrees, heading: camera.heading), animated: cameraMayAnimate)
         }
 
         func show(_ coordinate: CLLocationCoordinate2D, zoom: Double?) {

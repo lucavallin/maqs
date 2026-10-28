@@ -62,6 +62,25 @@ extension SharedGatewaySuite {
             heading > 180 ? heading - 360 : heading
         }
 
+        /// Waits until MapLibre has drawn a frame with no camera transition running: it becomes idle only then, and runs
+        /// the completions of finished transitions in the same frame.
+        private func waitForIdle(_ host: MapHost) async throws {
+            let coordinator = host.coordinator
+            let idles = coordinator.idlesSinceStyleLoad
+            host.mapView.triggerRepaint()
+            try await waitUntil { coordinator.idlesSinceStyleLoad > idles }
+        }
+
+        /// Follows the position from a first fix south of the centre, once the camera has flown there: the next fix then
+        /// moves the camera step by step, which cancels any camera animation that runs.
+        private func followFromAFirstFix(_ map: MaqsMap, _ host: MapHost) async throws {
+            let first = offset(TestRegion.center, lat: -0.004)
+            map.follow(.position)
+            map.provide(location(first))
+            try await waitUntil { near(map.camera.center, first) }
+            try await waitForIdle(host)
+        }
+
         // MARK: Camera actions
 
         @Test func showingBoundsFitsThemAboveABottomInset() async throws {
@@ -203,6 +222,34 @@ extension SharedGatewaySuite {
 
             #expect(map.followMode == .position)
             #expect(host.mapView.userTrackingMode == .follow)
+        }
+
+        @Test func aPitchChangeWhileFollowingSurvivesTheNextFix() async throws {
+            let (map, host) = try await shownMap { $0.userLocation = .provided }
+            defer { host.close() }
+            try await followFromAFirstFix(map, host)
+
+            map.setPitch(45)
+            map.provide(location(offset(TestRegion.center, lat: -0.002, lon: 0.003)))
+
+            try await waitForIdle(host)
+            #expect(abs(host.mapView.camera.pitch - 45) < 0.01)
+            #expect(map.followMode == .position)
+        }
+
+        @Test func northUpWhileFollowingSurvivesTheNextFix() async throws {
+            let (map, host) = try await shownMap { $0.userLocation = .provided }
+            defer { host.close() }
+            host.mapView.setDirection(90, animated: false)
+            try await followFromAFirstFix(map, host)
+            #expect(abs(host.mapView.direction - 90) < 0.01)
+
+            map.resetNorth()
+            map.provide(location(offset(TestRegion.center, lat: -0.002, lon: 0.003)))
+
+            try await waitForIdle(host)
+            #expect(abs(signed(host.mapView.direction)) < 0.01)
+            #expect(map.followMode == .position)
         }
 
         /// MapLibre would show the location itself to follow it, against the app's `.hidden`.

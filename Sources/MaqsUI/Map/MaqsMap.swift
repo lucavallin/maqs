@@ -417,13 +417,14 @@ struct MapStyles: Equatable {
         }
     }
 
-    /// Turns the map to north. Following the heading or the course becomes following the position.
+    /// Turns the map to north. Following the heading or the course becomes following the position. While the camera
+    /// follows the location the map turns at once, because the next location would stop an animation partway.
     public func resetNorth() {
         coordinator?.resetNorth()
     }
 
-    /// Tilts the map `degrees` from looking straight down, kept within 0…60, at the same zoom. Not a number does
-    /// nothing.
+    /// Tilts the map `degrees` from looking straight down, kept within 0…60, at the same zoom; at once while the camera
+    /// follows the location, as ``resetNorth()`` turns. Not a number does nothing.
     public func setPitch(_ degrees: Double) {
         guard !degrees.isNaN else {
             logger.debug("map pitch ignored: not a number")
