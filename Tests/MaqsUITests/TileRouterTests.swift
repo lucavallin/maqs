@@ -156,4 +156,16 @@ import Testing
         let table = RoutingTable(regions: [], basePacks: [a, b])
         #expect(TileRouter.fallback(tile(z: 5, lon: inside.lon, lat: inside.lat), in: table) == .local(b.url))
     }
+
+    @Test func anInvertedZoomRangeNeverMatchesAndNeverTraps() {
+        let inverted = archive(.region("veneto"), name: "bad", zooms: 0...14)
+        var broken = inverted
+        broken.minZoom = 12
+        broken.maxZoom = 3
+        let request = tile(z: 8, lon: inside.lon, lat: inside.lat)
+        let regions = RoutingTable(regions: [region("veneto", [broken])], basePacks: [])
+        #expect(TileRouter.route(request, in: regions) == .empty)
+        let base = RoutingTable(regions: [], basePacks: [broken])
+        #expect(TileRouter.fallback(request, in: base) == .unavailable)
+    }
 }
