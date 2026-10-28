@@ -157,9 +157,8 @@ import Testing
         let tail = Array(all.dropFirst(base.count).prefix(11))
         #expect(tail == [
             "maqs-trails-veneto-casing", "maqs-trails-veneto-line", "maqs-trails-veneto-selected", "maqs-trails-veneto-plate",
-            "maqs-places-veneto",
             "maqs-trails-friuli-casing", "maqs-trails-friuli-line", "maqs-trails-friuli-selected", "maqs-trails-friuli-plate",
-            "maqs-places-friuli",
+            "maqs-places-veneto", "maqs-places-friuli",
             "maqs-lines-hidden",
         ])
         let source = try #require(sources(style)["maqs-trails-veneto"] as? JSON)
@@ -179,7 +178,7 @@ import Testing
         #expect((casing["paint"] as? JSON)?["line-color"] as? String == "#FFFFFF")
         #expect(try (layer(style, "maqs-trails-veneto-line")["paint"] as? JSON)?["line-width"] as? Double == 4)
         let selected = try layer(style, "maqs-trails-veneto-selected")
-        #expect(json(selected["filter"]) == #"["==",["id"],-1]"#)
+        #expect(json(selected["filter"]) == #"["==",["get","id"],-1]"#)
         #expect((selected["paint"] as? JSON)?["line-color"] as? String == "#FF5500")
         #expect((selected["paint"] as? JSON)?["line-width"] as? Double == 5)
         let plate = try layer(style, "maqs-trails-veneto-plate")
@@ -191,6 +190,7 @@ import Testing
         #expect(json(layout["text-font"]) == #"["noto_sans_bold"]"#)
         #expect(layout["text-size"] as? Double == 11)
         #expect((plate["paint"] as? JSON)?["text-color"] as? String == "#101620")
+        #expect(json(plate["filter"]) == #"["all",["has","ref"],["!=",["get","ref"],""]]"#)
     }
 
     @Test func omitsTrailLayersWithoutTrails() throws {
@@ -207,6 +207,7 @@ import Testing
         #expect(json(layout["text-field"]) == #"["coalesce",["get","name_de"],["get","name"]]"#)
         #expect(json(layout["symbol-sort-key"]) == #"["-",0,["get","rank_score"]]"#)
         #expect(layout["text-size"] as? Double == 13)
+        #expect(layout["text-offset"] as? [Double] == [0, 0.8])
         #expect((places["paint"] as? JSON)?["text-halo-width"] as? Double == 2)
         #expect((places["paint"] as? JSON)?["text-halo-color"] as? String == "#191F28")
         #expect(places["filter"] == nil)
@@ -325,10 +326,26 @@ import Testing
         }
     }
 
+    @Test func dropsASourceURLSoTheTemplateApplies() throws {
+        let base = Data(
+            """
+            {"sources":{"basemap":{"type":"vector","url":"https://other.example/tiles.json"},
+             "terrain":{"type":"raster-dem","url":"https://other.example/dem.json"}},"layers":[]}
+            """.utf8)
+        let style = try assemble(base, Self.inputs())
+        for name in ["basemap", "terrain"] {
+            let source = try #require(sources(style)[name] as? JSON)
+            #expect(source["url"] == nil)
+            #expect(source["tiles"] != nil)
+        }
+    }
+
     @Test func rejectsUnusableBases() {
         let bases = [
             "not json", "[]", #"{"sources":{"basemap":{"type":"vector"}}}"#, #"{"layers":[]}"#,
             #"{"sources":{"other":{"type":"vector"}},"layers":[]}"#, #"{"sources":{"basemap":{"type":"raster"}},"layers":[]}"#,
+            #"{"sources":{"basemap":{"type":"vector"}},"layers":[{"id":"a","type":"background"},"x"]}"#,
+            #"{"sources":{"basemap":{"type":"vector"},"extra":3},"layers":[]}"#,
         ]
         for base in bases {
             do {
