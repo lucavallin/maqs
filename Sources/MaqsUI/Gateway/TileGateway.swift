@@ -45,19 +45,21 @@ final class TileGateway: URLProtocol, @unchecked Sendable {
         case .answer(let answer):
             deliver(answer)
         case .online(let online):
-            let task = online.session.dataTask(with: online.request) { data, response, error in
-                self.handOver(gateway.finish(online, data: data, response: response, error: error))
-            }
+            // Recorded before the task exists: its answer can arrive before `send` returns.
             loading.withLock { loading in
                 let runLoop = CFRunLoopGetCurrent()
-                loading.task = task
                 loading.runLoop = runLoop
                 loading.modes = [.defaultMode]
                 if let current = CFRunLoopCopyCurrentMode(runLoop), current != .defaultMode {
                     loading.modes.append(current)
                 }
             }
-            task.resume()
+            switch gateway.send(online, completion: { answer in self.handOver(answer) }) {
+            case .sent(let task):
+                loading.withLock { $0.task = task }
+            case .answer(let answer):
+                deliver(answer)
+            }
         }
     }
 

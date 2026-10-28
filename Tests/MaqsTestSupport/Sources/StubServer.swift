@@ -2,6 +2,9 @@ import Foundation
 import Synchronization
 
 /// One scripted HTTP response.
+///
+/// A 3xx other than 304 with a `Location` header is a redirect, as in HTTP: the session's delegate decides whether to
+/// follow it. A followed redirect is a new request to this server; a refused one comes back as the response.
 public struct StubResponse: Sendable {
     public var status: Int
     public var headers: [String: String]
@@ -139,6 +142,14 @@ final class StubURLProtocol: URLProtocol {
         if let code = stub.transportError {
             client?.urlProtocol(self, didFailWithError: URLError(code))
             return
+        }
+        if (300..<400).contains(stub.status), stub.status != 304, let location = stub.headers["Location"],
+           let target = URL(string: location, relativeTo: response.url)?.absoluteURL {
+            var redirected = request
+            redirected.url = target
+            // The loading system asks the session's delegate. When it follows, it stops this protocol and the calls
+            // below are ignored; when it refuses, they deliver the 3xx as the response.
+            client?.urlProtocol(self, wasRedirectedTo: redirected, redirectResponse: response)
         }
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         if !stub.body.isEmpty { client?.urlProtocol(self, didLoad: stub.body) }

@@ -279,6 +279,42 @@ extension SharedGatewaySuite {
             #expect(counters.online == 1)
         }
 
+        /// The identifying User-Agent does not depend on what MapLibre's session was given.
+        @Test func theConfiguredUserAgentReplacesTheRequestsOwn() async throws {
+            server.route(try Self.url(Self.outside), body: Data("online tile".utf8))
+            configure()
+            _ = try await get(Self.outside, headers: ["User-Agent": "MapLibre Native/6.31.0 SomeApp/1"])
+            let sent = try #require(server.requests.first)
+            #expect(sent.value(forHTTPHeaderField: "User-Agent") == Self.userAgent)
+        }
+
+        /// The gateway talks only to the hosts its templates name.
+        @Test func aRedirectToAnotherHostIsNotFollowed() async throws {
+            let elsewhere = try #require(URL(string: "https://elsewhere.invalid/osm/14/1/1"))
+            server.route(try Self.url(Self.outside), status: 302, headers: ["Location": elsewhere.absoluteString],
+                         body: Data())
+            server.route(elsewhere, body: Data("elsewhere".utf8))
+            configure()
+            let (data, response) = try await get(Self.outside)
+            #expect(response.statusCode == 302)
+            #expect(data.isEmpty)
+            #expect(server.requests.count == 1)
+            #expect(!server.requests.contains { $0.url?.host == "elsewhere.invalid" })
+        }
+
+        @Test func aRedirectOnTheSameHostIsFollowed() async throws {
+            let moved = try Self.url(Self.outsideOther)
+            let body = Data("moved tile".utf8)
+            server.route(try Self.url(Self.outside), status: 301, headers: ["Location": moved.absoluteString],
+                         body: Data())
+            server.route(moved, body: body)
+            configure()
+            let (data, response) = try await get(Self.outside)
+            #expect(response.statusCode == 200)
+            #expect(data == body)
+            #expect(server.requests.map(\.url) == [try Self.url(Self.outside), moved])
+        }
+
         /// URLSession has decoded the body by the time the gateway sees it, so the headers that describe the encoded
         /// bytes would be wrong for MapLibre; the caching headers are the provider's and pass unchanged.
         @Test func anOnlineResponseKeepsItsCachingHeadersAndLosesItsEncodingOnes() async throws {
@@ -396,6 +432,73 @@ extension SharedGatewaySuite {
         }
 
         // MARK: The gateway's own session
+
+        /// The second step of an online tile, as `TileGateway` takes it; the answer the completion or the call gives.
+        private static func send(_ online: OnlineTile) async -> TileAnswer {
+            await withCheckedContinuation { continuation in
+                let sent = GatewayState.shared.send(online) { continuation.resume(returning: $0) }
+                if case .answer(let answer) = sent { continuation.resume(returning: answer) }
+            }
+        }
+
+        /// The online step of a tile request, from `start`; nil, and a recorded issue, when it is not routed online.
+        private static func routedOnline(_ tile: TileRequest) throws -> OnlineTile? {
+            guard case .online(let online) = GatewayState.shared.start(URLRequest(url: try url(tile))) else {
+                Issue.record("the tile was not routed online")
+                return nil
+            }
+            return online
+        }
+
+        /// A runtime reconfiguration invalidates the old session. A task created on it would raise an Objective-C
+        /// exception, which Swift cannot catch; the request goes out on the session current when it is sent.
+        @Test func aReconfigurationBetweenRoutingAndSendingUsesTheNewSession() async throws {
+            server.route(try Self.url(Self.outside), body: Data("old session".utf8))
+            configure()
+            let online = try #require(try Self.routedOnline(Self.outside))
+            let replacement = StubServer()
+            let body = Data("new session".utf8)
+            replacement.route(try Self.url(Self.outside), body: body)
+            configure(sessionConfiguration: replacement.configuration)
+            guard case .response(let response, let data) = await Self.send(online) else {
+                Issue.record("no response")
+                return
+            }
+            #expect(response.statusCode == 200)
+            #expect(data == body)
+            #expect(server.requests.isEmpty)
+            #expect(replacement.requests.count == 1)
+        }
+
+        @Test func aReconfigurationThatTurnsOnlineOffBeforeSendingAsksNoNetwork() async throws {
+            server.route(try Self.url(Self.outside), body: Data("online tile".utf8))
+            configure()
+            let online = try #require(try Self.routedOnline(Self.outside))
+            configure(onlineAllowed: false)
+            guard case .failure(let error) = await Self.send(online) else {
+                Issue.record("not a failure")
+                return
+            }
+            #expect((error as? URLError)?.code == .notConnectedToInternet)
+            #expect(server.requests.isEmpty)
+        }
+
+        @Test func theGatewaysSessionHasNoCacheAFifteenSecondTimeoutAndNoGateway() throws {
+            let given = server.configuration
+            given.protocolClasses = [TileGateway.self] + (given.protocolClasses ?? [])
+            given.urlCache = URLCache(memoryCapacity: 1 << 20, diskCapacity: 0)
+            given.requestCachePolicy = .returnCacheDataElseLoad
+            given.timeoutIntervalForRequest = 60
+            configure(sessionConfiguration: given)
+            let session = try #require(GatewayState.shared.sessionConfigurationForTesting)
+            #expect(session.urlCache == nil)
+            #expect(session.requestCachePolicy == .reloadIgnoringLocalCacheData)
+            #expect(session.timeoutIntervalForRequest == 15)
+            let protocols = (session.protocolClasses ?? []).map(ObjectIdentifier.init)
+            #expect(!protocols.contains(ObjectIdentifier(TileGateway.self)))
+            #expect(session.httpAdditionalHeaders?["X-Maqs-Stub"] as? String == server.id)
+            #expect(session.httpAdditionalHeaders?["User-Agent"] as? String == Self.userAgent)
+        }
 
         @Test func theGatewaysOwnRequestsNeverComeBackToIt() async throws {
             let configuration = server.configuration

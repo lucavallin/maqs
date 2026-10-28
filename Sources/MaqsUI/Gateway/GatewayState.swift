@@ -45,18 +45,26 @@ enum TileAnswer: Sendable {
 enum TileStart: Sendable {
     /// Answer at once.
     case answer(TileAnswer)
-    /// Send the request, then hand the outcome to ``GatewayState/finish(_:data:response:error:)``.
+    /// Ask the network: hand it to ``GatewayState/send(_:completion:)``.
     case online(OnlineTile)
 }
 
-/// A tile request on its way to the network.
+/// A tile request routed to the network. It names no session: ``GatewayState/send(_:completion:)`` takes the one
+/// current when the request goes out.
 struct OnlineTile: Sendable {
     let tile: TileRequest
     /// MapLibre's request URL: the answer is for it.
     let url: URL
-    /// MapLibre's request with its headers unchanged, the conditional ones included, and the gateway's timeout.
+    /// MapLibre's request as it came, its conditional headers included.
     let request: URLRequest
-    let session: URLSession
+}
+
+/// What ``GatewayState/send(_:completion:)`` did.
+enum TileSend: Sendable {
+    /// The request is on its way; the completion gets the answer.
+    case sent(URLSessionDataTask)
+    /// The network may no longer be asked, so this is the answer; the completion is never called.
+    case answer(TileAnswer)
 }
 
 /// The state every `TileGateway` instance reads: the templates, the installed archives, the network state and the
@@ -83,6 +91,7 @@ final class GatewayState: Sendable {
     private struct Online {
         let templates: TileTemplates
         let allowed: Bool
+        let userAgent: String
         let session: URLSession
     }
 
@@ -110,6 +119,13 @@ final class GatewayState: Sendable {
             return active
         }
 
+        /// The online configuration when the network may be asked now; nil when online tiles are off, the device is
+        /// offline or a pause runs.
+        mutating func reachable() -> Online? {
+            guard let online, online.allowed, !offline, !pauseIsActive() else { return nil }
+            return online
+        }
+
         /// The tile `url` asks for and where it goes; nil when it is not a tile of the current templates.
         mutating func decide(_ url: URL) -> (TileRequest, Decision)? {
             guard let online, let tile = online.templates.request(for: url) else { return nil }
@@ -119,8 +135,7 @@ final class GatewayState: Sendable {
             case .empty:
                 return (tile, .empty)
             case .online:
-                let reachable = online.allowed && !offline && !pauseIsActive()
-                return (tile, reachable ? .online(online.session) : .fallback)
+                return (tile, reachable() == nil ? .fallback : .online)
             }
         }
     }
@@ -129,7 +144,7 @@ final class GatewayState: Sendable {
     private enum Decision {
         case local(URL)
         case empty
-        case online(URLSession)
+        case online
         case fallback
     }
 
@@ -141,10 +156,11 @@ final class GatewayState: Sendable {
 
     // MARK: Set by the map
 
-    /// Replaces the templates, the online switch and the session; the pause, the table and the counters stay.
+    /// Replaces the templates, the online switch, the User-Agent and the session; the pause, the table and the counters
+    /// stay. Requests already sent finish on the old session, which is invalidated once they have.
     func configure(_ configuration: GatewayConfiguration) {
         let online = Online(templates: configuration.templates, allowed: configuration.onlineAllowed,
-                            session: Self.session(for: configuration))
+                            userAgent: configuration.userAgent, session: Self.session(for: configuration))
         let replaced = state.withLock { state in
             let old = state.online?.session
             state.online = online
@@ -210,18 +226,47 @@ final class GatewayState: Sendable {
             return .answer(Self.localAnswer(nil, for: url))
         case .fallback:
             return .answer(fallback(tile, for: url))
-        case .online(let session):
-            var outbound = request
+        case .online:
+            return .online(OnlineTile(tile: tile, url: url, request: request))
+        }
+    }
+
+    /// Sends a tile ``start(_:)`` routed online, on the session current now, and hands the answer to `completion`.
+    ///
+    /// The task is created and resumed under the lock, so `configure` cannot invalidate the session in between: a task
+    /// created on an invalidated session raises an Objective-C exception, which Swift cannot catch. A later
+    /// `finishTasksAndInvalidate` lets the task finish. `configure` may have run since ``start(_:)``, so the current
+    /// configuration applies, and when it no longer lets the network be asked (online tiles turned off, offline, a
+    /// pause) the fallback answers instead.
+    ///
+    /// The request keeps MapLibre's headers, the conditional ones included, except `User-Agent`: that is always the
+    /// configured one, whatever MapLibre's session was given.
+    func send(_ online: OnlineTile, completion: @escaping @Sendable (TileAnswer) -> Void) -> TileSend {
+        let task: URLSessionDataTask? = state.withLock { state in
+            guard let current = state.reachable() else { return nil }
+            var outbound = online.request
+            outbound.setValue(current.userAgent, forHTTPHeaderField: "User-Agent")
             // There is no cache to ignore; the policy only says so. MapLibre's ambient cache is the cache.
             outbound.cachePolicy = .reloadIgnoringLocalCacheData
             outbound.timeoutInterval = GatewayConfiguration.requestTimeout
-            return .online(OnlineTile(tile: tile, url: url, request: outbound, session: session))
+            let task = current.session.dataTask(with: outbound) { data, response, error in
+                completion(self.finish(online, data: data, response: response, error: error))
+            }
+            task.resume()
+            return task
         }
+        guard let task else { return .answer(fallback(online.tile, for: online.url)) }
+        return .sent(task)
+    }
+
+    /// The configuration of the gateway's current session (a copy), for tests.
+    var sessionConfigurationForTesting: URLSessionConfiguration? {
+        state.withLock { $0.online?.session.configuration }
     }
 
     /// Settles what the network answered: the pause, the counters and what MapLibre gets. A cancelled request is
     /// answered with its error and not counted: `stopLoading` cancelled it, and the gateway drops the answer.
-    func finish(_ online: OnlineTile, data: Data?, response: URLResponse?, error: (any Error)?) -> TileAnswer {
+    private func finish(_ online: OnlineTile, data: Data?, response: URLResponse?, error: (any Error)?) -> TileAnswer {
         if let error {
             let code = (error as? URLError)?.code
             if code == .cancelled { return .failure(error) }
@@ -349,9 +394,10 @@ final class GatewayState: Sendable {
     }
 
     /// The gateway's own session: a copy of the configuration given, with no cache (MapLibre's ambient cache is the
-    /// only one; MapLibre sends its own conditional headers), the gateway's timeout and the app's User-Agent. Nothing
-    /// that disables caching is added. `TileGateway` is taken out of the copy's protocols, so the gateway's requests
-    /// never come back to it.
+    /// only one; MapLibre sends its own conditional headers), the gateway's timeout and the app's User-Agent, which
+    /// ``send(_:completion:)`` also sets on each request. Nothing that disables caching is added. `TileGateway` is taken
+    /// out of the copy's protocols, so the gateway's requests never come back to it, and redirects are followed only on
+    /// the same host.
     private static func session(for configuration: GatewayConfiguration) -> URLSession {
         // `copy()` of a URLSessionConfiguration always returns one; the fallback exists only to satisfy the cast.
         let copy = configuration.sessionConfiguration.copy() as? URLSessionConfiguration ?? .ephemeral
@@ -363,11 +409,31 @@ final class GatewayState: Sendable {
         copy.timeoutIntervalForRequest = GatewayConfiguration.requestTimeout
         let gateway = ObjectIdentifier(TileGateway.self)
         copy.protocolClasses = copy.protocolClasses?.filter { ObjectIdentifier($0) != gateway }
-        return URLSession(configuration: copy)
+        return URLSession(configuration: copy, delegate: SameOriginRedirects(), delegateQueue: nil)
     }
 
     private static func describe(_ tile: TileRequest) -> String {
         "\(tile.z)/\(tile.x)/\(tile.y)"
+    }
+}
+
+/// Follows a redirect only to the scheme, host and port of the request it answers: the gateway talks only to the hosts
+/// its templates name, which come from `sources.json`. A redirect anywhere else is refused, and the 3xx goes back to
+/// MapLibre as the response, which MapLibre treats as an error and retries with backoff.
+private final class SameOriginRedirects: NSObject, URLSessionTaskDelegate, Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
+        guard let from = task.originalRequest?.url, let to = request.url, Self.sameOrigin(from, to) else {
+            logger.notice("map tile redirect to another host refused: status \(response.statusCode, privacy: .public)")
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
+    }
+
+    private static func sameOrigin(_ a: URL, _ b: URL) -> Bool {
+        a.scheme?.lowercased() == b.scheme?.lowercased() && a.host?.lowercased() == b.host?.lowercased()
+            && a.port == b.port
     }
 }
 
