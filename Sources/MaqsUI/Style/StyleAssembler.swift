@@ -219,7 +219,8 @@ enum StyleAssembler {
     static let settlementKinds = ["hamlet", "isolated_dwelling", "village"]
 
     /// One of a region's two places layers: its settlements as a name only (`<source>-names`), or every other kind as a
-    /// round marker with the name under it (`<source>`).
+    /// round marker with the name under it (`<source>-markers`). Like every overlay layer, each id is its source id plus
+    /// a one-word suffix, so no region id can make two layer ids equal.
     private static func placesLayer(_ source: String, _ inputs: StyleInputs, _ palette: Palette, settlements: Bool) -> JSON {
         let scheme = inputs.content.dark ? "-dark" : "-light"
         var layout: JSON = [
@@ -237,7 +238,7 @@ enum StyleAssembler {
         let isSettlement: [Any] = ["in", ["get", "kind"], ["literal", settlementKinds]]
         var filter: [Any] = settlements ? isSettlement : ["!", isSettlement]
         var layer: JSON = [
-            "id": settlements ? "\(source)-names" : source, "type": "symbol", "source": source, "source-layer": "places",
+            "id": "\(source)-\(settlements ? "names" : "markers")", "type": "symbol", "source": source, "source-layer": "places",
             "paint": ["text-color": inputs.content.dark ? "#E6EDF3" : "#101620", "text-halo-color": palette.casing, "text-halo-width": 2] as JSON,
         ]
         if let kinds = inputs.visiblePlaceKinds {

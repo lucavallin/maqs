@@ -195,7 +195,7 @@ extension SharedGatewaySuite {
             let host = try await MapHost.show(map)
             defer { host.close() }
             host.mapView.setCenter(first.coordinate, zoomLevel: 14, animated: false)
-            try await host.waitForStyle { $0.layer(withIdentifier: "maqs-places-test") != nil }
+            try await host.waitForStyle { $0.layer(withIdentifier: "maqs-places-test-markers") != nil }
             try await host.waitUntilDrawn()
 
             host.coordinator.tap(at: point(host, first.coordinate))
