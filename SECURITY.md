@@ -14,7 +14,7 @@ Report it privately through GitHub: open the repository's Security tab and choos
 
 - Every request the package makes carries the app's identifying User-Agent, MapLibre's included. The map's tile gateway also sets it on each tile request it sends, whatever the request carried.
 - No request carries a header that disables caching; the provider's `Cache-Control` decides.
-- After a 429 the map pauses its online tile requests for 60 s, twice as long after each further 429, up to 15 minutes. On its own MapLibre would retry every tile every 5 s. `MaqsTerrain` pauses its own requests the same way.
+- The map pauses online tiles after a 429, never a tight retry loop; [`docs/architecture.md`](docs/architecture.md#map) gives the lengths. On its own MapLibre would retry every tile every 5 s. `MaqsTerrain` pauses its own requests the same way.
 - Inside an installed region the map sends no tile request, even with signal, and with `onlineTiles` off it sends none anywhere.
 - The gateway follows a redirect only to the same scheme, host and port, so tiles come only from the hosts `config/sources.json` names.
 

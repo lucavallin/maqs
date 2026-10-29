@@ -7,7 +7,7 @@ This file governs *how you work* in this repository. Section 1 and the Stack cus
 ## 1. Project context
 
 ### What this is
-**maqs** is a public repository that provides **map data** and a **Swift package (`Maqs`)** for a small family of native Apple apps (iOS and iPadOS; the non-UI modules also build for macOS). The apps live in a separate private repository and depend on this one; this repo is generic, reusable plumbing and never references them. Online-first (apps stream tiles from free public sources), offline optional (per-region packs are an opt-in download). Zero hosting cost: code in git, data as GitHub Release assets, compute in GitHub Actions. Solo-maintained by Luca.
+**maqs** is a public repository that provides **map data** and a **Swift package (`Maqs`)** for a small set of native Apple apps (iOS and iPadOS). Every module also builds for macOS; `MaqsUI` draws only on iOS and builds there without MapLibre. The apps live in a separate private repository and depend on this one; this repo is generic, reusable plumbing and never references them. Online-first (apps stream tiles from free public sources), offline optional (per-region packs are an opt-in download). Zero hosting cost: code in git, data as GitHub Release assets, compute in GitHub Actions. Solo-maintained by Luca.
 
 `docs/BRIEF.md` is the source of truth for *what* to build, in what order, and which decisions are already made; it was amended after Phase 0 and `docs/decisions.md` records why. The owner's standing rules sit at the top of the brief: one map provider online and offline, as few providers as possible, nothing unmaintained, trail data from more than one source. This file governs *how*. When the two disagree, say so; do not silently pick one.
 
@@ -22,7 +22,7 @@ This file governs *how you work* in this repository. Section 1 and the Stack cus
 - Map-matching, routing, turn-by-turn. `MaqsData` exposes simple query APIs; matching a position to a segment is the app's job.
 - App-specific map styles. The package ships one plain default style; apps bring their own look.
 - Third-party Swift dependencies other than MapLibre Native, in any module, including tests.
-- Map rendering on macOS. MapLibre's SwiftPM binary is iOS-only; `MaqsUI` is declared for iOS, the other three products also build for macOS (ADR 0003).
+- Map rendering on macOS. MapLibre's SwiftPM binary is iOS-only, so `MaqsUI` draws only on iOS; on macOS it builds without MapLibre, beside the other three products (ADR 0003).
 - A second map provider, a second terrain source, or any dormant tool. VersaTiles is the one map provider (ADR 0004); `curvature` and `cai_scripts` were evaluated and not adopted (ADRs 0005, 0006).
 - Regions outside what `config/regions.yaml` lists. Adding a region is one entry there when it is cut from the `europe/italy/nord-est` extract; a region from another Geofabrik extract also needs `build-maps.yml` edited (ADR 0013).
 
@@ -111,7 +111,7 @@ dist/<region>/             # build outputs (gitignored; Releases only, never git
 # Swift package — the "done" bar for Swift changes (build + all module tests)
 swift build
 swift test
-swift test --filter MaqsCoreTests                         # one target (or MaqsTerrainTests, MaqsDataTests)
+swift test --filter MaqsCoreTests                         # one target (or MaqsTerrainTests, MaqsDataTests, MaqsPMTilesTests, MaqsUITests)
 swift test --filter ManifestTests                         # one suite, by its name alone (MaqsCoreTests/ManifestTests matches nothing)
 swift test --filter ManifestTests/decodesFixture          # one test: suite/function
 scripts/update-fixtures.sh                                # rebuild the test region and base packs, copy the test region's data files and the data-ci manifest into Tests/MaqsTestSupport/Fixtures/ and config/sources.json into the package, rewrite terrain-golden.json and data-golden.json (it runs both golden scripts below); fails over 8 MB
@@ -126,7 +126,7 @@ xcodebuild -scheme Maqs-Package -destination 'platform=iOS Simulator,name=iPhone
 
 # Demo app (what swift.yml's ios-simulator job builds after the tests)
 xcodebuild -project Examples/MaqsDemo/MaqsDemo.xcodeproj -scheme MaqsDemo -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
-xcodebuild -resolvePackageDependencies -project Examples/MaqsDemo/MaqsDemo.xcodeproj  # rewrite the demo's Package.resolved after the root one changes
+rm Examples/MaqsDemo/MaqsDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved && xcodebuild -resolvePackageDependencies -project Examples/MaqsDemo/MaqsDemo.xcodeproj  # after the root Package.resolved changes; resolving keeps existing pins, so delete first, then check the demo's MapLibre revision equals the root's
 
 # Pipeline
 pipeline/bootstrap.sh                                      # install pinned CLIs (macOS / Ubuntu)
@@ -175,7 +175,7 @@ Grep xcodebuild output for `": error:"`; a bare `error` matches unrelated tool p
 - `Sources/MaqsCore/Resources/sources.json`, the bundled fallback — a byte copy of `config/sources.json`, copied by `scripts/update-fixtures.sh` and checked by `cmp` in `swift.yml`; edit the source
 - `Tests/MaqsTestSupport/Fixtures/` — the `test` region's outputs, the `data-ci` manifest, `terrain-golden.json` and `data-golden.json`; regenerate with `scripts/update-fixtures.sh` (a golden file alone with `scripts/update-terrain-golden.sh` or `scripts/update-data-golden.sh`), never edit or hand-copy a file
 - `Sources/MaqsUI/MapAssets/` glyphs, sprite and styles — generated by `scripts/update-map-assets.sh` from pinned VersaTiles releases (the styles through `pipeline/src/maqs/map_style.py`); change the script or the transform and rerun it, never patch a PBF glyph file or a style JSON. `LICENSES.md` there is the one hand-written file
-- `Examples/MaqsDemo/MaqsDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` — written by Xcode's package resolution and pinned to the same MapLibre revision as the root `Package.resolved`; after the root one changes, run `xcodebuild -resolvePackageDependencies -project Examples/MaqsDemo/MaqsDemo.xcodeproj`, or the two drift apart
+- `Examples/MaqsDemo/MaqsDemo.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved` — written by Xcode's package resolution and pinned to the same MapLibre revision as the root `Package.resolved`. Resolving keeps the pins a file already has, so after the root one changes, delete the demo's file, run `xcodebuild -resolvePackageDependencies -project Examples/MaqsDemo/MaqsDemo.xcodeproj`, and check that its MapLibre `revision` equals the root's, or the two drift apart
 - `docs/data-format.md` schema versions — a schema change bumps `layer_schema_version` and documents the compatibility rule in the same change; never edit a published version's description in place
 
 ### Conventions
@@ -204,9 +204,9 @@ Grep xcodebuild output for `": error:"`; a bare `error` matches unrelated tool p
 - **Download and install (`MaqsCore`)** — bytes from the network land on the user's disk. SHA-256 verified against the manifest before atomic install; partial files never visible to readers; resumable without trusting the partial content; excluded from iCloud backup. A bad checksum is rejected and reported, never "installed anyway".
 - **Manifest and `sources.json` parsing** — the manifest decides what gets downloaded and from where; `sources.json` decides which hosts the app talks to. Strict schema, HTTPS only, hosts limited to what the file declares, no URL assembled from user input. An old client must find data it understands (the compatibility rule in `docs/data-format.md`); an unknown version is a typed error.
 - **PMTiles reader (`MaqsPMTiles`, used by `MaqsTerrain` and `MaqsUI`'s tile gateway)** — parses untrusted bytes from local files. Every offset, length, and varint is bounds-checked; a corrupt file is a typed error, not a crash or an unbounded allocation.
-- **Provider usage compliance (`MaqsUI`'s tile gateway, `MaqsTerrain` online path)** — VersaTiles is a free demo server with a per-IP rate limit. An identifying User-Agent is set on MapLibre's network configuration and on every URLSession, and the gateway sets it again on each tile request it sends; cache headers are never overridden to no-cache; a 429 pauses online tiles (60 s, doubling to 900 s), never a tight retry loop; inside an installed region the map sends no tile request; the gateway follows same-host redirects only. Getting the apps blocked is the failure mode (`SECURITY.md`, ADR 0017).
+- **Provider usage compliance (`MaqsUI`'s tile gateway, `MaqsTerrain` online path)** — VersaTiles is a free demo server with a per-IP rate limit. An identifying User-Agent is set on MapLibre's network configuration and on every URLSession, and the gateway sets it again on each tile request it sends; cache headers are never overridden to no-cache; the gateway pauses online tiles after a 429, never a tight retry loop (`docs/architecture.md` has the lengths); inside an installed region the map sends no tile request; the gateway follows same-host redirects only. Getting the apps blocked is the failure mode (`SECURITY.md`, ADR 0017).
 - **The release workflow** — publishes to the endpoint every installed app reads. Asset size limit, schema validation, checksums, and the manifest's compatibility rule all run before `gh release` is called. A failed region must not produce a partial "latest".
-- **`config/sources.json` on `main`** — a push changes what shipped apps do at runtime. Validate against the schema in CI; treat edits as a production change (plan tier, never direct).
+- **`config/sources.json` on `main`** — a push changes what shipped apps do at runtime. Validate against the schema in CI; treat edits as a production change (plan tier, never direct). Its `max_zoom` is also the map's zoom range: raised above the archives' (14 basemap, 12 terrain), it leaves installed regions blank above that zoom (`docs/architecture.md`, style contract).
 
 ### Budgets
 | Metric | Budget |
@@ -656,7 +656,7 @@ Everything below is maqs-specific engineering law. It has the same force as §14
 | Distribution | per-region files + `manifest.json` in a GitHub Release `data-YYYY-MM`, marked latest; clients use `releases/latest/download/manifest.json`; **never the REST API** |
 | Rendering | MapLibre Native iOS via SPM, pinned `6.31.0` (`< 7.0.0`), **iOS/iPadOS only** (ADR 0003); local PMTiles via `pmtiles://file://…`; hillshade yes, 3D terrain no. No MapLibre offline packs |
 | Storage | SQLite with **FTS5** (unicode61, `remove_diacritics`) and **R\*Tree** on the system library — a Phase 0 verification item; one geometry encoding chosen by ADR |
-| Package | Swift 6, strict concurrency, iOS 18+ for all four products, macOS 15+ additionally for `MaqsCore`/`MaqsData`/`MaqsTerrain`; DocC on the public API, Swift Testing; `MaqsUI` and its test target `MaqsUITests` are the only MapLibre importers; everything else system frameworks only |
+| Package | Swift 6, strict concurrency, iOS 18+ and macOS 15+ for all four products, `MaqsUI` drawing only on iOS (on macOS it builds without MapLibre); DocC on the public API, Swift Testing; `MaqsUI` and its test target `MaqsUITests` are the only MapLibre importers; everything else system frameworks only |
 | Pipeline | Python managed by `uv`, `uv run maqs build --region <id> [--layers …]`; pinned CLIs via `pipeline/bootstrap.sh`; idempotent steps; `.cache/` inputs, `dist/<region>/` outputs; `test` region < 5 min |
 | Hosting | GitHub only: git for code, Releases for data, Actions for compute. No LFS, no buckets, no servers, no keys. Assets < 1.9 GiB (CI-enforced) |
 | Config | `config/sources.json` (online providers, fetched from `main`, cached, bundled fallback) and `config/regions.yaml` (regions), both JSON-Schema-validated in CI. No provider URL in Swift logic |
