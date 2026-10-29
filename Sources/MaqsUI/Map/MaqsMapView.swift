@@ -101,7 +101,7 @@ extension MaqsMapView {
         @ObservationIgnored private var layoutDirection = LayoutDirection.leftToRight
 
         init(map: MaqsMap) {
-            mapView = MLNMapView(frame: .zero, styleJSON: Self.emptyStyle)
+            mapView = OrnamentlessMapView(frame: .zero, styleJSON: Self.emptyStyle)
             tapRecognizer = UITapGestureRecognizer()
             self.map = map
             super.init()
@@ -121,8 +121,8 @@ extension MaqsMapView {
             mapView.showsLogoView = false
             mapView.showsAttributionButton = false
             mapView.showsScale = false
-            // MapLibre keeps the compass and the attribution button among its accessibility children while hidden, so
-            // they leave the accessibility tree too: VoiceOver must not open MapLibre's own credits. The location stays.
+            // Hidden from accessibility as well, and left out of the view's accessibility children
+            // (OrnamentlessMapView): VoiceOver must not open MapLibre's own credits. The location stays.
             for ornament in [mapView.compassView, mapView.attributionButton, mapView.logoView] as [UIView] {
                 ornament.isAccessibilityElement = false
                 ornament.accessibilityElementsHidden = true
