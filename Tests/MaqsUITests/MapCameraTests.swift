@@ -239,6 +239,15 @@ extension SharedGatewaySuite {
                 #expect(ornament.accessibilityElementsHidden, "\(type(of: ornament)) \(ornament.accessibilityLabel ?? "")")
                 #expect(!ornament.isAccessibilityElement)
             }
+            // The map's own accessibility children, which the accessibility tree lists node by node.
+            let children = try AccessibilityTree.read { () -> [NSObject] in
+                let count = mapView.accessibilityElementCount()
+                guard count != NSNotFound else { return [] }
+                return (0..<count).compactMap { mapView.accessibilityElement(at: $0) as? NSObject }
+            }
+            let listed = children.filter { child in ornaments.contains { $0 === child } }
+            #expect(listed.isEmpty, "the map lists \(listed.map { $0.accessibilityLabel ?? "?" })")
+            #expect(children.contains { $0 is MLNUserLocationAnnotationView })
             #expect(elements.contains { $0 is MLNUserLocationAnnotationView },
                     "no location among \(elements.map { "\(type(of: $0)) \($0.accessibilityLabel ?? "")" })")
         }
