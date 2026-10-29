@@ -207,6 +207,33 @@ extension SharedGatewaySuite {
             #expect(read == first)
         }
 
+        /// Settlements are a name only, below the base map's labels. Where the overlay draws a name, a tap on it reports
+        /// the place. Where the base map labels the same settlement, the overlay's name gives way and draws nothing to
+        /// tap, so the test taps a name the overlay drew, at zoom 12, below the base map's hamlet labels (zoom 13).
+        @Test func aTapOnAFixtureSettlementNameReturnsThePlace() async throws {
+            let maqs = try await TestRegion.install(on: server, layers: [.basemap, .places], in: directory)
+            let places = try Places(files: [try await readerFile(maqs, .places)])
+            let map = try MaqsMap(maqs: maqs, configuration: MapConfiguration(), seams: seams())
+            map.overlays = MapOverlays(places: nil)
+            var taps: [MapTap] = []
+            map.onTap = { taps.append($0) }
+            let host = try await MapHost.show(map)
+            defer { host.close() }
+            host.mapView.setCenter(TestRegion.center, zoomLevel: 12, animated: false)
+            try await host.waitForStyle { $0.layer(withIdentifier: "maqs-places-test-names") != nil }
+            try await host.waitUntilDrawn()
+            let names = host.mapView.visibleFeatures(in: host.mapView.bounds, styleLayerIdentifiers: ["maqs-places-test-names"])
+            let drawn = try #require(names.first, "the overlay drew no settlement name")
+            let featureID = try #require((drawn.attribute(forKey: "id") as? NSNumber)?.int64Value)
+
+            host.coordinator.tap(at: point(host, drawn.coordinate))
+
+            let hits = try #require(taps.first).hits
+            #expect(hits.contains(.place(OverlayFeature(region: "test", featureID: featureID))))
+            let read = try #require(await places.place(region: "test", featureID: featureID))
+            #expect([PlaceKind.village, .hamlet, .isolatedDwelling].contains(read.kind))
+        }
+
         @Test func aSelectedTrailIsDrawnInTheAccentLayerOnly() async throws {
             let maqs = try await TestRegion.install(on: server, layers: [.basemap, .trails], in: directory)
             let trails = try Trails(files: [try await readerFile(maqs, .trails)])
