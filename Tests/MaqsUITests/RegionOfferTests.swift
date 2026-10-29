@@ -126,8 +126,9 @@ import Testing
         #expect(RegionOffer.region(at: nevegal, catalog: stale, packs: [.region("triveneto"): .installed(pack)]) == nil)
     }
 
-    @Test func aFailedOrNotInstalledStateStillOffers() throws {
-        let offer = RegionOffer.region(at: padova, catalog: try catalog(), packs: [.region("veneto"): .notInstalled])
+    @Test(arguments: [PackState.notInstalled, .failed(.invalidConfiguration("the install failed"))])
+    func aFailedOrNotInstalledStateStillOffers(state: PackState) throws {
+        let offer = RegionOffer.region(at: padova, catalog: try catalog(), packs: [.region("veneto"): state])
         #expect(offer?.id == .region("veneto"))
     }
 
