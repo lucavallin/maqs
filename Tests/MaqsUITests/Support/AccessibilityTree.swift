@@ -30,11 +30,20 @@ import UIKit
         return try body()
     }
 
-    /// The accessibility elements under `object` in VoiceOver's order: an element is listed, anything else is entered,
-    /// through its accessibility children or, for a view without any, its subviews. Call it inside ``read(_:)``.
+    /// The accessibility elements under `object` in VoiceOver's order: an object whose elements are hidden is skipped
+    /// with everything under it, an element is listed, anything else is entered, through its accessibility children
+    /// (the `accessibilityElements` array, or the older count-and-index container calls, which `MLNMapView` answers)
+    /// or, for a view without any, its subviews. Call it inside ``read(_:)``.
     static func elements(in object: NSObject) -> [NSObject] {
+        if object.accessibilityElementsHidden { return [] }
         if object.isAccessibilityElement { return [object] }
         var children = (object.accessibilityElements ?? []).compactMap { $0 as? NSObject }
+        if children.isEmpty {
+            let count = object.accessibilityElementCount()
+            if count > 0, count != NSNotFound {
+                children = (0..<count).compactMap { object.accessibilityElement(at: $0) as? NSObject }
+            }
+        }
         if children.isEmpty, let view = object as? UIView { children = view.subviews }
         return children.flatMap(elements(in:))
     }

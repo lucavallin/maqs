@@ -121,6 +121,12 @@ extension MaqsMapView {
             mapView.showsLogoView = false
             mapView.showsAttributionButton = false
             mapView.showsScale = false
+            // MapLibre keeps the compass and the attribution button among its accessibility children while hidden, so
+            // they leave the accessibility tree too: VoiceOver must not open MapLibre's own credits. The location stays.
+            for ornament in [mapView.compassView, mapView.attributionButton, mapView.logoView] as [UIView] {
+                ornament.isAccessibilityElement = false
+                ornament.accessibilityElementsHidden = true
+            }
             // The app asks for location permission; MapLibre asking itself raises an exception without the usage text.
             mapView.shouldRequestAuthorizationToUseLocationServices = false
             // The insets are the app's. Left unset, MapLibre puts the safe area over them on every layout whenever a
