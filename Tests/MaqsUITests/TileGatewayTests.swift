@@ -413,6 +413,24 @@ extension SharedGatewaySuite {
             #expect(counters.base == 1)
         }
 
+        /// A hotel's captive portal answers HTTPS with its own certificate or breaks the handshake: the network cannot
+        /// give the tile, so a base pack answers instead of a blank tile.
+        @Test(arguments: [
+            URLError.Code.secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+            .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid,
+        ])
+        func aCaptivePortalOrTLSFailureFallsBackToABasePack(_ code: URLError.Code) async throws {
+            let tile = Data("base tile".utf8)
+            server.route(try Self.url(Self.outside)) { _ in StubResponse(transportError: code) }
+            configure()
+            GatewayState.shared.setTable(Self.basePack(try writeArchive("base.pmtiles", [(Self.outside, tile)])))
+            let (data, _) = try await get(Self.outside)
+            #expect(data == tile)
+            #expect(server.requests.count == 1)
+            #expect(counters.base == 1)
+            #expect(counters.failed == 0)
+        }
+
         @Test func withNoNetworkABasePackAnswers() async throws {
             let tile = Data("base tile".utf8)
             configure()
