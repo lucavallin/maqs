@@ -5,7 +5,8 @@ import UIKit
 
 @testable import MaqsUI
 
-@Suite struct MarkerImagesTests {
+/// On the main actor, as the map names its marker images there.
+@MainActor @Suite struct MarkerImagesTests {
     private static let accent = UIColor(red: 0.1, green: 0.4, blue: 0.9, alpha: 1)
 
     private func swatch(_ color: UIColor) -> UIImage {
@@ -144,6 +145,43 @@ import UIKit
         let green = MarkerImages.name(for: .image(swatch(.green)), hidden: false, selected: false, accent: Self.accent, dark: false)
         let red = MarkerImages.name(for: .image(swatch(.red)), hidden: false, selected: false, accent: Self.accent, dark: false)
         #expect(green != red)
+    }
+
+    /// A picture with no PNG data has no content to hash, so each instance gets a name of its own: two such pictures
+    /// never share one name, where the second would draw the first's pixels.
+    @Test func picturesWithNoPNGDataGetANameOfTheirOwn() throws {
+        let first = UIImage(), second = UIImage()
+        try #require(first !== second)
+        try #require(first.pngData() == nil && second.pngData() == nil)
+        func name(_ content: MarkerContent) -> String {
+            MarkerImages.name(for: content, hidden: false, selected: false, accent: Self.accent, dark: false)
+        }
+        #expect(name(.image(first)) != name(.image(second)))
+        #expect(name(.symbol(first, fill: .orange)) != name(.symbol(second, fill: .orange)))
+        #expect(name(.image(first)) == name(.image(first)))
+    }
+
+    /// Encoding a picture as PNG costs milliseconds, and the map names its markers on every change of `markers` and of
+    /// the selection: each instance is encoded once, and the table holds it weakly.
+    @Test func eachPictureIsEncodedOncePerInstance() {
+        var encoded = 0
+        let digests = ImageDigests { image in
+            encoded += 1
+            return image.pngData()
+        }
+        let green = swatch(.green), alsoGreen = swatch(.green)
+        let first = digests.digest(of: green)
+        #expect(digests.digest(of: green) == first)
+        #expect(encoded == 1)
+        #expect(digests.digest(of: alsoGreen) == first)
+        #expect(encoded == 2)
+        weak var gone: UIImage?
+        autoreleasepool {
+            let red = swatch(.red)
+            gone = red
+            _ = digests.digest(of: red)
+        }
+        #expect(gone == nil)
     }
 
     @Test func placeKindsHaveImagesAndUnknownKindsFallBack() {

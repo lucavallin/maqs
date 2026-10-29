@@ -30,7 +30,9 @@ enum MarkerImages {
 
     // MARK: Names
 
-    /// The name carries everything that changes the pixels: the content, the variant, the scheme and the accent.
+    /// The name carries everything that changes the pixels: the content, the variant, the scheme and the accent. A
+    /// picture counts by its PNG data, hashed once per instance (``ImageDigests``).
+    @MainActor
     static func name(for content: MarkerContent, hidden: Bool, selected: Bool, accent: UIColor, dark: Bool) -> String {
         let description = "\(describe(content))|hidden=\(hidden)|selected=\(selected)|dark=\(dark)|accent=\(rgbaHex(accent))"
         return "maqs-marker-" + hex(SHA256.hash(data: Data(description.utf8)))
@@ -42,18 +44,15 @@ enum MarkerImages {
 
     static func plateName(dark: Bool) -> String { "maqs-plate-\(dark ? "dark" : "light")" }
 
+    @MainActor
     private static func describe(_ content: MarkerContent) -> String {
         switch content {
         case .dot: "dot"
         case .count(let number): "count:\(number)"
         case .plate(let text): "plate:\(text)"
-        case .image(let image): "image:" + pngDigest(image)
-        case .symbol(let image, let fill): "symbol:" + pngDigest(image) + ":" + rgba(UIColor(fill))
+        case .image(let image): "image:" + ImageDigests.shared.digest(of: image)
+        case .symbol(let image, let fill): "symbol:" + ImageDigests.shared.digest(of: image) + ":" + rgba(UIColor(fill))
         }
-    }
-
-    private static func pngDigest(_ image: UIImage) -> String {
-        hex(SHA256.hash(data: image.pngData() ?? Data()))
     }
 
     private static func rgba(_ color: UIColor) -> String {
