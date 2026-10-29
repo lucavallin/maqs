@@ -95,10 +95,14 @@ enum TileSend: Sendable {
 final class GatewayState: Sendable {
     static let shared = GatewayState()
 
-    /// URLError codes that mean the network could not be reached: the base-pack step answers instead.
+    /// URLError codes that mean the network could not be reached: the base-pack step answers instead. The TLS failures
+    /// count too, because a captive portal, such as a hotel's, answers HTTPS with its own certificate or breaks the
+    /// handshake; without them such a network would draw blank tiles.
     private static let connectionFailures: Set<URLError.Code> = [
         .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
         .timedOut, .internationalRoamingOff, .callIsActive, .dataNotAllowed,
+        .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
+        .serverCertificateHasUnknownRoot, .serverCertificateNotYetValid,
     ]
 
     /// What `configure` set.
