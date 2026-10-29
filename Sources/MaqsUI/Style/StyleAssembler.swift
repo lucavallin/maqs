@@ -34,9 +34,10 @@ enum StyleAssembler {
         let content = contentStyle(inputs)
         sources.merge(overlay.sources) { _, new in new }
         sources.merge(content.sources) { _, new in new }
-        // Trail lines go under the base map's labels, so place and road names stay readable over them.
+        // Trail lines and settlement names go under the base map's labels: place and road names stay readable over
+        // the lines, and the base map's town names win label placement over the overlay's village names.
         let firstSymbol = layers.firstIndex { $0["type"] as? String == "symbol" } ?? layers.endIndex
-        layers.insert(contentsOf: overlay.lines, at: firstSymbol)
+        layers.insert(contentsOf: overlay.underBaseLabels, at: firstSymbol)
         layers += overlay.symbols + content.layers
         style["sources"] = sources
         style["layers"] = layers
@@ -158,9 +159,9 @@ enum StyleAssembler {
 
     // MARK: Overlays
 
-    /// The overlays' sources and layers: the trail lines, which go below the base map's labels, and the symbols (trail
-    /// plates, then places), which go above every base layer.
-    private static func overlayStyle(_ inputs: StyleInputs) -> (sources: JSON, lines: [JSON], symbols: [JSON]) {
+    /// The overlays' sources and layers: the trail lines and settlement names, which go below the base map's labels,
+    /// and the trail plates and place markers, which go above every base layer.
+    private static func overlayStyle(_ inputs: StyleInputs) -> (sources: JSON, underBaseLabels: [JSON], symbols: [JSON]) {
         let palette = Palette(inputs.content)
         var sources: JSON = [:]
         var lines: [JSON] = []
@@ -180,9 +181,8 @@ enum StyleAssembler {
                 placeMarkers.append(placesLayer(id, inputs, palette, settlements: false))
             }
         }
-        // Places last, so their labels and icons stay above every region's trail plates; every region's markers above
-        // every region's settlement names, so a marker wins where they collide.
-        return (sources, lines, plates + placeNames + placeMarkers)
+        // Place markers last, so their icons and labels stay above every region's trail plates.
+        return (sources, lines + placeNames, plates + placeMarkers)
     }
 
     /// The zoom from which the grey trails and their plates draw: below it a region's network is a solid mass. The
