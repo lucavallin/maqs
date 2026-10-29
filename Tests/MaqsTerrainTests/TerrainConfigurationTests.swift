@@ -70,15 +70,20 @@ import Testing
     ///
     /// The log store lags the call that logged: it is polled until a matching line shows up or
     /// five seconds pass, so a loaded machine does not fail the test on a line that is only late.
+    /// The store can return one event twice, with the same time, thread and message, so each event
+    /// counts once; two calls that log the same message still give two lines.
     private func terrainLog(since start: Date, containing needle: String) async throws -> [String] {
         let store = try OSLogStore(scope: .currentProcessIdentifier)
         let subsystem = NSPredicate(format: "subsystem == %@ AND category == %@", "com.lucavallin.maqs", "terrain")
         let deadline = ContinuousClock.now + .seconds(5)
         while true {
             try Task.checkCancellation()
+            var seen = Set<String>()
             let lines = try store.getEntries(at: store.position(date: start), matching: subsystem)
-                .compactMap { ($0 as? OSLogEntryLog)?.composedMessage }
-                .filter { $0.contains(needle) }
+                .compactMap { $0 as? OSLogEntryLog }
+                .filter { $0.composedMessage.contains(needle) }
+                .filter { seen.insert("\($0.date.timeIntervalSince1970) \($0.threadIdentifier) \($0.composedMessage)").inserted }
+                .map(\.composedMessage)
             if !lines.isEmpty || ContinuousClock.now >= deadline { return lines }
             try await Task.sleep(for: .milliseconds(50))
         }
