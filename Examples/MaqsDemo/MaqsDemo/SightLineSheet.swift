@@ -6,6 +6,7 @@ import SwiftUI
 struct SightLineSheet: View {
     let model: DemoModel
     @State private var bearing = 0.0
+    @State private var detent = PresentationDetent.medium
     @State private var origin: CLLocationCoordinate2D?
     /// The origin the map was last fitted around.
     @State private var framed: Request?
@@ -53,10 +54,13 @@ struct SightLineSheet: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium, .large], selection: $detent)
         .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-        // The map above the sheet stays in use, so its centre and fitted boxes keep clear of the sheet.
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { model.sheetHeight = $0 }
+        // The map above the medium sheet stays in use, so its centre and fitted boxes keep clear of the sheet. The large
+        // sheet covers the map; its height would only push the centre off the screen, so the medium height stays.
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+            if detent == .medium { model.sheetHeight = height }
+        }
         .onAppear { origin = model.map.camera.center }
         .onDisappear {
             model.sheetHeight = 0

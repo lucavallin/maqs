@@ -8,8 +8,8 @@ final class LocationPermission: NSObject, CLLocationManagerDelegate {
     @ObservationIgnored private let manager: CLLocationManager
     /// The permission as the system last reported it.
     private(set) var status: CLAuthorizationStatus
-    /// Runs once when the answer to the demo's request is a yes.
-    @ObservationIgnored private var onGrant: (() -> Void)?
+    /// Runs once with the answer to the demo's request: `true` when the user allowed it.
+    @ObservationIgnored private var onAnswer: ((Bool) -> Void)?
 
     /// Starts listening for permission changes; `manager` must be made on the main thread, where it calls back.
     init(manager: CLLocationManager) {
@@ -19,9 +19,9 @@ final class LocationPermission: NSObject, CLLocationManagerDelegate {
         manager.delegate = self
     }
 
-    /// Shows the system's when-in-use prompt and runs `onGrant` if the user allows it.
-    func request(onGrant: @escaping () -> Void) {
-        self.onGrant = onGrant
+    /// Shows the system's when-in-use prompt and runs `onAnswer` once the user has answered it.
+    func request(onAnswer: @escaping (_ granted: Bool) -> Void) {
+        self.onAnswer = onAnswer
         manager.requestWhenInUseAuthorization()
     }
 
@@ -33,8 +33,9 @@ final class LocationPermission: NSObject, CLLocationManagerDelegate {
 
     private func update(_ status: CLAuthorizationStatus) {
         self.status = status
-        guard status == .authorizedWhenInUse || status == .authorizedAlways, let onGrant else { return }
-        self.onGrant = nil
-        onGrant()
+        // Any answer ends the request, so a later change in Settings does not act on it.
+        guard status != .notDetermined, let onAnswer else { return }
+        self.onAnswer = nil
+        onAnswer(status == .authorizedWhenInUse || status == .authorizedAlways)
     }
 }
