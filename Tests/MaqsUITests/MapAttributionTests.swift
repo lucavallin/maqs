@@ -265,6 +265,67 @@ extension SharedGatewaySuite {
                 > firstCreditHeight(of: map, width: 1200, size: .xSmall))
         }
 
+        /// Where each line of text inside `frame` starts, in points from the window's left edge: a line is a run of rows
+        /// with ink, ink a pixel far from the window's background colour. The layer tree is rendered directly:
+        /// `drawHierarchy` gives a blank image in the hostless test bundle.
+        private func lineStarts(in window: UIWindow, frame: CGRect) throws -> [CGFloat] {
+            window.layoutIfNeeded()
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { context in
+                window.layer.render(in: context.cgContext)
+            }
+            let cg = try #require(image.cgImage)
+            let width = cg.width, height = cg.height, scale = image.scale
+            var data = [UInt8](repeating: 0, count: width * height * 4)
+            try data.withUnsafeMutableBytes { buffer in
+                let context = try #require(CGContext(
+                    data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+                context.draw(cg, in: CGRect(x: 0, y: 0, width: width, height: height))
+            }
+            func rgb(_ x: Int, _ y: Int) -> (Int, Int, Int) {
+                let offset = (y * width + x) * 4
+                return (Int(data[offset]), Int(data[offset + 1]), Int(data[offset + 2]))
+            }
+            let background = rgb(width - 1, height - 1)
+            func isInk(_ x: Int, _ y: Int) -> Bool {
+                let p = rgb(x, y)
+                return abs(p.0 - background.0) + abs(p.1 - background.1) + abs(p.2 - background.2) > 120
+            }
+            let columns = max(0, Int(frame.minX * scale))..<min(width, Int(frame.maxX * scale))
+            let rows = max(0, Int(frame.minY * scale))..<min(height, Int(frame.maxY * scale))
+            var starts: [CGFloat] = []
+            var lineStart: Int?
+            for y in rows {
+                let first = columns.first { isInk($0, y) }
+                if let first {
+                    lineStart = min(lineStart ?? first, first)
+                } else if let start = lineStart {
+                    starts.append(CGFloat(start) / scale)
+                    lineStart = nil
+                }
+            }
+            if let start = lineStart { starts.append(CGFloat(start) / scale) }
+            return starts
+        }
+
+        /// Every line of a credit that wraps starts at the credit's leading edge, as body text does, not centred under
+        /// the line before it.
+        @Test func aWrappedCreditsLinesStartAtTheLeadingEdge() async throws {
+            let maqs = try await TestRegion.installEveryMapLayer(on: server, in: directory)
+            let map = try TestRegion.mapShowingEveryOverlay(maqs, seams: seams())
+            try await waitUntil { map.credits.count == 3 }
+            let window = show(map, width: 300, size: .accessibility3)
+            defer { close(window) }
+            let credit = try #require(try accessibilityElements(in: window, afterActivating: 1)
+                .first { $0.accessibilityLabel == Self.osm.text })
+
+            // The window sits at the screen's origin, so the accessibility frame is in its coordinates.
+            let starts = try lineStarts(in: window, frame: credit.accessibilityFrame)
+
+            #expect(starts.count >= 2, "the credit did not wrap: \(starts)")
+            #expect(starts.allSatisfy { abs($0 - starts[0]) <= 3 }, "lines start at \(starts)")
+        }
+
         /// At an accessibility size a long credit takes more than one line in a narrow view, rather than being cut.
         @Test func aLongCreditWrapsAtALargeTextSize() async throws {
             let map = try onlineMap().map

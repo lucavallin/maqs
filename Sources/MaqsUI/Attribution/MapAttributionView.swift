@@ -6,7 +6,7 @@ import SwiftUI
 ///
 /// Collapsed, it is an info button with the first credit beside it; the button expands it to every credit, each a
 /// link when its source has a page, and collapses it again. The text uses the `caption2` style, so it scales with
-/// Dynamic Type and wraps, and the view takes the width it is given: it sets no padding or background of its own. The
+/// Dynamic Type and wraps, every line from the leading edge, and the view takes the width it is given: it sets no padding or background of its own. The
 /// symbol is the size of the text; the button around it takes taps in at least 44 points square. VoiceOver reads the
 /// button as "Map data credits", collapsed or expanded, and each credit as its own element.
 public struct MapAttributionView: View {
@@ -41,7 +41,8 @@ public struct MapAttributionView: View {
                 VStack(alignment: .leading) {
                     ForEach(map.credits) { credit in
                         if let url = credit.url {
-                            Link(destination: url) { Text(verbatim: credit.text) }
+                            // A link centres its wrapped lines; a credit reads as text, every line from the leading edge.
+                            Link(destination: url) { Text(verbatim: credit.text).multilineTextAlignment(.leading) }
                         } else {
                             Text(verbatim: credit.text)
                         }
