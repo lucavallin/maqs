@@ -165,7 +165,8 @@ enum StyleAssembler {
         var sources: JSON = [:]
         var lines: [JSON] = []
         var plates: [JSON] = []
-        var places: [JSON] = []
+        var placeNames: [JSON] = []
+        var placeMarkers: [JSON] = []
         for overlay in inputs.overlays {
             let id = "maqs-\(overlay.layer.rawValue)-\(overlay.region)"
             sources[id] = ["type": "vector", "url": "pmtiles://" + overlay.fileURL.absoluteString] as JSON
@@ -175,11 +176,13 @@ enum StyleAssembler {
                 lines += trailLines(id, palette)
                 plates.append(trailPlate(id, dark: inputs.content.dark))
             case .places:
-                places.append(placesLayer(id, inputs, palette))
+                placeNames.append(placesLayer(id, inputs, palette, settlements: true))
+                placeMarkers.append(placesLayer(id, inputs, palette, settlements: false))
             }
         }
-        // Places last, so their labels and icons stay above every region's trail plates.
-        return (sources, lines, plates + places)
+        // Places last, so their labels and icons stay above every region's trail plates; every region's markers above
+        // every region's settlement names, so a marker wins where they collide.
+        return (sources, lines, plates + placeNames + placeMarkers)
     }
 
     /// The zoom from which the grey trails and their plates draw: below it a region's network is a solid mass. The
@@ -211,27 +214,39 @@ enum StyleAssembler {
         ]
     }
 
-    private static func placesLayer(_ id: String, _ inputs: StyleInputs, _ palette: Palette) -> JSON {
+    /// The kinds the places overlay draws as a name only, without a marker.
+    static let settlementKinds = ["hamlet", "isolated_dwelling", "village"]
+
+    /// One of a region's two places layers: its settlements as a name only (`<source>-names`), or every other kind as a
+    /// round marker with the name under it (`<source>`).
+    private static func placesLayer(_ source: String, _ inputs: StyleInputs, _ palette: Palette, settlements: Bool) -> JSON {
         let scheme = inputs.content.dark ? "-dark" : "-light"
         var layout: JSON = [
-            "icon-image": [
-                "coalesce", ["image", ["concat", "maqs-place-", ["get", "kind"], scheme]], ["image", "maqs-place-other\(scheme)"],
-            ] as [Any],
-            "text-field": nameExpression(inputs.labelLanguage),
-            "text-font": boldFont, "text-size": 13, "text-anchor": "top", "text-offset": [0, 0.8], "text-optional": true,
+            "text-field": nameExpression(inputs.labelLanguage), "text-font": boldFont, "text-size": 13,
             "symbol-sort-key": ["-", 0, ["get", "rank_score"]] as [Any],
         ]
+        if !settlements {
+            layout["icon-image"] = [
+                "coalesce", ["image", ["concat", "maqs-place-", ["get", "kind"], scheme]], ["image", "maqs-place-other\(scheme)"],
+            ] as [Any]
+            layout["text-anchor"] = "top"
+            layout["text-offset"] = [0, 0.8]
+            layout["text-optional"] = true
+        }
+        let isSettlement: [Any] = ["in", ["get", "kind"], ["literal", settlementKinds]]
+        var filter: [Any] = settlements ? isSettlement : ["!", isSettlement]
         var layer: JSON = [
-            "id": id, "type": "symbol", "source": id, "source-layer": "places",
+            "id": settlements ? "\(source)-names" : source, "type": "symbol", "source": source, "source-layer": "places",
             "paint": ["text-color": inputs.content.dark ? "#E6EDF3" : "#101620", "text-halo-color": palette.casing, "text-halo-width": 2] as JSON,
         ]
         if let kinds = inputs.visiblePlaceKinds {
             if kinds.isEmpty {
                 layout["visibility"] = "none"
             } else {
-                layer["filter"] = ["in", ["get", "kind"], ["literal", kinds.sorted()]] as [Any]
+                filter = ["all", filter, ["in", ["get", "kind"], ["literal", kinds.sorted()]]]
             }
         }
+        layer["filter"] = filter
         layer["layout"] = layout
         return layer
     }

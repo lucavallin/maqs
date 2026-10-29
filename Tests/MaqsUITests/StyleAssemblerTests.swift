@@ -171,9 +171,10 @@ import Testing
         // The trail lines sit among the base layers (the next test); the rest follows them.
         let all = ids(style).filter { !Self.trailLines.contains($0) }
         #expect(Array(all.prefix(base.count)) == base)
-        let tail = Array(all.dropFirst(base.count).prefix(5))
+        let tail = Array(all.dropFirst(base.count).prefix(7))
         #expect(tail == [
-            "maqs-trails-veneto-plate", "maqs-trails-friuli-plate", "maqs-places-veneto", "maqs-places-friuli",
+            "maqs-trails-veneto-plate", "maqs-trails-friuli-plate",
+            "maqs-places-veneto-names", "maqs-places-friuli-names", "maqs-places-veneto", "maqs-places-friuli",
             "maqs-lines-hidden",
         ])
         let source = try #require(sources(style)["maqs-trails-veneto"] as? JSON)
@@ -265,15 +266,41 @@ import Testing
         #expect(layout["text-offset"] as? [Double] == [0, 0.8])
         #expect((places["paint"] as? JSON)?["text-halo-width"] as? Double == 2)
         #expect((places["paint"] as? JSON)?["text-halo-color"] as? String == "#191F28")
-        #expect(places["filter"] == nil)
+        #expect(json(places["filter"]) == #"["!",["in",["get","kind"],["literal",["hamlet","isolated_dwelling","village"]]]]"#)
         #expect(layout["visibility"] as? String != "none")
     }
 
+    @Test(arguments: [false, true])
+    func settlementsAreANameWithNoIconAndNoOffset(dark: Bool) throws {
+        let style = try bundled(dark: dark, Self.inputs(dark: dark, language: "de", overlays: Self.overlays(["veneto"])))
+        let names = try layer(style, "maqs-places-veneto-names")
+        #expect(names["type"] as? String == "symbol")
+        #expect(names["source"] as? String == "maqs-places-veneto")
+        #expect(names["source-layer"] as? String == "places")
+        #expect(json(names["filter"]) == #"["in",["get","kind"],["literal",["hamlet","isolated_dwelling","village"]]]"#)
+        let layout = try #require(names["layout"] as? JSON)
+        #expect(layout["icon-image"] == nil)
+        #expect(layout["text-offset"] == nil)
+        #expect(layout["text-anchor"] == nil)
+        #expect(json(layout["text-field"]) == #"["coalesce",["get","name_de"],["get","name"]]"#)
+        #expect(json(layout["text-font"]) == #"["noto_sans_bold"]"#)
+        #expect(layout["text-size"] as? Double == 13)
+        #expect(json(layout["symbol-sort-key"]) == #"["-",0,["get","rank_score"]]"#)
+        #expect((names["paint"] as? JSON)?["text-halo-width"] as? Double == 2)
+        #expect((names["paint"] as? JSON)?["text-halo-color"] as? String == (dark ? "#191F28" : "#FFFFFF"))
+    }
+
     @Test func filtersPlaceKindsAndHidesWhenEmpty() throws {
-        let some = try bundled(dark: false, Self.inputs(overlays: Self.overlays(["v"]), kinds: ["peak", "hut"]))
-        #expect(json(try layer(some, "maqs-places-v")["filter"]) == #"["in",["get","kind"],["literal",["hut","peak"]]]"#)
+        let some = try bundled(dark: false, Self.inputs(overlays: Self.overlays(["v"]), kinds: ["peak", "village"]))
+        let settlements = #"["literal",["hamlet","isolated_dwelling","village"]]"#
+        #expect(json(try layer(some, "maqs-places-v")["filter"])
+            == #"["all",["!",["in",["get","kind"],"# + settlements + #"]],["in",["get","kind"],["literal",["peak","village"]]]]"#)
+        #expect(json(try layer(some, "maqs-places-v-names")["filter"])
+            == #"["all",["in",["get","kind"],"# + settlements + #"],["in",["get","kind"],["literal",["peak","village"]]]]"#)
         let none = try bundled(dark: false, Self.inputs(overlays: Self.overlays(["v"]), kinds: []))
-        #expect((try layer(none, "maqs-places-v")["layout"] as? JSON)?["visibility"] as? String == "none")
+        for id in ["maqs-places-v", "maqs-places-v-names"] {
+            #expect((try layer(none, id)["layout"] as? JSON)?["visibility"] as? String == "none", "\(id)")
+        }
     }
 
     @Test func appendsTheContentLayersLastInOrder() throws {
