@@ -126,7 +126,7 @@ Matching a position to a road, and choosing the direction of travel, stay with t
 
 ## Demo app
 
-`Examples/MaqsDemo` is a small SwiftUI app for iOS 18. It uses the four products through the local package and nothing else. Open `Examples/MaqsDemo/MaqsDemo.xcodeproj` in Xcode and run it on a simulator; for a device, pick your own team under Signing, since the project names none. CI only builds it:
+`Examples/MaqsDemo` is a small SwiftUI app for iOS 18. It uses the four products through the local package and nothing else. Open `Examples/MaqsDemo/MaqsDemo.xcodeproj` in Xcode and run it on a simulator. For a device, pick your own team under Signing, since the project names none, and change the bundle id to one your team can sign. CI only builds it:
 
 ```sh
 xcodebuild -project Examples/MaqsDemo/MaqsDemo.xcodeproj -scheme MaqsDemo -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build

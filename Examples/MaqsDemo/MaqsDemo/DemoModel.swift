@@ -70,11 +70,17 @@ final class DemoModel {
             // The cached or bundled copy stays in use.
             logger.error("sources.json not refreshed: \(error.localizedDescription, privacy: .public)")
         }
+        var online: OnlineTerrainSource?
         do {
-            let online = try await maqs.onlineSources?.terrain.first.map { source in
+            online = try await maqs.onlineSources?.terrain.first.map { source in
                 try OnlineTerrainSource(tiles: source.tiles, format: source.format, tileSize: source.tileSize ?? 512,
                                         minZoom: source.minZoom, maxZoom: source.maxZoom)
             }
+        } catch {
+            // The installed archives still give elevations; only the rest of the world has none.
+            report("Online elevations are not available", error)
+        }
+        do {
             terrain = try Terrain(configuration: TerrainConfiguration(archives: [], online: online, userAgent: Self.userAgent))
         } catch {
             report("Elevations are not available", error)
@@ -99,6 +105,9 @@ final class DemoModel {
         Task {
             do {
                 try await maqs.install(pack)
+            } catch MaqsError.download(.cancelled) {
+                // The user cancelled it; what was installed before stays.
+                logger.info("install of \(String(describing: pack), privacy: .public) cancelled")
             } catch {
                 logger.error("install of \(String(describing: pack), privacy: .public) ended: \(error.localizedDescription, privacy: .public)")
             }
@@ -162,7 +171,13 @@ final class DemoModel {
     func locationButtonTapped() {
         switch location.status {
         case .notDetermined:
-            location.request { [weak self] in self?.showLocation() }
+            location.request { [weak self] granted in
+                if granted {
+                    self?.showLocation()
+                } else {
+                    self?.message = Self.locationOff
+                }
+            }
         case .authorizedWhenInUse, .authorizedAlways:
             guard map.userLocation != .hidden else {
                 showLocation()
@@ -174,9 +189,11 @@ final class DemoModel {
             case .heading, .course: map.follow(.none)
             }
         default:
-            message = "Location is off for Maqs Demo. Allow it in Settings to see where you are."
+            message = Self.locationOff
         }
     }
+
+    private static let locationOff = "Location is off for Maqs Demo. Allow it in Settings to see where you are."
 
     private func showLocation() {
         map.userLocation = .system
@@ -265,6 +282,8 @@ final class DemoModel {
         }
         do {
             let line = try await SightLine.compute(from: origin, bearing: bearing, terrain: terrain, places: places)
+            // A sheet closed while the line was computed has cleared the map; this result must not come back.
+            try Task.checkCancellation()
             sightLine = line
             // The line and its places replace the overlays, whose grey trails would hide the line's solid stretches.
             map.overlays = MapOverlays(trails: false, places: [])
