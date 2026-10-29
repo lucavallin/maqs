@@ -163,21 +163,22 @@ import Testing
         "maqs-trails-veneto-casing", "maqs-trails-veneto-line", "maqs-trails-veneto-selected",
         "maqs-trails-friuli-casing", "maqs-trails-friuli-line", "maqs-trails-friuli-selected",
     ]
-    /// The overlay layers that go among the base layers, right below its first symbol layer, in this order.
-    static let underBaseLabels = trailLines + ["maqs-places-veneto-names", "maqs-places-friuli-names"]
+    /// Every overlay layer, in the one block that goes right below the base style's first symbol layer: trail lines,
+    /// settlement names, trail plates, place markers.
+    static let overlayBlock = trailLines + [
+        "maqs-places-veneto-names", "maqs-places-friuli-names",
+        "maqs-trails-veneto-plate", "maqs-trails-friuli-plate",
+        "maqs-places-veneto", "maqs-places-friuli",
+    ]
 
-    @Test func appendsPlatesAndPlacesAfterTheBaseLayersInOrder() throws {
+    @Test func appendsOnlyTheContentLayersAfterTheBaseLayers() throws {
         let overlays = Self.overlays(["veneto", "friuli"])
         let base = try Array(ids(bundled(dark: false, Self.inputs())).dropLast(7))
         let style = try bundled(dark: false, Self.inputs(overlays: overlays))
-        // The trail lines and settlement names sit among the base layers (the next test); the rest follows them.
-        let all = ids(style).filter { !Self.underBaseLabels.contains($0) }
+        // Every overlay layer sits among the base layers (the next test); only the app's content follows them.
+        let all = ids(style).filter { !Self.overlayBlock.contains($0) }
         #expect(Array(all.prefix(base.count)) == base)
-        let tail = Array(all.dropFirst(base.count).prefix(5))
-        #expect(tail == [
-            "maqs-trails-veneto-plate", "maqs-trails-friuli-plate", "maqs-places-veneto", "maqs-places-friuli",
-            "maqs-lines-hidden",
-        ])
+        #expect(all.dropFirst(base.count).first == "maqs-lines-hidden")
         let source = try #require(sources(style)["maqs-trails-veneto"] as? JSON)
         #expect(source["type"] as? String == "vector")
         #expect(source["url"] as? String == "pmtiles://file:///data/veneto-trails.pmtiles")
@@ -188,21 +189,21 @@ import Testing
         #expect(try layer(style, "maqs-places-veneto")["source-layer"] as? String == "places")
     }
 
-    /// Every base label stays above the trail lines and the settlement names, so the base map's town and road names
-    /// win label placement; the base layers below them keep their order.
+    /// Every base label stays above every overlay layer, so the base map's town and road names always win label
+    /// placement; the base layers below them keep their order.
     @Test(arguments: [false, true])
-    func putsTheTrailLinesAndSettlementNamesRightBelowTheFirstBaseSymbolLayer(dark: Bool) throws {
+    func putsEveryOverlayLayerRightBelowTheFirstBaseSymbolLayer(dark: Bool) throws {
         let base = try layers(bundled(dark: dark, Self.inputs()))
         let firstSymbol = try #require(base.firstIndex { $0["type"] as? String == "symbol" })
         let style = try bundled(dark: dark, Self.inputs(dark: dark, overlays: Self.overlays(["veneto", "friuli"])))
         let all = ids(style)
-        let block = Self.underBaseLabels
+        let block = Self.overlayBlock
         #expect(Array(all[firstSymbol..<(firstSymbol + block.count)]) == block)
         #expect(Array(all.prefix(firstSymbol)) == base.prefix(firstSymbol).compactMap { $0["id"] as? String })
         #expect(all[firstSymbol + block.count] == base[firstSymbol]["id"] as? String)
     }
 
-    @Test func putsTheTrailLinesAfterABaseWithNoSymbolLayer() throws {
+    @Test func putsTheOverlayLayersAfterABaseWithNoSymbolLayer() throws {
         let base = Data(
             """
             {"sources": {"basemap": {"type": "vector"}},
@@ -210,9 +211,9 @@ import Testing
                         {"id": "fill", "type": "fill", "source": "basemap", "source-layer": "land"}]}
             """.utf8)
         let style = try assemble(base, Self.inputs(terrain: nil, overlays: Self.overlays(["v"])))
-        #expect(Array(ids(style).prefix(7)) == [
+        #expect(Array(ids(style).prefix(9)) == [
             "background", "fill", "maqs-trails-v-casing", "maqs-trails-v-line", "maqs-trails-v-selected",
-            "maqs-places-v-names", "maqs-trails-v-plate",
+            "maqs-places-v-names", "maqs-trails-v-plate", "maqs-places-v", "maqs-lines-hidden",
         ])
     }
 
@@ -400,8 +401,9 @@ import Testing
 
     @Test func worksOnAMinimalCustomStyle() throws {
         let style = try assemble(Self.minimal, Self.inputs(terrain: nil, overlays: Self.overlays(["v"])))
-        #expect(ids(style).prefix(12) == [
+        #expect(ids(style).prefix(14) == [
             "background", "fill", "maqs-trails-v-casing", "maqs-trails-v-line", "maqs-trails-v-selected", "maqs-places-v-names",
+            "maqs-trails-v-plate", "maqs-places-v",
             "label", "label-brace", "label-other", "label-expr", "poi-amenity", "poi-tourism",
         ])
         #expect(ids(style).last == "maqs-markers-selected")
