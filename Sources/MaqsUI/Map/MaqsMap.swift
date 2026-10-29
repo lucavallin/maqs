@@ -95,9 +95,11 @@ struct MapStyles: Equatable {
     }
 
     /// Whether and from where the map shows the user's location, in the location blue. The map never asks for
-    /// permission. With ``UserLocationMode/system`` the location shows once the app has permission, and again when the
-    /// user allows it after denying it; with ``UserLocationMode/provided`` it is what the app passes to ``provide(_:)``.
-    /// Hiding the location stops following it.
+    /// permission; the app does. One prompt can still come from MapLibre: when the app's Info.plist declares
+    /// `NSLocationTemporaryUsageDescriptionDictionary` with an `MLNAccuracyAuthorizationDescription` purpose, MapLibre
+    /// may ask for temporary full accuracy. With ``UserLocationMode/system`` the location shows once the app has
+    /// permission, and again when the user allows it after denying it; with ``UserLocationMode/provided`` it is what
+    /// the app passes to ``provide(_:)``. Hiding the location stops following it.
     public var userLocation: UserLocationMode = .hidden {
         didSet {
             guard userLocation != oldValue else { return }

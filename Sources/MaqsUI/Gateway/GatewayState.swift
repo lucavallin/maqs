@@ -500,7 +500,9 @@ final class GatewayState: Sendable {
 
 /// Follows a redirect only to the scheme, host and port of the request it answers: the gateway talks only to the hosts
 /// its templates name, which come from `sources.json`. A redirect anywhere else is refused, and the 3xx goes back to
-/// MapLibre as the response, which MapLibre treats as an error and retries with backoff.
+/// MapLibre as the response. MapLibre counts any 3xx as an error of `Reason::Other` (`http_file_source.mm` at
+/// `ios-v6.31.0`), for which `errorRetryTimeout` (`http_timeout.cpp`) sets no retry: it asks for the tile again only
+/// when the answer's `Cache-Control` or `Expires` runs out, or when it requests the tile anew.
 private final class SameOriginRedirects: NSObject, URLSessionTaskDelegate, Sendable {
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {

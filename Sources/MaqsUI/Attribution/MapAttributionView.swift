@@ -6,9 +6,10 @@ import SwiftUI
 ///
 /// Collapsed, it is an info button with the first credit beside it; the button expands it to every credit, each a
 /// link when its source has a page, and collapses it again. The text uses the `caption2` style, so it scales with
-/// Dynamic Type and wraps, every line from the leading edge, and the view takes the width it is given: it sets no padding or background of its own. The
-/// symbol is the size of the text; the button around it takes taps in at least 44 points square. VoiceOver reads the
-/// button as "Map data credits", collapsed or expanded, and each credit as its own element.
+/// Dynamic Type and wraps, every line from the leading edge, and the view takes the width it is given: it sets no
+/// padding or background of its own. The symbol is the size of the text; the button around it takes taps in at least
+/// 44 points square. VoiceOver reads the button as "Map data credits", collapsed or expanded, and each credit as its
+/// own element.
 public struct MapAttributionView: View {
     /// The smallest side of the button's touch target, in points: the platform's minimum for a control.
     private static let minimumTouchSide: CGFloat = 44
