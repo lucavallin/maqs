@@ -218,8 +218,8 @@ import Testing
     }
 
     /// Every overlay layer id is its source id plus a one-word suffix, so no region id can make one region's layer id
-    /// equal another's: a region `x-names` once gave its place markers the id of region `x`'s settlement names, and a
-    /// duplicate layer id raises an exception MapLibre's caller cannot catch.
+    /// equal another's. Without the suffix on the place markers, a region `x-names` would give them the id of region
+    /// `x`'s settlement names, and a duplicate layer id raises an exception MapLibre's caller cannot catch.
     @Test func noRegionIDMakesTwoOverlayLayerIDsEqual() throws {
         let style = try bundled(dark: false, Self.inputs(overlays: Self.overlays(["x", "x-names", "x-markers"])))
         let all = ids(style)
