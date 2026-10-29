@@ -157,6 +157,29 @@ import UIKit
         #expect(MarkerImages.plateName(dark: true) == "maqs-plate-dark")
     }
 
+    /// Peaks, passes, huts and shelters: a small disc in the scheme's fill inside the 2 pt white ring, on a canvas whose
+    /// corners stay clear. Settlements have no image: the style draws them as a name.
+    @Test(arguments: [false, true])
+    func placeKindsAreSmallRoundMarkersWithAWhiteRing(dark: Bool) throws {
+        let side = MarkerImages.placeCanvasSide
+        let center = side / 2
+        let fill = dark ? (0x2E, 0x34, 0x3E) : (0x10, 0x16, 0x20)
+        #expect(MarkerImages.placeDiameter < MarkerImages.circleDiameter)
+        #expect(Set(MarkerImages.placeKinds) == ["peak", "volcano", "saddle", "pass", "alpine_hut", "wilderness_hut", "shelter"])
+        for kind in MarkerImages.placeKinds + ["spaceport"] {
+            let image = MarkerImages.placeKindImage(kind, dark: dark)
+            #expect(image.size == CGSize(width: side, height: side), "\(kind)")
+            let ring = try pixel(image, x: center + MarkerImages.placeDiameter / 2 - MarkerImages.ringWidth / 2, y: center)
+            #expect(ring.r > 250 && ring.g > 250 && ring.b > 250 && ring.a == 255, "\(kind) ring")
+            // Inside the disc, clear of the centred pictogram.
+            let disc = try pixel(image, x: center + MarkerImages.placeDiameter / 2 - MarkerImages.ringWidth - 1, y: center)
+            #expect(close(disc, fill.0, fill.1, fill.2), "\(kind) fill")
+            for (x, y) in [(0.5, 0.5), (side - 0.5, 0.5), (0.5, side - 0.5), (side - 0.5, side - 0.5)] {
+                #expect(try pixel(image, x: x, y: y).a == 0, "\(kind) corner")
+            }
+        }
+    }
+
     @Test func plateIsStretchableRedWhiteRed() throws {
         let plate = MarkerImages.plateImage()
         #expect(plate.resizingMode == .stretch)

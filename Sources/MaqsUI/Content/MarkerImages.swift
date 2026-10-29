@@ -16,13 +16,17 @@ enum MarkerImages {
     /// Every marker image has this size in points, so a selected marker grows around the same centre.
     static let canvasSide: CGFloat = ceil(circleDiameter * selectedScale + 2 * haloWidth + 2 * shadowMargin)
 
+    /// A place marker's disc, ring included: smaller than the app's markers, so the overlay stays quieter than them.
+    static let placeDiameter: CGFloat = 20
+    /// A place marker image's side in points: the disc and room for its shadow.
+    static let placeCanvasSide: CGFloat = placeDiameter + 2 * shadowMargin
+
     static let plateRed = UIColor(red: 0xE2 / 255, green: 0, blue: 0x1A / 255, alpha: 1)
     static let plateCaps = UIEdgeInsets(top: 4, left: 2, bottom: 4, right: 2)
 
-    /// The names of the place-kind images; `maqs-place-other` covers every other kind.
-    static let placeKinds = [
-        "peak", "volcano", "saddle", "pass", "alpine_hut", "wilderness_hut", "shelter", "village", "hamlet", "isolated_dwelling",
-    ]
+    /// The kinds with a place-kind image; `maqs-place-other` covers every other kind. Settlements (`village`, `hamlet`,
+    /// `isolated_dwelling`) have none: the style draws them as a name only.
+    static let placeKinds = ["peak", "volcano", "saddle", "pass", "alpine_hut", "wilderness_hut", "shelter"]
 
     // MARK: Names
 
@@ -87,12 +91,7 @@ enum MarkerImages {
                 accent.withAlphaComponent(0.35).setFill()
                 UIBezierPath(ovalIn: circle.insetBy(dx: -haloWidth, dy: -haloWidth)).fill()
             }
-            // The ring carries the shadow; the content is drawn over its inner disc.
-            cg.saveGState()
-            cg.setShadow(offset: CGSize(width: 0, height: 1), blur: 3, color: UIColor.black.withAlphaComponent(0.25).cgColor)
-            UIColor.white.setFill()
-            UIBezierPath(ovalIn: circle).fill()
-            cg.restoreGState()
+            drawRing(circle, in: cg)
 
             let disc = UIBezierPath(ovalIn: inner)
             if hidden {
@@ -140,25 +139,30 @@ enum MarkerImages {
         }
     }
 
+    /// A place of the overlay: its kind's pictogram on a small disc inside the white ring, in the map's ink in light
+    /// (`#101620`, white pictogram) and the dark road colour in dark (`#2E343E`, `#E6EDF3` pictogram).
     static func placeKindImage(_ kind: String, dark: Bool) -> UIImage {
         let symbol = switch kind {
         case "peak", "volcano": "mountain.2.fill"
         case "saddle", "pass": "arrow.left.and.right"
         case "alpine_hut", "wilderness_hut": "house.fill"
         case "shelter": "tent.fill"
-        default: "circle.fill"
+        default: "mappin"
         }
-        let ink = dark ? UIColor(red: 230 / 255, green: 237 / 255, blue: 243 / 255, alpha: 1)
-            : UIColor(red: 16 / 255, green: 22 / 255, blue: 32 / 255, alpha: 1)
-        let side: CGFloat = 20
-        let renderer = UIGraphicsImageRenderer(size: CGSize(width: side, height: side), format: .preferred())
-        let configuration = UIImage.SymbolConfiguration(pointSize: 14, weight: .semibold)
-        return renderer.image { _ in
+        let fill = dark ? UIColor(red: 0x2E / 255, green: 0x34 / 255, blue: 0x3E / 255, alpha: 1)
+            : UIColor(red: 0x10 / 255, green: 0x16 / 255, blue: 0x20 / 255, alpha: 1)
+        let ink = dark ? UIColor(red: 0xE6 / 255, green: 0xED / 255, blue: 0xF3 / 255, alpha: 1) : UIColor.white
+        let circle = CGRect(x: shadowMargin, y: shadowMargin, width: placeDiameter, height: placeDiameter)
+        let inner = circle.insetBy(dx: ringWidth, dy: ringWidth)
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: placeCanvasSide, height: placeCanvasSide), format: .preferred())
+        let configuration = UIImage.SymbolConfiguration(pointSize: 10, weight: .semibold)
+        return renderer.image { context in
+            drawRing(circle, in: context.cgContext)
+            fill.setFill()
+            UIBezierPath(ovalIn: inner).fill()
+            let box = inner.insetBy(dx: inner.width * 0.2, dy: inner.height * 0.2)
             if let picture = UIImage(systemName: symbol, withConfiguration: configuration)?.withTintColor(ink, renderingMode: .alwaysOriginal) {
-                picture.draw(in: aspectFit(picture.size, in: CGRect(x: 0, y: 0, width: side, height: side)))
-            } else {
-                ink.setFill()
-                UIBezierPath(ovalIn: CGRect(x: 5, y: 5, width: 10, height: 10)).fill()
+                picture.draw(in: aspectFit(picture.size, in: box))
             }
         }
     }
@@ -179,6 +183,16 @@ enum MarkerImages {
     }
 
     // MARK: Drawing helpers
+
+    /// The white disc of a round marker with its shadow, 0 1 3 at 25 % black; the content is drawn over the disc
+    /// inside the ring.
+    private static func drawRing(_ circle: CGRect, in cg: CGContext) {
+        cg.saveGState()
+        cg.setShadow(offset: CGSize(width: 0, height: 1), blur: 3, color: UIColor.black.withAlphaComponent(0.25).cgColor)
+        UIColor.white.setFill()
+        UIBezierPath(ovalIn: circle).fill()
+        cg.restoreGState()
+    }
 
     private static func draw(_ text: String, in rect: CGRect, color: UIColor, size: CGFloat) {
         let attributes: [NSAttributedString.Key: Any] = [.font: UIFont.systemFont(ofSize: size, weight: .bold), .foregroundColor: color]
