@@ -25,9 +25,11 @@ enum TestRegion {
         return try Maqs(configuration: configuration)
     }
 
-    /// Serves the `data-ci` release on `server`, then installs the `test` region with `layers` into `directory`.
-    @MainActor static func install(on server: StubServer, layers: Set<Layer>, in directory: TemporaryDirectory) async throws -> Maqs {
-        try Fixtures.serveRelease(on: server)
+    /// Serves the `data-ci` release on `server`, with `manifest` in place of its own when given, then installs the
+    /// `test` region with `layers` into `directory`.
+    @MainActor static func install(on server: StubServer, layers: Set<Layer>, in directory: TemporaryDirectory,
+                                   manifest: Data? = nil) async throws -> Maqs {
+        try Fixtures.serveRelease(on: server, manifest: manifest)
         let maqs = try maqs(on: server, layers: layers, in: directory)
         _ = try await maqs.refreshCatalog()
         try await maqs.install(id)
@@ -43,11 +45,13 @@ enum TestRegion {
         }
     }
 
-    /// The region installed with every layer a map draws (basemap, terrain, trails and places); from then on every
-    /// request of the release fails. With ``mapShowingEveryOverlay(_:seams:)``, the setup of the
-    /// headline map, which draws inside the region with no network.
-    @MainActor static func installEveryMapLayer(on server: StubServer, in directory: TemporaryDirectory) async throws -> Maqs {
-        let maqs = try await install(on: server, layers: [.basemap, .terrain, .trails, .places], in: directory)
+    /// The region installed with every layer a map draws (basemap, terrain, trails and places), from `manifest` when
+    /// given; from then on every request of the release fails. With ``mapShowingEveryOverlay(_:seams:)``, the setup of
+    /// the headline map, which draws inside the region with no network.
+    @MainActor static func installEveryMapLayer(on server: StubServer, in directory: TemporaryDirectory,
+                                                manifest: Data? = nil) async throws -> Maqs {
+        let maqs = try await install(on: server, layers: [.basemap, .terrain, .trails, .places], in: directory,
+                                     manifest: manifest)
         try failEveryRequest(on: server)
         return maqs
     }

@@ -32,7 +32,8 @@ extension SharedGatewaySuite {
             text: "© OpenStreetMap contributors", url: URL(string: "https://www.openstreetmap.org/copyright"))
         private static let esa = MapCredit(
             text: "CC BY 4.0 ESA WorldCover 2021", url: URL(string: "https://esa-worldcover.org/en/data-access"))
-        private static let mapterhorn = MapCredit(text: "© Mapterhorn", url: URL(string: "https://mapterhorn.com/attribution"))
+        private static let mapterhorn = MapCredit(
+            text: "© Mapterhorn", url: URL(string: "https://mapterhorn.com/attribution"))
 
         /// A map with nothing installed and no catalog: the online sources' credits, none with a link.
         private func onlineMap(layers: Set<Layer> = [.basemap, .terrain], onlineTiles: Bool = true) throws
@@ -52,12 +53,37 @@ extension SharedGatewaySuite {
             #expect(map.credits == [Self.osm, Self.esa, Self.mapterhorn])
             #expect(map.creditInputs?.drawn == [.basemap, .terrain, .trails, .places])
             #expect(map.creditInputs?.installed == [.basemap, .terrain, .trails, .places])
-            // The manifest's trails and places credits are listed: OpenStreetMap's, which also credits the basemap.
+            // The fixture manifest credits trails and places only with OpenStreetMap's entry, which the basemap lists
+            // as well, so this shows the entry is there, not that the overlays add it: the next test shows that.
             let overlayCredits = try #require(maqs.state.catalog?.attribution)
                 .filter { $0.layers.contains(.trails) || $0.layers.contains(.places) }
                 .map { MapCredit(text: $0.text, url: $0.url) }
             #expect(overlayCredits == [Self.osm])
             #expect(map.uncreditedLayers.isEmpty)
+        }
+
+        /// With credits of their own in the manifest, the overlays add them while they show, and only then.
+        @Test func shownOverlaysAddTheirOwnManifestCredits() async throws {
+            let trails = MapCredit(text: "Trails test credit", url: URL(string: "https://example.org/trails"))
+            let places = MapCredit(text: "Places test credit", url: URL(string: "https://example.org/places"))
+            let manifest = try Fixtures.manifestJSON { object in
+                var attribution = object["attribution"] as? [[String: Any]] ?? []
+                for (credit, layer) in [(trails, "trails"), (places, "places")] {
+                    attribution.append([
+                        "text": credit.text, "licence": "test", "url": credit.url?.absoluteString ?? "",
+                        "layers": [layer],
+                    ])
+                }
+                object["attribution"] = attribution
+            }
+            let maqs = try await TestRegion.installEveryMapLayer(on: server, in: directory, manifest: manifest)
+            let map = try TestRegion.mapShowingEveryOverlay(maqs, seams: seams())
+            try await waitUntil { !map.credits.isEmpty }
+            #expect(map.credits == [Self.osm, Self.esa, Self.mapterhorn, trails, places])
+
+            map.overlays = MapOverlays()
+
+            #expect(map.credits == [Self.osm, Self.esa, Self.mapterhorn])
         }
 
         @Test func withHillshadeOffMapterhornIsGone() async throws {
@@ -103,10 +129,12 @@ extension SharedGatewaySuite {
 
         // MARK: The view
 
-        /// `MapAttributionView` in a hosting controller, in a key window, laid out. Hide the window when the test ends.
-        private func show(_ map: MaqsMap) -> UIWindow {
-            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 400))
-            window.rootViewController = UIHostingController(rootView: MapAttributionView(map: map))
+        /// `MapAttributionView` in a hosting controller, in a key window `width` points wide, laid out at `size`. Hide
+        /// the window when the test ends.
+        private func show(_ map: MaqsMap, width: CGFloat = 390, size: DynamicTypeSize = .large) -> UIWindow {
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: width, height: 400))
+            window.rootViewController = UIHostingController(
+                rootView: MapAttributionView(map: map).environment(\.dynamicTypeSize, size))
             window.makeKeyAndVisible()
             window.layoutIfNeeded()
             return window
@@ -130,7 +158,9 @@ extension SharedGatewaySuite {
             }
         }
 
-        private var buttonAndEveryCredit: [String] { ["Map data credits", Self.osm.text, Self.esa.text, Self.mapterhorn.text] }
+        private var buttonAndEveryCredit: [String] {
+            ["Map data credits", Self.osm.text, Self.esa.text, Self.mapterhorn.text]
+        }
 
         @Test func collapsedTheViewIsTheCreditsButtonAndTheFirstCredit() async throws {
             let map = try onlineMap().map
@@ -191,15 +221,57 @@ extension SharedGatewaySuite {
             #expect(try accessibilityElements(in: window).map(\.accessibilityLabel) == ["Map data credits"])
         }
 
-        @Test func theViewGrowsWithDynamicType() async throws {
+        /// The button's touch target is at least 44 points square, whatever the size of the symbol in it.
+        @Test func theButtonIsAtLeast44PointsOnBothAxes() async throws {
             let map = try onlineMap().map
             try await waitUntil { map.credits.count == 3 }
-            func height(_ size: DynamicTypeSize) -> CGFloat {
-                UIHostingController(rootView: MapAttributionView(map: map).environment(\.dynamicTypeSize, size))
-                    .sizeThatFits(in: CGSize(width: 390, height: CGFloat.greatestFiniteMagnitude)).height
-            }
+            let window = show(map, size: .xSmall)
+            defer { close(window) }
 
-            #expect(height(.accessibility3) > height(.xSmall))
+            let button = try #require(try accessibilityElements(in: window).first)
+
+            #expect(button.accessibilityLabel == "Map data credits")
+            // The accessibility frame is in screen coordinates, whose conversion can lose the last bits: 44 reads back
+            // as 43.999999999999986.
+            let frame = button.accessibilityFrame.insetBy(dx: -0.001, dy: -0.001)
+            #expect(frame.width >= 44 && frame.height >= 44, "the button's frame is \(button.accessibilityFrame)")
+        }
+
+        @Test func theButtonSaysWhetherTheCreditsAreExpanded() async throws {
+            let map = try onlineMap().map
+            try await waitUntil { map.credits.count == 3 }
+            let window = show(map)
+            defer { close(window) }
+
+            #expect(try accessibilityElements(in: window).first?.accessibilityValue == "Collapsed")
+            #expect(try accessibilityElements(in: window, afterActivating: 1).first?.accessibilityValue == "Expanded")
+            #expect(try accessibilityElements(in: window, afterActivating: 1).first?.accessibilityValue == "Collapsed")
+        }
+
+        /// The height of the first credit's text, shown `width` points wide at `size`.
+        private func firstCreditHeight(of map: MaqsMap, width: CGFloat, size: DynamicTypeSize) throws -> CGFloat {
+            let window = show(map, width: width, size: size)
+            defer { close(window) }
+            let credit = try #require(try accessibilityElements(in: window)
+                .first { $0.accessibilityLabel == Self.osm.text })
+            return credit.accessibilityFrame.height
+        }
+
+        @Test func theCreditTextScalesWithDynamicType() async throws {
+            let map = try onlineMap().map
+            try await waitUntil { map.credits.count == 3 }
+
+            #expect(try firstCreditHeight(of: map, width: 1200, size: .accessibility3)
+                > firstCreditHeight(of: map, width: 1200, size: .xSmall))
+        }
+
+        /// At an accessibility size a long credit takes more than one line in a narrow view, rather than being cut.
+        @Test func aLongCreditWrapsAtALargeTextSize() async throws {
+            let map = try onlineMap().map
+            try await waitUntil { map.credits.count == 3 }
+            let oneLine = try firstCreditHeight(of: map, width: 1200, size: .accessibility3)
+
+            #expect(try firstCreditHeight(of: map, width: 160, size: .accessibility3) > oneLine * 1.5)
         }
     }
 }
