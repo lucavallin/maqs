@@ -21,10 +21,10 @@ A new region is one entry in `config/regions.yaml`; the README says when the rel
 ```sh
 swift build
 swift test                       # macOS; reads the committed fixtures, no network, no Python
-xcodebuild -scheme Maqs-Package -destination 'platform=iOS Simulator,name=iPhone 17' -skipPackagePluginValidation test
+xcodebuild -scheme Maqs-Package -destination 'platform=iOS Simulator,name=iPhone 17' -skipPackagePluginValidation -collect-test-diagnostics never test
 ```
 
-Any installed simulator works for the last command (`xcrun simctl list devices available`). The scheme is `Maqs-Package` because the package has several library products (with one it would be `Maqs`); `xcodebuild -list` shows which. Swift Testing also prints an XCTest summary that says "Executed 0 tests"; the real counts are on the `Test run with N tests` lines, one per test target (`MaqsUITests`, `MaqsTerrainTests`, `MaqsPMTilesTests`, `MaqsDataTests`, `MaqsCoreTests`). The tests that draw a map run only on the simulator. Locally, add `-collect-test-diagnostics never`, or a test that times out costs about ten more minutes of diagnostics. CLAUDE.md lists the command that builds the demo app, which CI builds too.
+Any installed simulator works for the last command (`xcrun simctl list devices available`). The scheme is `Maqs-Package` because the package has several library products (with one it would be `Maqs`); `xcodebuild -list` shows which. Swift Testing also prints an XCTest summary that says "Executed 0 tests"; the real counts are on the `Test run with N tests` lines, one per test target (`MaqsUITests`, `MaqsTerrainTests`, `MaqsPMTilesTests`, `MaqsDataTests`, `MaqsCoreTests`). The tests that draw a map run only on the simulator. Without `-collect-test-diagnostics never`, a test that times out costs about ten more minutes of diagnostics. CLAUDE.md lists the command that builds the demo app, which CI builds too.
 
 The tests read the `test` region's outputs from `Tests/MaqsTestSupport/Fixtures/`. When the pipeline's outputs or `config/sources.json` change, regenerate them with `scripts/update-fixtures.sh`, which needs the pipeline tools and takes a few minutes, and commit the result. The script fails when the fixtures exceed 8 MB, and so does `swift.yml`. Never edit a fixture by hand.
 

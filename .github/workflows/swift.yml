@@ -40,10 +40,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with: { persist-credentials: false }
-      - name: MapLibre is imported only under Sources/MaqsUI
+      - name: MapLibre is imported only by MaqsUI and its test target
         run: |
-          if grep -rl --include='*.swift' -E '^\s*(@_exported\s+)?import\s+MapLibre' Sources Tests Examples 2>/dev/null | grep -v '^Sources/MaqsUI/'; then
-            echo 'import MapLibre outside Sources/MaqsUI' >&2; exit 1
+          # MaqsUITests draws maps in the package's test bundle, so it imports MapLibre too; nothing else may.
+          if grep -rl --include='*.swift' -E '^\s*(@_exported\s+)?import\s+MapLibre' Sources Tests Examples 2>/dev/null | grep -v -E '^(Sources/MaqsUI|Tests/MaqsUITests)/'; then
+            echo 'import MapLibre outside Sources/MaqsUI and Tests/MaqsUITests' >&2; exit 1
           fi
       - name: Bundled sources.json matches config/sources.json
         run: cmp config/sources.json Sources/MaqsCore/Resources/sources.json
@@ -62,10 +63,13 @@ jobs:
           size_kb=$(du -sk Tests/MaqsTestSupport/Fixtures | cut -f1)
           echo "fixtures: ${size_kb} KB"
           test "$size_kb" -le 8192
-      - name: No binary data outside the fixtures
+      - name: No binary data outside the fixtures and the bundled glyphs
         run: |
-          if git ls-files | grep -E '\.(pmtiles|sqlite|pbf)$' | grep -v '^Tests/MaqsTestSupport/Fixtures/'; then
-            echo 'generated data outside Tests/MaqsTestSupport/Fixtures' >&2; exit 1
+          # The bundled glyphs are the one generated asset committed outside the fixtures, .pbf files only, written by
+          # scripts/update-map-assets.sh (ADR 0017). A .pmtiles or .sqlite file is refused there too.
+          if git ls-files | grep -E '\.(pmtiles|sqlite|pbf)$' | grep -v '^Tests/MaqsTestSupport/Fixtures/' \
+            | grep -v -E '^Sources/MaqsUI/MapAssets/glyphs/.*\.pbf$'; then
+            echo 'generated data outside Tests/MaqsTestSupport/Fixtures and the bundled glyphs' >&2; exit 1
           fi
 
   macos:
@@ -96,10 +100,11 @@ jobs:
             | if any($schemes[]; . == $chosen) then $chosen else error("no Maqs or Maqs-Package scheme") end') \
             || { echo 'could not pick the Xcode scheme: xcodebuild -list -json failed or lists neither Maqs-Package nor Maqs' >&2; exit 1; }
           echo "scheme: $scheme"
+          # Without -collect-test-diagnostics never, a test that hits its time limit adds about ten minutes of simctl diagnose.
           set +e
           xcodebuild -scheme "$scheme" \
             -destination 'platform=iOS Simulator,name=iPhone 17' \
-            -skipPackagePluginValidation test > xcodebuild.log 2>&1
+            -skipPackagePluginValidation -collect-test-diagnostics never test > xcodebuild.log 2>&1
           status=$?
           set -e
           fail() { echo "$1" >&2; tail -50 xcodebuild.log; exit 1; }

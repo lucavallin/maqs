@@ -102,7 +102,7 @@ The package `Maqs` is Swift 6 (tools version 6.2) for iOS 18 and macOS 15; `Maqs
 | `MaqsCore` | available | system frameworks only: Foundation, CryptoKit, Observation, Synchronization, os |
 | `MaqsTerrain` | available | system frameworks: Foundation, CoreLocation, CoreGraphics, ImageIO, os; and `MaqsPMTiles` |
 | `MaqsData` | available | system frameworks only: Foundation, SQLite3, CoreLocation, os |
-| `MaqsUI` | available, draws on iOS only | MapLibre Native, the one target that imports it; `MaqsCore` and `MaqsPMTiles`; Foundation, SwiftUI, UIKit, CoreLocation, Network, CryptoKit, Synchronization, os |
+| `MaqsUI` | available, draws on iOS only | MapLibre Native, the only module in `Sources/` that imports it; `MaqsCore` and `MaqsPMTiles`; Foundation, SwiftUI, UIKit, CoreLocation, Network, CryptoKit, Synchronization, os |
 
 `MaqsPMTiles` is an internal target, not a product: the PMTiles v3 reader `MaqsTerrain` and `MaqsUI` share, with `package` access only. It imports Foundation, Compression and Synchronization.
 
@@ -250,6 +250,6 @@ A solid `MapLine` that is not active looks exactly like an overlay trail, grey o
 
 `.github/workflows/swift.yml` runs on pushes to `main` and on pull requests that touch the package (`Package.swift`, `Package.resolved`, `Sources/`, `Tests/`, `Examples/`, the fixtures script, `scripts/update-map-assets.sh`, `config/sources.json` or the workflow), and on dispatch. It has `contents: read` and three jobs:
 
-- `guards` (`ubuntu-24.04`): `import MapLibre` appears only under `Sources/MaqsUI/`; the bundled `sources.json` equals `config/sources.json` (`cmp`); `TerrainVersion.string` in `MaqsTerrain` equals `MaqsVersion.string` in `MaqsCore`, since both go into the User-Agent; the fixtures stay at or under 8,192 KB; git tracks no `.pmtiles`, `.sqlite` or `.pbf` outside the fixtures.
+- `guards` (`ubuntu-24.04`): `import MapLibre` appears only under `Sources/MaqsUI/` and in its test target, `Tests/MaqsUITests/`, whose map suites need it; the bundled `sources.json` equals `config/sources.json` (`cmp`); `TerrainVersion.string` in `MaqsTerrain` equals `MaqsVersion.string` in `MaqsCore`, since both go into the User-Agent; the fixtures stay at or under 8,192 KB; git tracks no `.pmtiles`, `.sqlite` or `.pbf` outside the fixtures, except the bundled glyphs' `.pbf` files under `Sources/MaqsUI/MapAssets/glyphs/`, which `scripts/update-map-assets.sh` regenerates (ADR 0017).
 - `macos` (`macos-latest`): `swift build` and `swift test`.
-- `ios-simulator` (`macos-latest`): picks the scheme from `xcodebuild -list -json` (`Maqs-Package`, the name Xcode gives a package with several library products, as this one has, else `Maqs`), runs `xcodebuild test` on an `iPhone 17` simulator, and passes only when the log has no `": error:"` line and a passing `Test run with N tests` line. It then builds the demo app for the simulator with signing off, and fails on any `": error:"` line or a non-zero exit.
+- `ios-simulator` (`macos-latest`): picks the scheme from `xcodebuild -list -json` (`Maqs-Package`, the name Xcode gives a package with several library products, as this one has, else `Maqs`), runs `xcodebuild test` on an `iPhone 17` simulator with `-collect-test-diagnostics never` (a test that hits its time limit would otherwise add about ten minutes of diagnostics), and passes only when the log has no `": error:"` line and a passing `Test run with N tests` line. It then builds the demo app for the simulator with signing off, and fails on any `": error:"` line or a non-zero exit.
