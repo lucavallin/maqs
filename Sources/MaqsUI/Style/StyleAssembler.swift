@@ -182,20 +182,26 @@ enum StyleAssembler {
         return (sources, lines, plates + places)
     }
 
+    /// The zoom from which the grey trails and their plates draw: below it a region's network is a solid mass. The
+    /// selected trail draws at every zoom.
+    static let trailMinZoom = 11
+
     private static func trailLines(_ source: String, _ palette: Palette) -> [JSON] {
-        func trailLine(_ suffix: String, filter: Any? = nil, paint: JSON) -> JSON {
-            line("\(source)-\(suffix)", source: source, sourceLayer: "trails", filter: filter, paint: paint)
+        func trailLine(_ suffix: String, minZoom: Int? = nil, filter: Any? = nil, paint: JSON) -> JSON {
+            var layer = line("\(source)-\(suffix)", source: source, sourceLayer: "trails", filter: filter, paint: paint)
+            layer["minzoom"] = minZoom
+            return layer
         }
         return [
-            trailLine("casing", paint: ["line-color": palette.casing, "line-width": 8]),
-            trailLine("line", paint: ["line-color": palette.solidLine, "line-width": 4]),
+            trailLine("casing", minZoom: trailMinZoom, paint: ["line-color": palette.casing, "line-width": 8]),
+            trailLine("line", minZoom: trailMinZoom, paint: ["line-color": palette.solidLine, "line-width": 4]),
             trailLine("selected", filter: ["==", ["get", "id"], -1] as [Any], paint: ["line-color": palette.accent, "line-width": 5]),
         ]
     }
 
     private static func trailPlate(_ source: String, dark: Bool) -> JSON {
         [
-            "id": "\(source)-plate", "type": "symbol", "source": source, "source-layer": "trails",
+            "id": "\(source)-plate", "type": "symbol", "source": source, "source-layer": "trails", "minzoom": trailMinZoom,
             "layout": [
                 "symbol-placement": "line", "icon-image": dark ? "maqs-plate-dark" : "maqs-plate-light", "icon-text-fit": "both",
                 "text-field": ["get", "ref"], "text-font": boldFont, "text-size": 11,
