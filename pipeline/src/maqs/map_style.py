@@ -34,17 +34,32 @@ RGBA_ALPHA = re.compile(r"^rgba\(\s*[0-9.]+\s*,\s*[0-9.]+\s*,\s*[0-9.]+\s*,\s*([
 
 @dataclass(frozen=True)
 class Palette:
-    """The four colours the default style takes from the package's palette, as `#RRGGBB`."""
+    """The four colours the default style takes from the package's palette, as `#RRGGBB`.
+
+    The hillshade colours replace VersaTiles' where a style needs softer relief; `None` keeps them.
+    """
 
     name: str
     base: str
     green: str
     water: str
     road: str
+    hillshade_highlight: str | None = None
+    hillshade_shadow: str | None = None
 
 
 LIGHT = Palette("default-light", base="#EEF2F7", green="#D0EEE9", water="#C1E5F6", road="#FFFFFF")
-DARK = Palette("default-dark", base="#191F28", green="#14282B", water="#122442", road="#2E343E")
+# On the dark base VersaTiles' white highlight and black shadow read as a strong relief, so the
+# dark style dims both; exaggeration and method stay VersaTiles'.
+DARK = Palette(
+    "default-dark",
+    base="#191F28",
+    green="#14282B",
+    water="#122442",
+    road="#2E343E",
+    hillshade_highlight="rgba(255,255,255,0.4)",
+    hillshade_shadow="rgba(0,0,0,0.6)",
+)
 
 
 def _strip_sprite_prefix(node: Any) -> Any:
@@ -77,7 +92,13 @@ def _recolour(layer: dict[str, Any], palette: Palette) -> None:
     layer_id: str = layer["id"]
     kind: str = layer["type"]
     colour_property = {"fill": "fill-color", "line": "line-color"}.get(kind)
-    if layer_id == "background":
+    if kind == "hillshade":
+        paint = layer.setdefault("paint", {})
+        if palette.hillshade_highlight is not None:
+            paint["hillshade-highlight-color"] = palette.hillshade_highlight
+        if palette.hillshade_shadow is not None:
+            paint["hillshade-shadow-color"] = palette.hillshade_shadow
+    elif layer_id == "background":
         _set_colour(layer, "background-color", palette.base)
     elif colour_property is None:
         return
