@@ -1,6 +1,6 @@
 # Data licence and attribution
 
-The data maqs publishes is derived from the sources below. Anyone who redistributes or displays it must carry these notices. The Swift package's attribution view (Phase 4) will show the ones for the active sources.
+The data maqs publishes is derived from the sources below. Anyone who redistributes or displays it must carry these notices. The Swift package's `MapAttributionView` shows the ones for the sources the map draws.
 
 The strings below were checked against the live sources on 2026-10-15: the VersaTiles TileJSON files for the `osm` and `elevation` tilesets, the VersaTiles tileset documentation, and Mapterhorn's `attribution.json`.
 
@@ -51,3 +51,10 @@ A region added elsewhere in the world is covered by other entries of that file.
 ## VersaTiles
 
 [VersaTiles](https://versatiles.org) produces and hosts the tiles. Its documentation asks only for the upstream credits above: the Shortbread schema is licensed CC0 and needs no attribution of its own.
+
+## Map assets bundled in the Swift package
+
+`MaqsUI` bundles the files its map needs offline, in `Sources/MaqsUI/MapAssets/`. They are not map data, and the attribution view does not list them. [`Sources/MaqsUI/MapAssets/LICENSES.md`](Sources/MaqsUI/MapAssets/LICENSES.md), which ships in the same folder, has the full licence texts, the releases and their SHA-256s.
+
+- **Glyphs:** Noto Sans, regular and bold, as MapLibre SDF glyph ranges built by VersaTiles (`versatiles-fonts` v3.0.0), under the SIL Open Font License 1.1.
+- **Sprite and default styles:** from `versatiles-style` v7.0.1. The sprite and the `muted-terrain` and `muted-dark-terrain` styles the default styles are derived from are CC0 1.0.

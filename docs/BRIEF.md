@@ -176,6 +176,7 @@ The package exposes one product per module (`MaqsCore`, `MaqsData`, `MaqsTerrain
   - Glyphs and sprites must work offline: the package bundles a default glyph set (one open font family, regular and bold) and sprite, and styles reference local copies when offline.
 - **Tests:** manifest and schema parsing, PMTiles reader against fixtures, terrarium decoding with known values, SQLite queries against `test` region fixtures, download verification (bad checksum gets rejected).
 - **Demo:** `Examples/MaqsDemo` shows: online map, download the test region, airplane-mode map, trail search, places along a bearing, elevation profile.
+  - The demo installs `friuli-venezia-giulia` instead, because the `test` region is never published (ADR 0017).
 
 ## Working rules
 

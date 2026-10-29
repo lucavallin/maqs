@@ -2,7 +2,7 @@
 
 Map data and a Swift package for native Apple apps: Shortbread basemap tiles, terrarium terrain, hiking trails, places and road curvature, per region. Online-first, offline optional, zero hosting cost: code in this repository, data as GitHub Release assets, compute in GitHub Actions. One map provider, [VersaTiles](https://versatiles.org), serves every tile online and offline.
 
-**Status:** the pipeline builds all five layers of a region (basemap, terrain, trails, places, curvature) and the bundled base packs, and writes `manifest.json` from the build reports. A GitHub Actions workflow builds every region each month and publishes the files as a release. The Swift package has three of its four products: `MaqsCore`, which discovers, downloads and installs region packs, `MaqsTerrain`, which reads elevations and tells which peaks the user can see, and `MaqsData`, which searches trails, finds places along a bearing and looks up the corners ahead on a road; the map product comes next. [`docs/BRIEF.md`](docs/BRIEF.md) has the plan and [`docs/decisions.md`](docs/decisions.md) has every decision and the numbers behind it.
+**Status:** the pipeline builds all five layers of a region (basemap, terrain, trails, places, curvature) and the bundled base packs, and writes `manifest.json` from the build reports. A GitHub Actions workflow builds every region each month and publishes the files as a release. The Swift package has its four products: `MaqsCore`, which discovers, downloads and installs region packs, `MaqsTerrain`, which reads elevations and tells which peaks the user can see, `MaqsData`, which searches trails, finds places along a bearing and looks up the corners ahead on a road, and `MaqsUI`, the map, which draws installed regions from their files and streams everywhere else. [`docs/BRIEF.md`](docs/BRIEF.md) has the plan and [`docs/decisions.md`](docs/decisions.md) has every decision and the numbers behind it.
 
 ## Data releases
 
@@ -26,9 +26,9 @@ The `Maqs` Swift package (iOS 18, macOS 15) reads these releases on the device. 
 | `MaqsCore` | the region catalog from the latest manifest, verified downloads and installs, the online tile sources | built and tested, unreleased |
 | `MaqsTerrain` | elevation at a point, along a route, on a grid or along a profile, and line of sight, from installed packs or online tiles | built and tested, unreleased |
 | `MaqsData` | trail search, places along a bearing, road segments and the corners ahead, from the installed files | built and tested, unreleased |
-| `MaqsUI` | a SwiftUI map view over MapLibre Native, iOS only | planned |
+| `MaqsUI` | a SwiftUI map over MapLibre Native, from installed packs or online, with the app's lines and markers, the trails and places overlays and the credits; iOS only | built and tested, unreleased |
 
-No package version is tagged yet; the first tag comes once all four products are built.
+No package version is tagged yet.
 
 `MaqsCore` uses system frameworks only. A minimal use, from the main actor:
 
@@ -122,7 +122,41 @@ if let near = try await roads.segments(near: here).first {
 
 Matching a position to a road, and choosing the direction of travel, stay with the app; `MaqsData` returns the segments near a position, with the heading at the nearest point, to match against. Where the road forks, the lookahead takes the likeliest branch (same `ref`, then `name`, then `highway`, then the smallest turn) and marks the corners after it. After an install, an update or a removal, pass the new URLs to `setFiles(_:)` on each reader: SQLite fails reads from a file that was replaced while open. Curvature files built before the `junctions` table (`data-2026-10`) only link roads at way ends, so the lookahead stops at many ordinary junctions until the next monthly release. [`docs/architecture.md`](docs/architecture.md#data) describes the readers, and ADR 0016 in [`docs/decisions.md`](docs/decisions.md) gives the rules and the measurements.
 
-`swift build` and `swift test` run from a clean checkout: the tests read the `test` region's files committed under `Tests/MaqsTestSupport/Fixtures/`. `scripts/update-fixtures.sh` rebuilds them with the pipeline, writes the pipeline's terrain and data-layer values that the Swift tests compare against, and refreshes the copy of `sources.json` bundled in the package.
+`MaqsUI` is the map, for iOS. It is the only product that links MapLibre Native, and apps never import MapLibre themselves. Continuing the example (`here` and `peak` come from the `MaqsTerrain` block, `trails` from the `MaqsData` one):
+
+```swift
+import MaqsCore
+import MaqsData
+import MaqsUI
+import SwiftUI
+
+// Create the first MaqsMap before any map view exists in the process: it puts the tile gateway in front of MapLibre.
+let map = try MaqsMap(maqs: maqs, configuration: MapConfiguration(accent: .orange))
+map.overlays = MapOverlays(trails: true, places: nil)        // the installed regions' trails and every place kind
+map.lines = [MapLine(id: "track", coordinates: [here, peak.coordinate])]
+map.activeLineID = "track"                                    // the one line drawn in the accent
+map.markers = [MapMarker(id: "peak", coordinate: peak.coordinate, label: "Peak")]
+map.onTap = { [weak map] tap in                               // what the tap touched, topmost first
+    guard case .trail(let feature)? = tap.hits.first else { return }
+    map?.selectedOverlayFeature = feature                     // the trail in the accent
+    Task { print(try await trails.trail(region: feature.region, featureID: feature.featureID) as Any) }
+}
+
+struct MapScreen: View {
+    let map: MaqsMap
+    var body: some View {
+        MaqsMapView(map: map)
+            .ignoresSafeArea()
+            .overlay(alignment: .bottomLeading) { MapAttributionView(map: map).padding() }
+    }
+}
+```
+
+Inside an installed region the map draws everything from the downloaded files and sends no tile request, even with signal; elsewhere it streams the `sources.json` provider's tiles, and with no network it shows what it cached earlier. Installing or removing a pack changes what it draws without a new view. The map draws only the layers the `Maqs` configuration names: the basemap always, hillshade with `.terrain`, the overlays with `.trails` and `.places`. A 429 from the provider pauses online tiles for at least a minute, and `onlineTilesPaused` says so. `connectivity` and `uninstalledRegion` tell the app when to offer a download, and `credits` lists the sources the map draws, which `MapAttributionView` shows. The app draws its own controls: the map hides MapLibre's compass, logo and attribution button, and `follow(_:)`, `resetNorth()`, `setPitch(_:)` and `show(_:)` are there for the app's buttons. Set `contentInsets` to the room your chrome takes, and count the status bar and the home indicator in when the map runs under them. A custom style needs a vector source named `basemap`, and the package fills in the tiles, fonts and sprite ([`docs/architecture.md`](docs/architecture.md#map) has the contract and the design rules; ADR 0017 in [`docs/decisions.md`](docs/decisions.md) has the reasons).
+
+`MaqsUI` never asks for location permission. An app that shows the user's location sets `NSLocationWhenInUseUsageDescription` in its Info.plist and asks for permission itself, with `CLLocationManager.requestWhenInUseAuthorization()`, before it sets the map's `userLocation` to `.system`; `.provided` shows the fixes the app passes to `provide(_:)` instead. One prompt can still come from MapLibre: if the app's Info.plist declares `NSLocationTemporaryUsageDescriptionDictionary` with an `MLNAccuracyAuthorizationDescription` purpose, MapLibre may ask for temporary full accuracy.
+
+`swift build` and `swift test` run from a clean checkout: the tests read the `test` region's files committed under `Tests/MaqsTestSupport/Fixtures/`. `scripts/update-fixtures.sh` rebuilds them with the pipeline, writes the pipeline's terrain and data-layer values that the Swift tests compare against, and refreshes the copy of `sources.json` bundled in the package. The map's glyphs, sprite and default styles under `Sources/MaqsUI/MapAssets/` come from pinned VersaTiles releases through `scripts/update-map-assets.sh`. `swift test` on macOS runs the map's pure tests; the tests that draw a map run on the iOS Simulator, with the command in [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Demo app
 
@@ -140,8 +174,6 @@ Before a package release, walk through it by hand on a simulator and on a device
 4. Trail search. Trails searches the installed regions by number, name or place. The trail you pick is drawn in the accent colour and shown whole. Tap a trail on the map to open its record.
 5. Places along a bearing. Sight line starts at the map's centre. Move the bearing slider: the line is solid where the ground is in sight and dashed where it isn't, and the places near it show as markers, greyed out when they can't be seen.
 6. Elevation profile. The same sheet charts the ground along the line.
-
-An app that shows the user's location sets `NSLocationWhenInUseUsageDescription` and asks for permission itself with `CLLocationManager.requestWhenInUseAuthorization()` before it sets the map's `userLocation` to `.system`. `MaqsMap` never asks.
 
 ## Build a region locally
 
