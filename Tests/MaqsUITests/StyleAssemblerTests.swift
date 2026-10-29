@@ -168,7 +168,7 @@ import Testing
     static let overlayBlock = trailLines + [
         "maqs-places-veneto-names", "maqs-places-friuli-names",
         "maqs-trails-veneto-plate", "maqs-trails-friuli-plate",
-        "maqs-places-veneto", "maqs-places-friuli",
+        "maqs-places-veneto-markers", "maqs-places-friuli-markers",
     ]
 
     @Test func appendsOnlyTheContentLayersAfterTheBaseLayers() throws {
@@ -186,7 +186,7 @@ import Testing
         let plate = try layer(style, "maqs-trails-veneto-plate")
         #expect(plate["source"] as? String == "maqs-trails-veneto")
         #expect(plate["source-layer"] as? String == "trails")
-        #expect(try layer(style, "maqs-places-veneto")["source-layer"] as? String == "places")
+        #expect(try layer(style, "maqs-places-veneto-markers")["source-layer"] as? String == "places")
     }
 
     /// Every base label stays above every overlay layer, so the base map's town and road names always win label
@@ -213,8 +213,25 @@ import Testing
         let style = try assemble(base, Self.inputs(terrain: nil, overlays: Self.overlays(["v"])))
         #expect(Array(ids(style).prefix(9)) == [
             "background", "fill", "maqs-trails-v-casing", "maqs-trails-v-line", "maqs-trails-v-selected",
-            "maqs-places-v-names", "maqs-trails-v-plate", "maqs-places-v", "maqs-lines-hidden",
+            "maqs-places-v-names", "maqs-trails-v-plate", "maqs-places-v-markers", "maqs-lines-hidden",
         ])
+    }
+
+    /// Every overlay layer id is its source id plus a one-word suffix, so no region id can make one region's layer id
+    /// equal another's: a region `x-names` once gave its place markers the id of region `x`'s settlement names, and a
+    /// duplicate layer id raises an exception MapLibre's caller cannot catch.
+    @Test func noRegionIDMakesTwoOverlayLayerIDsEqual() throws {
+        let style = try bundled(dark: false, Self.inputs(overlays: Self.overlays(["x", "x-names", "x-markers"])))
+        let all = ids(style)
+        #expect(Set(all).count == all.count)
+        let suffixes: Set<String> = ["casing", "line", "selected", "plate", "names", "markers"]
+        let overlay = layers(style).filter { ($0["source"] as? String)?.hasPrefix("maqs-trails-") == true
+            || ($0["source"] as? String)?.hasPrefix("maqs-places-") == true }
+        #expect(overlay.count == 3 * 6)
+        for layer in overlay {
+            let id = try #require(layer["id"] as? String), source = try #require(layer["source"] as? String)
+            #expect(id.hasPrefix(source + "-") && suffixes.contains(String(id.dropFirst(source.count + 1))), "\(id)")
+        }
     }
 
     @Test func stylesTheTrailOverlay() throws {
@@ -257,12 +274,12 @@ import Testing
     @Test func omitsTrailLayersWithoutTrails() throws {
         let style = try bundled(dark: false, Self.inputs(overlays: Self.overlays(["veneto"]), trails: false))
         #expect(!ids(style).contains { $0.hasPrefix("maqs-trails-") })
-        #expect(ids(style).contains("maqs-places-veneto"))
+        #expect(ids(style).contains("maqs-places-veneto-markers"))
     }
 
     @Test func stylesThePlacesOverlay() throws {
         let style = try bundled(dark: true, Self.inputs(dark: true, language: "de", overlays: Self.overlays(["veneto"])))
-        let places = try layer(style, "maqs-places-veneto")
+        let places = try layer(style, "maqs-places-veneto-markers")
         let layout = try #require(places["layout"] as? JSON)
         #expect(json(layout["icon-image"]) == #"["coalesce",["image",["concat","maqs-place-",["get","kind"],"-dark"]],["image","maqs-place-other-dark"]]"#)
         #expect(json(layout["text-field"]) == #"["coalesce",["get","name_de"],["get","name"]]"#)
@@ -298,12 +315,12 @@ import Testing
     @Test func filtersPlaceKindsAndHidesWhenEmpty() throws {
         let some = try bundled(dark: false, Self.inputs(overlays: Self.overlays(["v"]), kinds: ["peak", "village"]))
         let settlements = #"["literal",["hamlet","isolated_dwelling","village"]]"#
-        #expect(json(try layer(some, "maqs-places-v")["filter"])
+        #expect(json(try layer(some, "maqs-places-v-markers")["filter"])
             == #"["all",["!",["in",["get","kind"],"# + settlements + #"]],["in",["get","kind"],["literal",["peak","village"]]]]"#)
         #expect(json(try layer(some, "maqs-places-v-names")["filter"])
             == #"["all",["in",["get","kind"],"# + settlements + #"],["in",["get","kind"],["literal",["peak","village"]]]]"#)
         let none = try bundled(dark: false, Self.inputs(overlays: Self.overlays(["v"]), kinds: []))
-        for id in ["maqs-places-v", "maqs-places-v-names"] {
+        for id in ["maqs-places-v-markers", "maqs-places-v-names"] {
             #expect((try layer(none, id)["layout"] as? JSON)?["visibility"] as? String == "none", "\(id)")
         }
     }
@@ -403,7 +420,7 @@ import Testing
         let style = try assemble(Self.minimal, Self.inputs(terrain: nil, overlays: Self.overlays(["v"])))
         #expect(ids(style).prefix(14) == [
             "background", "fill", "maqs-trails-v-casing", "maqs-trails-v-line", "maqs-trails-v-selected", "maqs-places-v-names",
-            "maqs-trails-v-plate", "maqs-places-v",
+            "maqs-trails-v-plate", "maqs-places-v-markers",
             "label", "label-brace", "label-other", "label-expr", "poi-amenity", "poi-tourism",
         ])
         #expect(ids(style).last == "maqs-markers-selected")
