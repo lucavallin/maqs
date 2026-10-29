@@ -218,6 +218,31 @@ extension SharedGatewaySuite {
             #expect(mapView.userLocation?.location.map { near($0.coordinate, fix) } == true)
         }
 
+        /// The compass, attribution button and logo the map hides are hidden from accessibility too, so VoiceOver
+        /// cannot reach MapLibre's own attribution sheet; the user's location stays an element VoiceOver finds.
+        /// MapLibre lists the compass and the attribution button among its accessibility children whatever they show;
+        /// hidden, UIKit already reports them as no element, but only `accessibilityElementsHidden` takes them out of
+        /// the accessibility tree.
+        @Test func voiceOverFindsTheLocationButNoneOfTheHiddenOrnaments() async throws {
+            let (map, host) = try await shownMap { $0.userLocation = .provided }
+            defer { host.close() }
+            map.provide(location(TestRegion.center))
+            let mapView = host.mapView
+            try await waitUntil { mapView.userLocation?.location != nil }
+
+            let elements = try AccessibilityTree.read { AccessibilityTree.elements(in: mapView) }
+
+            let ornaments: [UIView] = [mapView.compassView, mapView.attributionButton, mapView.logoView]
+            let found = elements.filter { element in ornaments.contains { $0 === element } }
+            #expect(found.isEmpty, "VoiceOver finds \(found.map { $0.accessibilityLabel ?? "?" })")
+            for ornament in ornaments {
+                #expect(ornament.accessibilityElementsHidden, "\(type(of: ornament)) \(ornament.accessibilityLabel ?? "")")
+                #expect(!ornament.isAccessibilityElement)
+            }
+            #expect(elements.contains { $0 is MLNUserLocationAnnotationView },
+                    "no location among \(elements.map { "\(type(of: $0)) \($0.accessibilityLabel ?? "")" })")
+        }
+
         // MARK: Following
 
         @Test func eachFollowModeIsMapLibresTrackingMode() async throws {
