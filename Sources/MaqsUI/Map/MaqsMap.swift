@@ -307,20 +307,22 @@ struct MapStyles: Equatable {
     private func packsChanged(_ packs: [InstalledPack], sources: OnlineSources?, infos: [URL: ArchiveInfo]) {
         let listed = Set(MapInputs.tileArchives(of: packs))
         archiveInfos = archiveInfos.merging(infos) { _, new in new }.filter { listed.contains($0.key) }
-        let rebuild = !packsRead || sources != self.sources
+        let firstRead = !packsRead
+        let rebuild = firstRead || sources != self.sources
         installedPacks = packs
         self.sources = sources
         packsRead = true
-        refreshContent(rebuild: rebuild)
+        refreshContent(rebuild: rebuild, logPacks: firstRead)
     }
 
     /// Works out the installed content from the last packs read and the current catalog, and rebuilds the style when
-    /// it changed or `rebuild` asks for it.
-    private func refreshContent(rebuild: Bool = false) {
+    /// it changed or `rebuild` asks for it. The pack ids are logged when the content changed, and on the first read
+    /// (`logPacks`) even when nothing is installed.
+    private func refreshContent(rebuild: Bool = false, logPacks: Bool = false) {
         let content = MapInputs.content(packs: installedPacks, layers: maqs.configuration.layers,
                                         catalog: maqs.state.catalog, archives: archiveInfos)
         guard rebuild || content != self.content else { return }
-        if content != self.content || !packsRead {
+        if content != self.content || logPacks {
             let ids = installedPacks.map { Self.describe($0.id) }.joined(separator: ", ")
             logger.info("map packs: \(ids.isEmpty ? "none" : ids, privacy: .public)")
         }
