@@ -881,8 +881,8 @@
    "source": "terrain",
    "paint": {
     "hillshade-exaggeration": 0.1,
-    "hillshade-shadow-color": "rgb(0,0,0)",
-    "hillshade-highlight-color": "rgb(255,255,255)",
+    "hillshade-shadow-color": "rgba(0,0,0,0.6)",
+    "hillshade-highlight-color": "rgba(255,255,255,0.4)",
     "hillshade-illumination-anchor": "map",
     "hillshade-method": "combined",
     "hillshade-illumination-direction": 315,

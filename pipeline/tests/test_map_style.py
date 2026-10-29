@@ -243,6 +243,21 @@ def test_the_hillshade_layer_keeps_its_values() -> None:
     assert by_id(style, "hillshade")["paint"] == by_id(original, "hillshade")["paint"]
 
 
+def test_the_dark_hillshade_has_a_dimmer_highlight_and_a_lighter_shadow() -> None:
+    original = sample_style()
+    paint = by_id(transform(original, DARK), "hillshade")["paint"]
+    assert paint["hillshade-highlight-color"] == "rgba(255,255,255,0.4)"
+    assert paint["hillshade-shadow-color"] == "rgba(0,0,0,0.6)"
+    # The rest keeps VersaTiles' values, as the light style does.
+    softened = ("hillshade-highlight-color", "hillshade-shadow-color")
+    kept = {key: value for key, value in paint.items() if key not in softened}
+    assert kept == {
+        key: value
+        for key, value in by_id(original, "hillshade")["paint"].items()
+        if key not in softened
+    }
+
+
 def test_three_d_terrain_sky_and_projection_are_dropped() -> None:
     style = transform(sample_style(), LIGHT)
     assert "terrain" not in style
