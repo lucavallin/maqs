@@ -233,6 +233,15 @@ import Testing
         #expect(json(plate["filter"]) == #"["all",["has","ref"],["!=",["get","ref"],""]]"#)
     }
 
+    @Test(arguments: [false, true])
+    func greyTrailsAndTheirPlatesStartAtZoom11AndTheSelectedTrailShowsAtEveryZoom(dark: Bool) throws {
+        let style = try bundled(dark: dark, Self.inputs(dark: dark, overlays: Self.overlays(["veneto"])))
+        for suffix in ["casing", "line", "plate"] {
+            #expect(try layer(style, "maqs-trails-veneto-\(suffix)")["minzoom"] as? Double == 11, "\(suffix)")
+        }
+        #expect(try layer(style, "maqs-trails-veneto-selected")["minzoom"] == nil)
+    }
+
     @Test func namesThePlateOfTheSchemeInUse() throws {
         let style = try bundled(dark: true, Self.inputs(dark: true, overlays: Self.overlays(["veneto"])))
         let layout = try #require(try layer(style, "maqs-trails-veneto-plate")["layout"] as? JSON)
