@@ -124,6 +124,25 @@ Matching a position to a road, and choosing the direction of travel, stay with t
 
 `swift build` and `swift test` run from a clean checkout: the tests read the `test` region's files committed under `Tests/MaqsTestSupport/Fixtures/`. `scripts/update-fixtures.sh` rebuilds them with the pipeline, writes the pipeline's terrain and data-layer values that the Swift tests compare against, and refreshes the copy of `sources.json` bundled in the package.
 
+## Demo app
+
+`Examples/MaqsDemo` is a small SwiftUI app for iOS 18. It uses the four products through the local package and nothing else. Open `Examples/MaqsDemo/MaqsDemo.xcodeproj` in Xcode and run it on a simulator; for a device, pick your own team under Signing, since the project names none. CI only builds it:
+
+```sh
+xcodebuild -project Examples/MaqsDemo/MaqsDemo.xcodeproj -scheme MaqsDemo -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
+```
+
+Before a package release, walk through it by hand on a simulator and on a device:
+
+1. Online map. The map opens over Friuli-Venezia Giulia with VersaTiles tiles, the credits at the bottom. The buttons at the top right show and follow your location and turn the map north. The first tap on the location button brings up the system's permission prompt, which the app asks for.
+2. Download a region. Regions lists the latest data release. Download `friuli-venezia-giulia` and watch the progress in its row. Its basemap, terrain, trails and places come to 230,320,216 bytes (about 230 MB) in `data-2026-10`, read from the live manifest on 2026-10-29. When the map's centre is over a region that is not installed, a banner offers it.
+3. Airplane mode. On a device with the region installed, turn on airplane mode. The offline banner appears, and inside the region the map still draws everything from the downloaded files; outside it, you only see what the map cached earlier. The simulator shares the Mac's network and cannot go offline by itself. Launch it there with the argument `-onlineTiles NO` instead: the package then hands out no online source, and the map draws only from the installed files.
+4. Trail search. Trails searches the installed regions by number, name or place. The trail you pick is drawn in the accent colour and shown whole. Tap a trail on the map to open its record.
+5. Places along a bearing. Sight line starts at the map's centre. Move the bearing slider: the line is solid where the ground is in sight and dashed where it isn't, and the places near it show as markers, greyed out when they can't be seen.
+6. Elevation profile. The same sheet charts the ground along the line.
+
+An app that shows the user's location sets `NSLocationWhenInUseUsageDescription` and asks for permission itself with `CLLocationManager.requestWhenInUseAuthorization()` before it sets the map's `userLocation` to `.system`. `MaqsMap` never asks.
+
 ## Build a region locally
 
 ```sh

@@ -114,3 +114,17 @@ jobs:
             tail -50 xcodebuild.log
           fi
           exit "$status"
+      - name: Build the demo app
+        run: |
+          # The demo is the package's only consumer in this repository; building it keeps it from rotting.
+          set +e
+          xcodebuild -project Examples/MaqsDemo/MaqsDemo.xcodeproj -scheme MaqsDemo \
+            -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build > demo.log 2>&1
+          status=$?
+          set -e
+          grep -E '": error:|\*\* BUILD (SUCCEEDED|FAILED) \*\*' demo.log || true
+          if grep -q '": error:' demo.log || [ "$status" -ne 0 ]; then
+            echo "the demo app did not build (xcodebuild exited with status $status)" >&2
+            tail -50 demo.log
+            exit 1
+          fi

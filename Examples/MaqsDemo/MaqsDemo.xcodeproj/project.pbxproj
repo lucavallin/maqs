@@ -1,0 +1,296 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		4D4151530000000000000021 /* MaqsCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4D4151530000000000000011 /* MaqsCore */; };
+		4D4151530000000000000022 /* MaqsData in Frameworks */ = {isa = PBXBuildFile; productRef = 4D4151530000000000000012 /* MaqsData */; };
+		4D4151530000000000000023 /* MaqsTerrain in Frameworks */ = {isa = PBXBuildFile; productRef = 4D4151530000000000000013 /* MaqsTerrain */; };
+		4D4151530000000000000024 /* MaqsUI in Frameworks */ = {isa = PBXBuildFile; productRef = 4D4151530000000000000014 /* MaqsUI */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		4D4151530000000000000004 /* MaqsDemo.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MaqsDemo.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		4D4151530000000000000005 /* MaqsDemo */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = MaqsDemo;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		4D4151530000000000000008 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				4D4151530000000000000021 /* MaqsCore in Frameworks */,
+				4D4151530000000000000022 /* MaqsData in Frameworks */,
+				4D4151530000000000000023 /* MaqsTerrain in Frameworks */,
+				4D4151530000000000000024 /* MaqsUI in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4D4151530000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				4D4151530000000000000005 /* MaqsDemo */,
+				4D4151530000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		4D4151530000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4D4151530000000000000004 /* MaqsDemo.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		4D4151530000000000000006 /* MaqsDemo */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4D415153000000000000000B /* Build configuration list for PBXNativeTarget "MaqsDemo" */;
+			buildPhases = (
+				4D4151530000000000000007 /* Sources */,
+				4D4151530000000000000008 /* Frameworks */,
+				4D4151530000000000000009 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				4D4151530000000000000005 /* MaqsDemo */,
+			);
+			name = MaqsDemo;
+			packageProductDependencies = (
+				4D4151530000000000000011 /* MaqsCore */,
+				4D4151530000000000000012 /* MaqsData */,
+				4D4151530000000000000013 /* MaqsTerrain */,
+				4D4151530000000000000014 /* MaqsUI */,
+			);
+			productName = MaqsDemo;
+			productReference = 4D4151530000000000000004 /* MaqsDemo.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		4D4151530000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					4D4151530000000000000006 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = 4D415153000000000000000A /* Build configuration list for PBXProject "MaqsDemo" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 4D4151530000000000000002;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4D4151530000000000000010 /* XCLocalSwiftPackageReference "../.." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 4D4151530000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				4D4151530000000000000006 /* MaqsDemo */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		4D4151530000000000000009 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		4D4151530000000000000007 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		4D415153000000000000000C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		4D415153000000000000000D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		4D415153000000000000000E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Maqs Demo";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Maqs Demo shows your location on the map and can follow it.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lucavallin.maqs.demo;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		4D415153000000000000000F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = "Maqs Demo";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Maqs Demo shows your location on the map and can follow it.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lucavallin.maqs.demo;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4D415153000000000000000A /* Build configuration list for PBXProject "MaqsDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4D415153000000000000000C /* Debug */,
+				4D415153000000000000000D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		4D415153000000000000000B /* Build configuration list for PBXNativeTarget "MaqsDemo" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4D415153000000000000000E /* Debug */,
+				4D415153000000000000000F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		4D4151530000000000000010 /* XCLocalSwiftPackageReference "../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../..;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4D4151530000000000000011 /* MaqsCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MaqsCore;
+		};
+		4D4151530000000000000012 /* MaqsData */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MaqsData;
+		};
+		4D4151530000000000000013 /* MaqsTerrain */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MaqsTerrain;
+		};
+		4D4151530000000000000014 /* MaqsUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MaqsUI;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 4D4151530000000000000001 /* Project object */;
+}
