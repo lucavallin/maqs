@@ -415,11 +415,16 @@ extension MaqsMapView {
             idlesSinceStyleLoad += 1
         }
 
-        /// The first layout with a size changes the region too: a box the map was asked to show before is fitted then,
-        /// at once.
+        /// The first layout with a size changes the region too: a box or a centre the map was asked to show before is
+        /// applied then, at once.
         func mapView(_ mapView: MLNMapView, regionDidChangeWith reason: MLNCameraChangeReason, animated: Bool) {
-            if canFitBounds, let pending = map?.takePendingBounds() {
-                show(pending, animated: false)
+            if canFitBounds, let pending = map?.takePendingCamera() {
+                switch pending {
+                case .bounds(let bounds):
+                    show(bounds, animated: false)
+                case .center(let coordinate, let zoom):
+                    mapView.setCenter(coordinate, zoomLevel: zoom ?? mapView.zoomLevel, animated: false)
+                }
             }
             let bounds = mapView.visibleCoordinateBounds
             map?.cameraDidSettle(MapCamera(

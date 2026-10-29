@@ -123,19 +123,10 @@ extension SharedGatewaySuite {
             #expect(host.mapView.contentInset == UIEdgeInsets(top: 10, left: 20, bottom: 30, right: 100))
         }
 
-        /// MapLibre fits a box to the view's size at the call; before the first layout that is no size at all.
-        @Test func boundsShownBeforeTheViewHasASizeAreFittedOnceItHasOne() async throws {
-            let map = try newMap()
-            let host = try await MapHost.show(map, size: .zero)
-            defer { host.close() }
-            #expect(host.mapView.bounds.isEmpty)
-            let bounds = BoundingBox(minLon: 12.26, minLat: 46.11, maxLon: 12.32, maxLat: 46.15)
+        private static let earlyBox = BoundingBox(minLon: 12.26, minLat: 46.11, maxLon: 12.32, maxLat: 46.15)
 
-            map.show(bounds)
-            host.resize(to: CGSize(width: 390, height: 600))
-
-            try await host.waitUntilDrawn()
-            try await waitForIdle(host)
+        /// Expects the view to show ``earlyBox`` fitted: inside the view, and filling it in one direction.
+        private func expectFitted(_ host: MapHost) {
             let mapView = host.mapView
             let southWest = mapView.convert(CLLocationCoordinate2D(latitude: 46.11, longitude: 12.26), toPointTo: mapView)
             let northEast = mapView.convert(CLLocationCoordinate2D(latitude: 46.15, longitude: 12.32), toPointTo: mapView)
@@ -143,6 +134,81 @@ extension SharedGatewaySuite {
             #expect(width <= mapView.bounds.width + 1 && height <= mapView.bounds.height + 1)
             #expect(width >= mapView.bounds.width * 0.9 || height >= mapView.bounds.height * 0.9,
                     "the box fills the view in one direction: \(width) × \(height) in \(mapView.bounds.size)")
+        }
+
+        /// Gives the view of `host` its size, then waits until MapLibre has drawn and settled.
+        private func layOut(_ host: MapHost) async throws {
+            host.resize(to: CGSize(width: 390, height: 600))
+            try await host.waitUntilDrawn()
+            try await waitForIdle(host)
+        }
+
+        /// MapLibre fits a box to the view's size at the call; before the first layout that is no size at all.
+        @Test func boundsShownBeforeTheViewHasASizeAreFittedOnceItHasOne() async throws {
+            let map = try newMap()
+            let host = try await MapHost.show(map, size: .zero)
+            defer { host.close() }
+            #expect(host.mapView.bounds.isEmpty)
+
+            map.show(Self.earlyBox)
+            try await layOut(host)
+
+            expectFitted(host)
+        }
+
+        @Test func aCentreShownBeforeTheViewHasASizeIsAppliedOnceItHasOne() async throws {
+            let map = try newMap()
+            let host = try await MapHost.show(map, size: .zero)
+            defer { host.close() }
+            let target = offset(TestRegion.center, lat: 0.01, lon: 0.01)
+
+            map.show(target, zoom: 14)
+            try await layOut(host)
+
+            #expect(near(host.mapView.centerCoordinate, target), "centre \(host.mapView.centerCoordinate)")
+            #expect(abs(host.mapView.zoomLevel - 14) < 0.01, "zoom \(host.mapView.zoomLevel)")
+        }
+
+        @Test func aCentreShownBeforeAnyViewIsAppliedWhenOneShowsTheMap() async throws {
+            let map = try newMap()
+            let target = offset(TestRegion.center, lat: 0.01, lon: 0.01)
+
+            map.show(target, zoom: 14)
+            let host = try await MapHost.show(map)
+            defer { host.close() }
+            try await host.waitUntilDrawn()
+            try await waitForIdle(host)
+
+            #expect(near(host.mapView.centerCoordinate, target), "centre \(host.mapView.centerCoordinate)")
+            #expect(abs(host.mapView.zoomLevel - 14) < 0.01, "zoom \(host.mapView.zoomLevel)")
+        }
+
+        /// The latest request before layout wins: a centre after a box replaces the box.
+        @Test func aCentreAfterABoxBeforeLayoutEndsOnTheCentre() async throws {
+            let map = try newMap()
+            let host = try await MapHost.show(map, size: .zero)
+            defer { host.close() }
+            let target = offset(TestRegion.center, lat: -0.02, lon: 0.02)
+
+            map.show(Self.earlyBox)
+            map.show(target, zoom: 15)
+            try await layOut(host)
+
+            #expect(near(host.mapView.centerCoordinate, target), "centre \(host.mapView.centerCoordinate)")
+            #expect(abs(host.mapView.zoomLevel - 15) < 0.01, "zoom \(host.mapView.zoomLevel)")
+        }
+
+        /// The latest request before layout wins: a box after a centre replaces the centre.
+        @Test func aBoxAfterACentreBeforeLayoutEndsOnTheBox() async throws {
+            let map = try newMap()
+            let host = try await MapHost.show(map, size: .zero)
+            defer { host.close() }
+
+            map.show(offset(TestRegion.center, lat: -0.02, lon: 0.02), zoom: 15)
+            map.show(Self.earlyBox)
+            try await layOut(host)
+
+            expectFitted(host)
         }
 
         @Test func pitchStaysWithinSixtyDegreesAndKeepsTheZoom() async throws {
