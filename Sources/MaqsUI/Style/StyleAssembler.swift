@@ -34,7 +34,10 @@ enum StyleAssembler {
         let content = contentStyle(inputs)
         sources.merge(overlay.sources) { _, new in new }
         sources.merge(content.sources) { _, new in new }
-        layers += overlay.layers + content.layers
+        // Trail lines go under the base map's labels, so place and road names stay readable over them.
+        let firstSymbol = layers.firstIndex { $0["type"] as? String == "symbol" } ?? layers.endIndex
+        layers.insert(contentsOf: overlay.lines, at: firstSymbol)
+        layers += overlay.symbols + content.layers
         style["sources"] = sources
         style["layers"] = layers
 
@@ -155,30 +158,43 @@ enum StyleAssembler {
 
     // MARK: Overlays
 
-    private static func overlayStyle(_ inputs: StyleInputs) -> (sources: JSON, layers: [JSON]) {
+    /// The overlays' sources and layers: the trail lines, which go below the base map's labels, and the symbols (trail
+    /// plates, then places), which go above every base layer.
+    private static func overlayStyle(_ inputs: StyleInputs) -> (sources: JSON, lines: [JSON], symbols: [JSON]) {
         let palette = Palette(inputs.content)
         var sources: JSON = [:]
-        var layers: [JSON] = []
+        var lines: [JSON] = []
+        var plates: [JSON] = []
         var places: [JSON] = []
         for overlay in inputs.overlays {
             let id = "maqs-\(overlay.layer.rawValue)-\(overlay.region)"
             sources[id] = ["type": "vector", "url": "pmtiles://" + overlay.fileURL.absoluteString] as JSON
             switch overlay.layer {
             case .trails:
-                if inputs.showsTrails { layers += trailLayers(id, palette, dark: inputs.content.dark) }
+                guard inputs.showsTrails else { continue }
+                lines += trailLines(id, palette)
+                plates.append(trailPlate(id, dark: inputs.content.dark))
             case .places:
                 places.append(placesLayer(id, inputs, palette))
             }
         }
-        // Places last, so labels and icons stay above every region's trail lines.
-        return (sources, layers + places)
+        // Places last, so their labels and icons stay above every region's trail plates.
+        return (sources, lines, plates + places)
     }
 
-    private static func trailLayers(_ source: String, _ palette: Palette, dark: Bool) -> [JSON] {
+    private static func trailLines(_ source: String, _ palette: Palette) -> [JSON] {
         func trailLine(_ suffix: String, filter: Any? = nil, paint: JSON) -> JSON {
             line("\(source)-\(suffix)", source: source, sourceLayer: "trails", filter: filter, paint: paint)
         }
-        let plate: JSON = [
+        return [
+            trailLine("casing", paint: ["line-color": palette.casing, "line-width": 8]),
+            trailLine("line", paint: ["line-color": palette.solidLine, "line-width": 4]),
+            trailLine("selected", filter: ["==", ["get", "id"], -1] as [Any], paint: ["line-color": palette.accent, "line-width": 5]),
+        ]
+    }
+
+    private static func trailPlate(_ source: String, dark: Bool) -> JSON {
+        [
             "id": "\(source)-plate", "type": "symbol", "source": source, "source-layer": "trails",
             "layout": [
                 "symbol-placement": "line", "icon-image": dark ? "maqs-plate-dark" : "maqs-plate-light", "icon-text-fit": "both",
@@ -186,12 +202,6 @@ enum StyleAssembler {
             ] as JSON,
             "filter": ["all", ["has", "ref"], ["!=", ["get", "ref"], ""]] as [Any],
             "paint": ["text-color": "#101620"] as JSON,
-        ]
-        return [
-            trailLine("casing", paint: ["line-color": palette.casing, "line-width": 8]),
-            trailLine("line", paint: ["line-color": palette.solidLine, "line-width": 4]),
-            trailLine("selected", filter: ["==", ["get", "id"], -1] as [Any], paint: ["line-color": palette.accent, "line-width": 5]),
-            plate,
         ]
     }
 
