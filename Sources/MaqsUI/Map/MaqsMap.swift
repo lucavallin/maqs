@@ -38,7 +38,8 @@ struct MapStyles: Equatable {
 /// a new `MaqsMap`. While a map exists, the main actor wakes every 5 s to read the gateway's pause and counters.
 ///
 /// The camera actions, such as ``show(_:zoom:)`` and ``resetNorth()``, animate the view that shows the map and do
-/// nothing before one does; only the mode of ``follow(_:)`` and the box of the last ``show(_:)`` are kept for it.
+/// nothing before one does, with two exceptions: the mode of ``follow(_:)``, and the latest ``show(_:)`` or
+/// ``show(_:zoom:)`` made before a view with a size shows the map, which is applied at that view's first layout.
 @MainActor @Observable public final class MaqsMap {
     /// The style, accent, hillshade, label language and points of interest. A change rebuilds the style.
     public var configuration: MapConfiguration {
@@ -175,8 +176,14 @@ struct MapStyles: Equatable {
     @ObservationIgnored private var connectivityTask: Task<Void, Never>?
     @ObservationIgnored private var readTask: Task<Void, Never>?
     @ObservationIgnored private var heartbeatTask: Task<Void, Never>?
-    /// A box ``show(_:)`` was given before a view could fit it: none showed the map yet, or it had no size.
-    @ObservationIgnored private var pendingBounds: BoundingBox?
+    /// A camera request made before a view could apply it: none showed the map yet, or it had no size.
+    @ObservationIgnored private var pendingCamera: CameraRequest?
+
+    /// What ``show(_:)`` or ``show(_:zoom:)`` asked for before a view could apply it; the latest one wins.
+    enum CameraRequest {
+        case bounds(BoundingBox)
+        case center(CLLocationCoordinate2D, zoom: Double?)
+    }
 
     /// What `GatewayState.configure` was last given, to configure it again only when something changed.
     private struct GatewayKey: Equatable {
@@ -442,7 +449,7 @@ struct MapStyles: Equatable {
             logger.debug("map follow ignored: the user's location is hidden")
             return
         }
-        if mode != .none { pendingBounds = nil }
+        if mode != .none { pendingCamera = nil }
         if let coordinator {
             coordinator.follow(mode)
         } else if mode != followMode {
@@ -466,20 +473,27 @@ struct MapStyles: Equatable {
         coordinator?.setPitch(min(max(degrees, 0), 60))
     }
 
-    /// Centres the map on `coordinate` at `zoom`, or at the current zoom when it is `nil`, and stops following. A
+    /// Centres the map on `coordinate` at `zoom`, or at the current zoom when it is `nil`, and stops following. Before a
+    /// view with a size shows the map, from `onAppear` for example, the centre is kept and applied at that view's first
+    /// layout, unless a later ``show(_:)`` or ``show(_:zoom:)`` replaces it or ``follow(_:)`` starts following. A
     /// coordinate off the earth or a zoom that is not finite does nothing.
     public func show(_ coordinate: CLLocationCoordinate2D, zoom: Double?) {
         guard CLLocationCoordinate2DIsValid(coordinate), zoom?.isFinite ?? true else {
             logger.debug("map show ignored: the coordinate or the zoom is not valid")
             return
         }
-        pendingBounds = nil
-        coordinator?.show(coordinate, zoom: zoom)
+        if let coordinator, coordinator.canFitBounds {
+            pendingCamera = nil
+            coordinator.show(coordinate, zoom: zoom)
+        } else {
+            pendingCamera = .center(coordinate, zoom: zoom)
+        }
     }
 
-    /// Fits `bounds` in the view inside ``contentInsets`` and stops following. Before the view is laid out, from
-    /// `onAppear` for example, the box is fitted at once when it has a size. A box of one point zooms in as far as the
-    /// map goes; an inverted box or one off the earth does nothing.
+    /// Fits `bounds` in the view inside ``contentInsets`` and stops following. Before a view with a size shows the map,
+    /// from `onAppear` for example, the box is kept and fitted at once at that view's first layout, unless a later
+    /// ``show(_:)`` or ``show(_:zoom:)`` replaces it or ``follow(_:)`` starts following. A box of one point zooms in as
+    /// far as the map goes; an inverted box or one off the earth does nothing.
     public func show(_ bounds: BoundingBox) {
         let southWest = CLLocationCoordinate2D(latitude: bounds.minLat, longitude: bounds.minLon)
         let northEast = CLLocationCoordinate2D(latitude: bounds.maxLat, longitude: bounds.maxLon)
@@ -489,10 +503,10 @@ struct MapStyles: Equatable {
             return
         }
         if let coordinator, coordinator.canFitBounds {
-            pendingBounds = nil
+            pendingCamera = nil
             coordinator.show(bounds, animated: true)
         } else {
-            pendingBounds = bounds
+            pendingCamera = .bounds(bounds)
         }
     }
 
@@ -528,10 +542,10 @@ struct MapStyles: Equatable {
         updateOffer(catalog: maqs.state.catalog, packs: maqs.state.packs)
     }
 
-    /// The box ``show(_:)`` kept for a view that can fit it, once.
-    func takePendingBounds() -> BoundingBox? {
-        defer { pendingBounds = nil }
-        return pendingBounds
+    /// The camera request kept for a view that can apply it, once.
+    func takePendingCamera() -> CameraRequest? {
+        defer { pendingCamera = nil }
+        return pendingCamera
     }
 
     /// MapLibre changed how it follows the location: asked to, or because the user moved the map.
