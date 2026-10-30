@@ -77,7 +77,7 @@ let peak = SightTarget(coordinate: CLLocationCoordinate2D(latitude: 46.21, longi
 for result in try await terrain.visibility(of: [peak], from: Observer(coordinate: here)) {
     switch result {
     case .visible(let distance, let bearing, let angle): print("visible", distance, bearing, angle)
-    case .hidden(_, _, let blockedDistance, _): print("hidden by ground", blockedDistance, "m away")
+    case .hidden(_, _, let blockedDistance, _, _, _): print("hidden by ground", blockedDistance, "m away")
     case .unknown(_, let reason, _): print("unknown", reason)      // ground missing, or online tiles failed
     case .outOfRange: print("too far")
     }

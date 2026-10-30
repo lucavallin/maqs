@@ -42,10 +42,28 @@ import Testing
     @Test func aRidgeHidesIt() async throws {
         let terrain = terrain(elevation: Self.ridge(1500, 12.06...12.07))
         let result = try await terrain.visibility(of: [east(20_000, elevation: 1000)], from: observer, options: flat)
-        guard case .hidden(let distance, _, let blockedDistance, let clearance) = result[0] else { Issue.record("\(result[0])"); return }
+        guard case .hidden(let distance, _, let blockedDistance, let clearance, _, _) = result[0] else { Issue.record("\(result[0])"); return }
         #expect(abs(distance - 20_000) < 1e-3)
         #expect((4_000...6_000).contains(blockedDistance))
         #expect(abs(clearance - 500) < 1)
+    }
+
+    /// The ridge that rises furthest above the sight line is not always the one a viewer sees in front of the target:
+    /// here the far ridge clears the line by 600 m at 1.1°, the near one by 300 m at 1.7°, so the horizon is the near one.
+    @Test func hiddenReportsTheHighestAngleSampleAsTheHorizon() async throws {
+        let near = 12.125...12.135, far = 12.385...12.395
+        let terrain = terrain(elevation: { lon, lat in
+            Self.ridge(1300, near)(lon, lat) + Self.ridge(1600, far)(lon, lat)
+        })
+        let result = try await terrain.visibility(of: [east(40_000, elevation: 1000)], from: observer, options: flat)
+        guard case .hidden(_, _, let blockedDistance, _, let horizonAt, let horizonDistance) = result[0] else {
+            Issue.record("\(result[0])"); return
+        }
+        #expect((29_000...31_000).contains(blockedDistance))
+        #expect((9_000...11_000).contains(horizonDistance))
+        let expected = Geodesy.destination(from: observer.coordinate, bearing: 90, distance: horizonDistance)
+        #expect(abs(horizonAt.latitude - expected.latitude) < 1e-9)
+        #expect(abs(horizonAt.longitude - expected.longitude) < 1e-9)
     }
 
     @Test func aRidgeWithinTheMarginDoesNot() async throws {

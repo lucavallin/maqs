@@ -14,7 +14,14 @@ public enum Visibility: Sendable {
     ///   - blockedAt: The sample that clears the sight line by the most.
     ///   - blockedDistance: Metres from the observer to `blockedAt`.
     ///   - clearance: Metres by which that ground rises above the sight line.
-    case hidden(distance: Double, blockedAt: CLLocationCoordinate2D, blockedDistance: Double, clearance: Double)
+    ///   - horizonAt: The sample seen at the highest elevation angle from the eye: the skyline in front of the target,
+    ///     which a viewer sees where the target would be. It can differ from `blockedAt`, a farther ridge that clears
+    ///     the sight line by more at a lower angle.
+    ///   - horizonDistance: Metres from the observer to `horizonAt`.
+    case hidden(
+        distance: Double, blockedAt: CLLocationCoordinate2D, blockedDistance: Double, clearance: Double,
+        horizonAt: CLLocationCoordinate2D, horizonDistance: Double
+    )
     /// No known ground hides the target, but some height needed for the answer is missing.
     case unknown(at: MissingHeight, reason: MissingReason, distance: Double)
     /// The target is farther than ``VisibilityOptions/maxDistance``.
