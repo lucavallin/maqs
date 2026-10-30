@@ -900,10 +900,9 @@ The full circle needed sorting on number keys and skipping the repeat check acro
 - Overlapping regions draw their overlays twice and give one tap hit per region. The base map's labels win label placement over the overlays, so a peak or a plate next to a town label can give way, and a tap on a base map label finds no overlay place.
 - Text in a script outside the bundled glyph ranges, other than CJK, draws without those letters.
 - Open before the first package tag: `Maqs.handleEventsForBackgroundURLSession(identifier:completionHandler:)` takes an `@escaping @Sendable` handler, and UIKit's is not `Sendable`, so a Swift 6 app forwards it through a `nonisolated(unsafe)` capture, as the demo does. Changing that is a change to `MaqsCore`'s public API.
-- CI's Xcode 26.6 built the MapLibre-specific Swift and passed all five simulator targets on 2026-10-30, the private accessibility switch of the view tests included. It opened the demo project (`objectVersion` 77), and the demo build failed on the manifest's warning flag, which ADR 0018 removes.
+- CI's Xcode 26.6 built the MapLibre-specific Swift and passed all five simulator targets on 2026-10-30, the private accessibility switch of the view tests included. It opened the demo project (`objectVersion` 77), and the demo build failed on the manifest's warning flag; without the flag (ADR 0018) the demo built on the same day.
 - Not verified:
   - a real device: the airplane-mode walk, the offline banner (the simulator shares the Mac's network, so the demo approximated it with `-onlineTiles NO`) and the location prompt on a device;
-  - the demo build on CI's Xcode 26.6 without that flag (ADR 0018);
   - the cause of straight seams in the hillshade at tile borders, seen in the demo in both schemes and with local terrain as well: MapLibre's DEM border backfill and the gateway's 204 for a missing neighbour tile are candidates;
   - the pause lengths against VersaTiles' real limit, which it does not publish;
   - the device and release-build timings ADRs 0015 and 0016 left to the demo app, which ran on the simulator only.
@@ -922,6 +921,7 @@ The full circle needed sorting on number keys and skipping the repeat check acro
 |---|---|---|
 | Xcode 26.6 and the manifest flag | the demo build fails in `MaqsCore`, `MaqsData` and `MaqsPMTiles`; `MaqsCore` reports the conflicting options | `swift.yml` run on `macos-latest` |
 | The setting for dependencies | `-suppress-warnings` "is mutually exclusive with other warning control flags"; for remote targets SwiftPM strips the manifest's warning flags and adds `-suppress-warnings`; local dependencies are not named | SE-0480 (swift-evolution `proposals/0480-swiftpm-warning-control.md`) |
+| Xcode 26.6 without the manifest flag | the demo builds, and the package's targets still pass on macOS and the simulator with the command-line flags | `swift.yml` run on `macos-latest` |
 | Xcode 27 and the manifest flag | a clean demo build passes `-warnings-as-errors` and no `-suppress-warnings` to `MaqsCore` | local build |
 | The command-line flags | an unused variable in `MaqsCore` or in `MaqsCoreTests` fails `swift build -Xswiftc -warnings-as-errors` (with `--build-tests` for the test) and `xcodebuild … SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build-for-testing`; without a flag `swift build` only warns | local build |
 

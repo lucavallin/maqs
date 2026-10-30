@@ -240,7 +240,7 @@ A solid `MapLine` that is not active looks exactly like an overlay trail, grey o
 
 **Logging.** `os.Logger`, category `ui`: style loads and failures, the pack ids on the first read and on every change, the gateway's counts of the last minute whenever any changed (local, empty, online, base, failed, stale template), each 429 with its tile coordinates `privacy: .private`, the start and end of each pause, each redirect to another host that the gateway refuses (a notice with the status), an unreadable archive once by file name, and a drawn layer without credit. No URL, tile content or position is logged.
 
-**Not verified.** Everything above ran on the iOS Simulator; a real device has not shown the map yet, so the airplane-mode walk, the offline banner (the simulator shares the Mac's network) and the location prompt on a device are open. CI's Xcode 26.6 builds the MapLibre-specific code and passes the view tests, their accessibility switch included; its demo build without the manifest's warning flag has not run yet ([ADR 0018](decisions.md)). The hillshade shows straight seams at some tile borders, and their cause is not known ([ADR 0017](decisions.md)).
+**Not verified.** Everything above ran on the iOS Simulator; a real device has not shown the map yet, so the airplane-mode walk, the offline banner (the simulator shares the Mac's network) and the location prompt on a device are open. CI's Xcode 26.6 builds the MapLibre-specific code and the demo app and passes the view tests, their accessibility switch included ([ADR 0018](decisions.md)). The hillshade shows straight seams at some tile borders, and their cause is not known ([ADR 0017](decisions.md)).
 
 ### Tests and CI
 
