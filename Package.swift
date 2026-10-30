@@ -1,8 +1,6 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
-let warningsAsErrors: [SwiftSetting] = [.treatAllWarnings(as: .error)]
-
 let package = Package(
     name: "Maqs",
     platforms: [.iOS(.v18), .macOS(.v15)],
@@ -18,21 +16,17 @@ let package = Package(
     targets: [
         .target(
             name: "MaqsCore",
-            resources: [.copy("Resources/sources.json")],
-            swiftSettings: warningsAsErrors
+            resources: [.copy("Resources/sources.json")]
         ),
         .target(
-            name: "MaqsData",
-            swiftSettings: warningsAsErrors
+            name: "MaqsData"
         ),
         .target(
-            name: "MaqsPMTiles",
-            swiftSettings: warningsAsErrors
+            name: "MaqsPMTiles"
         ),
         .target(
             name: "MaqsTerrain",
-            dependencies: ["MaqsPMTiles"],
-            swiftSettings: warningsAsErrors
+            dependencies: ["MaqsPMTiles"]
         ),
         .target(
             name: "MaqsUI",
@@ -40,41 +34,34 @@ let package = Package(
                 "MaqsCore", "MaqsPMTiles",
                 .product(name: "MapLibre", package: "maplibre-gl-native-distribution", condition: .when(platforms: [.iOS])),
             ],
-            resources: [.copy("MapAssets")],
-            swiftSettings: warningsAsErrors
+            resources: [.copy("MapAssets")]
         ),
         .target(
             name: "MaqsTestSupport",
             dependencies: ["MaqsPMTiles"],
             path: "Tests/MaqsTestSupport",
             sources: ["Sources"],
-            resources: [.copy("Fixtures")],
-            swiftSettings: warningsAsErrors
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(
             name: "MaqsCoreTests",
-            dependencies: ["MaqsCore", "MaqsTestSupport"],
-            swiftSettings: warningsAsErrors
+            dependencies: ["MaqsCore", "MaqsTestSupport"]
         ),
         .testTarget(
             name: "MaqsDataTests",
-            dependencies: ["MaqsData", "MaqsTestSupport"],
-            swiftSettings: warningsAsErrors
+            dependencies: ["MaqsData", "MaqsTestSupport"]
         ),
         .testTarget(
             name: "MaqsPMTilesTests",
-            dependencies: ["MaqsPMTiles", "MaqsTestSupport"],
-            swiftSettings: warningsAsErrors
+            dependencies: ["MaqsPMTiles", "MaqsTestSupport"]
         ),
         .testTarget(
             name: "MaqsTerrainTests",
-            dependencies: ["MaqsTerrain", "MaqsTestSupport"],
-            swiftSettings: warningsAsErrors
+            dependencies: ["MaqsTerrain", "MaqsTestSupport"]
         ),
         .testTarget(
             name: "MaqsUITests",
-            dependencies: ["MaqsUI", "MaqsCore", "MaqsData", "MaqsTestSupport"],
-            swiftSettings: warningsAsErrors
+            dependencies: ["MaqsUI", "MaqsCore", "MaqsData", "MaqsTestSupport"]
         ),
     ],
     swiftLanguageModes: [.v6]

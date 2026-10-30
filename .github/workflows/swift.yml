@@ -79,8 +79,10 @@ jobs:
       - uses: actions/checkout@v7
         with: { persist-credentials: false }
       - run: swift --version
-      - run: swift build
-      - run: swift test
+      # Warnings are errors from the command line, not Package.swift: Xcode 26.6 rejects a manifest warning flag
+      # on a package it builds as a dependency (ADR 0018).
+      - run: swift build -Xswiftc -warnings-as-errors
+      - run: swift test -Xswiftc -warnings-as-errors
 
   ios-simulator:
     runs-on: macos-latest
@@ -101,10 +103,12 @@ jobs:
             || { echo 'could not pick the Xcode scheme: xcodebuild -list -json failed or lists neither Maqs-Package nor Maqs' >&2; exit 1; }
           echo "scheme: $scheme"
           # Without -collect-test-diagnostics never, a test that hits its time limit adds about ten minutes of simctl diagnose.
+          # SWIFT_TREAT_WARNINGS_AS_ERRORS=YES makes warnings errors in every target, as -warnings-as-errors does for swift build.
           set +e
           xcodebuild -scheme "$scheme" \
             -destination 'platform=iOS Simulator,name=iPhone 17' \
-            -skipPackagePluginValidation -collect-test-diagnostics never test > xcodebuild.log 2>&1
+            -skipPackagePluginValidation -collect-test-diagnostics never \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES test > xcodebuild.log 2>&1
           status=$?
           set -e
           fail() { echo "$1" >&2; tail -50 xcodebuild.log; exit 1; }

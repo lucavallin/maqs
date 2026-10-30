@@ -19,9 +19,9 @@ A new region is one entry in `config/regions.yaml`; the README says when the rel
 ## Swift package
 
 ```sh
-swift build
-swift test                       # macOS; reads the committed fixtures, no network, no Python
-xcodebuild -scheme Maqs-Package -destination 'platform=iOS Simulator,name=iPhone 17' -skipPackagePluginValidation -collect-test-diagnostics never test
+swift build -Xswiftc -warnings-as-errors
+swift test -Xswiftc -warnings-as-errors   # macOS; reads the committed fixtures, no network, no Python
+xcodebuild -scheme Maqs-Package -destination 'platform=iOS Simulator,name=iPhone 17' -skipPackagePluginValidation -collect-test-diagnostics never SWIFT_TREAT_WARNINGS_AS_ERRORS=YES test
 ```
 
 Any installed simulator works for the last command (`xcrun simctl list devices available`). The scheme is `Maqs-Package` because the package has several library products (with one it would be `Maqs`); `xcodebuild -list` shows which. Swift Testing also prints an XCTest summary that says "Executed 0 tests"; the real counts are on the `Test run with N tests` lines, one per test target (`MaqsUITests`, `MaqsTerrainTests`, `MaqsPMTilesTests`, `MaqsDataTests`, `MaqsCoreTests`). The tests that draw a map run only on the simulator. Without `-collect-test-diagnostics never`, a test that times out costs about ten more minutes of diagnostics. The README's [*Demo app*](README.md#demo-app) section has the command that builds the demo app, which CI builds too.
