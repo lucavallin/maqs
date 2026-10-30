@@ -530,7 +530,7 @@ The legs ran in parallel. The REST API then returned release `data-2026-10` as n
 
 ## 0014 — `MaqsCore`: one entry point, manifest-driven discovery, verified installs
 
-**Date:** 2026-10-16 · **Status:** accepted (owner decisions 2026-10-16); the open question of decision 5 on how `MaqsTerrain` receives the online provider values is closed by 0015 (its own `OnlineTerrainSource`), and for `MaqsUI` by 0017 (it depends on `MaqsCore`); file protection amended by 0016, which also amends the consequence that an open file stays readable (true for the PMTiles archives, not for the SQLite files `MaqsData` reads)
+**Date:** 2026-10-16 · **Status:** accepted (owner decisions 2026-10-16); the open question of decision 5 on how `MaqsTerrain` receives the online provider values is closed by 0015 (its own `OnlineTerrainSource`), and for `MaqsUI` by 0017 (it depends on `MaqsCore`); file protection amended by 0016, which also amends the consequence that an open file stays readable (true for the PMTiles archives, not for the SQLite files `MaqsData` reads); warnings as errors moved from `Package.swift` to the CI commands by 0018
 
 **Context.** Phase 4 of the brief is the Swift package. It is built in four sub-projects, in this order: the package skeleton with `MaqsCore`, then `MaqsTerrain`, then `MaqsData`, then `MaqsUI` with the demo app. This ADR covers the first: `Package.swift`, `swift.yml`, the test fixtures and `MaqsCore`. Besides downloads and storage, the package discovers regions. It reads what the latest data release offers from `releases/latest/download/manifest.json`, never through the GitHub REST API, and tells the app. Two documents cross a trust boundary on the way in: the manifest decides which files land on the user's disk, and `sources.json` decides which hosts the app talks to.
 
@@ -900,9 +900,31 @@ The full circle needed sorting on number keys and skipping the repeat check acro
 - Overlapping regions draw their overlays twice and give one tap hit per region. The base map's labels win label placement over the overlays, so a peak or a plate next to a town label can give way, and a tap on a base map label finds no overlay place.
 - Text in a script outside the bundled glyph ranges, other than CJK, draws without those letters.
 - Open before the first package tag: `Maqs.handleEventsForBackgroundURLSession(identifier:completionHandler:)` takes an `@escaping @Sendable` handler, and UIKit's is not `Sendable`, so a Swift 6 app forwards it through a `nonisolated(unsafe)` capture, as the demo does. Changing that is a change to `MaqsCore`'s public API.
+- CI's Xcode 26.6 built the MapLibre-specific Swift and passed all five simulator targets on 2026-10-30, the private accessibility switch of the view tests included. It opened the demo project (`objectVersion` 77), and the demo build failed on the manifest's warning flag, which ADR 0018 removes.
 - Not verified:
   - a real device: the airplane-mode walk, the offline banner (the simulator shares the Mac's network, so the demo approximated it with `-onlineTiles NO`) and the location prompt on a device;
-  - CI's Xcode 26.6, which has not built the MapLibre-specific Swift, the demo project (`objectVersion` 77) or the private accessibility switch the view tests use, until the branch's first CI run;
+  - the demo build on CI's Xcode 26.6 without that flag (ADR 0018);
   - the cause of straight seams in the hillshade at tile borders, seen in the demo in both schemes and with local terrain as well: MapLibre's DEM border backfill and the gateway's 204 for a missing neighbour tile are candidates;
   - the pause lengths against VersaTiles' real limit, which it does not publish;
   - the device and release-build timings ADRs 0015 and 0016 left to the demo app, which ran on the simulator only.
+
+## 0018 — Warnings as errors from the CI commands, not from `Package.swift`
+
+**Date:** 2026-10-30 · **Status:** accepted (owner decision 2026-10-30); amends the package decision of 0014
+
+**Context.** ADR 0014 made every target treat warnings as errors through `.treatAllWarnings(as: .error)` in `Package.swift`, which was checked with Xcode 27 only. The first CI build of the demo app, on 2026-10-30 with Xcode 26.6 (Swift 6.3.3), failed in the package's own targets: the compile steps of `MaqsCore`, `MaqsData` and `MaqsPMTiles` stopped, `MaqsCore` with "Conflicting options '-warnings-as-errors' and '-suppress-warnings'". Xcode 26.6 suppresses warnings in a package that an app depends on, the demo's local package included, and keeps the manifest's flag beside it. SE-0480, which added the setting, names the two options as mutually exclusive. A clean local demo build with Xcode 27 passes `-warnings-as-errors` alone to the same target. Anyone on Xcode 26.6 who builds the demo, or an app pointed at a local checkout of maqs, gets the error. For a package resolved from its URL, SE-0480 says SwiftPM strips the manifest's warning settings; whether Xcode 26.6 does so was not tested.
+
+**Decision.** `Package.swift` sets no warning flag. CI makes warnings errors from the command line: `swift build -Xswiftc -warnings-as-errors` and `swift test -Xswiftc -warnings-as-errors` in the `macos` job, and `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` on the simulator leg's `xcodebuild test`. The demo app's target keeps `SWIFT_TREAT_WARNINGS_AS_ERRORS = YES` in its project file.
+
+**Verified on 2026-10-30.**
+
+| Fact | Verified value | Source |
+|---|---|---|
+| Xcode 26.6 and the manifest flag | the demo build fails in `MaqsCore`, `MaqsData` and `MaqsPMTiles`; `MaqsCore` reports the conflicting options | `swift.yml` run on `macos-latest` |
+| The setting for dependencies | `-suppress-warnings` "is mutually exclusive with other warning control flags"; for remote targets SwiftPM strips the manifest's warning flags and adds `-suppress-warnings`; local dependencies are not named | SE-0480 (swift-evolution `proposals/0480-swiftpm-warning-control.md`) |
+| Xcode 27 and the manifest flag | a clean demo build passes `-warnings-as-errors` and no `-suppress-warnings` to `MaqsCore` | local build |
+| The command-line flags | an unused variable in `MaqsCore` or in `MaqsCoreTests` fails `swift build -Xswiftc -warnings-as-errors` (with `--build-tests` for the test) and `xcodebuild … SWIFT_TREAT_WARNINGS_AS_ERRORS=YES build-for-testing`; without a flag `swift build` only warns | local build |
+
+**Consequences.** A plain `swift build`, a plain `swift test` and a build in Xcode now only warn; the commands in CLAUDE.md and CONTRIBUTING.md pass the flag, as CI does. The package builds with the same flags for an app on Xcode 26.6 or 27, whether the app takes it from its URL or from a local checkout. The demo build in CI is the check that a dependency build keeps working.
+
+**Rejected.** `SWIFT_SUPPRESS_WARNINGS=NO` on the demo's CI build only: not tested on 26.6, and the demo would still fail for someone opening it in Xcode 26.6. Xcode 27 for the demo step: hides the incompatibility instead of removing it. `unsafeFlags(["-warnings-as-errors"])`: a package with unsafe flags cannot be a versioned dependency (ADR 0014).

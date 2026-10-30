@@ -108,9 +108,9 @@ dist/<region>/             # build outputs (gitignored; Releases only, never git
 
 ### Commands
 ```
-# Swift package — the "done" bar for Swift changes (build + all module tests)
-swift build
-swift test
+# Swift package — the "done" bar for Swift changes (build + all module tests, warnings as errors; Package.swift sets no warning flag, ADR 0018)
+swift build -Xswiftc -warnings-as-errors
+swift test -Xswiftc -warnings-as-errors
 swift test --filter MaqsCoreTests                         # one target (or MaqsTerrainTests, MaqsDataTests, MaqsPMTilesTests, MaqsUITests)
 swift test --filter ManifestTests                         # one suite, by its name alone (MaqsCoreTests/ManifestTests matches nothing)
 swift test --filter ManifestTests/decodesFixture          # one test: suite/function
@@ -121,7 +121,7 @@ scripts/update-map-assets.sh                              # download the pinned 
 
 # iOS Simulator leg (what swift.yml runs on iPhone 17; locally any installed simulator works)
 # the scheme is Maqs-Package because the package has several library products (with one it would be Maqs): check xcodebuild -list
-xcodebuild -scheme Maqs-Package -destination 'platform=iOS Simulator,name=iPhone 17' -skipPackagePluginValidation -collect-test-diagnostics never test
+xcodebuild -scheme Maqs-Package -destination 'platform=iOS Simulator,name=iPhone 17' -skipPackagePluginValidation -collect-test-diagnostics never SWIFT_TREAT_WARNINGS_AS_ERRORS=YES test
 # without -collect-test-diagnostics never a timed-out test costs ~10 min of simctl diagnose; pick one test with -only-testing:MaqsUITests/SharedGatewaySuite/MapLoadingTests/<function>() (the trailing () is needed)
 
 # Demo app (what swift.yml's ios-simulator job builds after the tests)
@@ -273,6 +273,7 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 - **Disk space on the Ubuntu runner is checked, not freed** (ADR 0013 has the measured figures); each `build` leg fails under 6 GB. The matrix legs must not download the PBF per region: they restore the cache `prepare` warms, with `fail-on-cache-miss` (ADR 0013).
 - **`swift test` on macOS does not exercise the iOS Simulator leg**; availability differences (`Network.framework`, background `URLSession` behaviour) only show there, and every MapLibre file of `MaqsUI` and `MaqsUITests` compiles only there. Run the simulator leg before declaring Phase 4 work done.
 - **CI's Xcode can be older than the one on your Mac.** On 2026-10-27 `macos-latest` ran Xcode 26.6 (Swift 6.3.3), whose SDK declares `Data.withUnsafeBytes` with an untyped `rethrows`: a `throws(E)` closure passed to it compiles with Xcode 27 and fails on CI ("thrown expression type 'any Error' cannot be converted"). Catch inside the closure with `do throws(E)`, as `Gzip.swift` does.
+- **Xcode 26.6 cannot build the package as a dependency while `Package.swift` sets a warning flag.** It adds `-suppress-warnings` to a package an app depends on, the demo's local one included, keeps the manifest's `.treatAllWarnings(as: .error)` beside it and fails with "Conflicting options '-warnings-as-errors' and '-suppress-warnings'" (CI, 2026-10-30); Xcode 27 passes only the manifest's flag. So the manifest sets none, and warnings are errors only where a command asks: `-Xswiftc -warnings-as-errors` for `swift build` and `swift test`, `SWIFT_TREAT_WARNINGS_AS_ERRORS=YES` for `xcodebuild` (ADR 0018). A plain `swift build` or a build in Xcode only warns.
 - **The golden files are written on macOS and checked on Linux too.** macOS's libm and glibc differ in the last digits of `sin`, `cos`, `log` and `tan` (up to 1e-12 relative on the fixtures), so the pipeline's golden checks compare floats within 1e-9 (`pipeline/tests/golden_compare.py`); ids, digests and shapes stay exact.
 - **Swift Testing prints a fake XCTest summary** ("Executed 0 tests"); read `Test run with N tests`. `swift test` prints one such line per test target (`MaqsUITests`, `MaqsTerrainTests`, `MaqsPMTilesTests`, `MaqsDataTests`, `MaqsCoreTests`): read every one. Grep xcodebuild output for `": error:"`, not `error`.
 - **The Xcode scheme name depends on the product count:** `Maqs` with one library product, `Maqs-Package` with several, which is the case since `MaqsTerrain` (ADR 0015). `swift.yml` reads `xcodebuild -list -json` and picks whichever exists.
