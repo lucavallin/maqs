@@ -180,6 +180,8 @@ extension Terrain {
         }
         let apparentTarget = targetHeight - options.earth.drop(atDistance: line.distance)
         var hiding: (clearance: Double, distance: Double)?
+        // The steepest slope from the eye, which orders samples as their elevation angles do.
+        var horizon: (slope: Double, distance: Double)?
         var firstGap: MissingReason?
         for (rung, point) in line.path.enumerated() {
             let distance = ladder[rung]
@@ -187,14 +189,21 @@ extension Terrain {
             case .missing(let reason):
                 firstGap = firstGap ?? reason
             case .elevation(let ground):
+                let apparent = ground - options.earth.drop(atDistance: distance)
                 let sight = eyeHeight + (apparentTarget - eyeHeight) * distance / line.distance
-                let clearance = ground - options.earth.drop(atDistance: distance) - sight
+                let clearance = apparent - sight
                 if clearance > options.margin, clearance > (hiding?.clearance ?? -.infinity) { hiding = (clearance, distance) }
+                let slope = (apparent - eyeHeight) / distance
+                if slope > (horizon?.slope ?? -.infinity) { horizon = (slope, distance) }
             }
         }
-        if let hiding {
+        if let hiding, let horizon {
             let blocked = Geodesy.destination(from: origin, bearing: line.bearing, distance: hiding.distance)
-            return .hidden(distance: line.distance, blockedAt: blocked, blockedDistance: hiding.distance, clearance: hiding.clearance)
+            let skyline = Geodesy.destination(from: origin, bearing: line.bearing, distance: horizon.distance)
+            return .hidden(
+                distance: line.distance, blockedAt: blocked, blockedDistance: hiding.distance, clearance: hiding.clearance,
+                horizonAt: skyline, horizonDistance: horizon.distance
+            )
         }
         if let firstGap { return .unknown(at: .path, reason: firstGap, distance: line.distance) }
         let angle = atan2(apparentTarget - eyeHeight, line.distance) * 180 / .pi
