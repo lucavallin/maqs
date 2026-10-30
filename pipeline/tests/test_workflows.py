@@ -218,10 +218,21 @@ def test_ios_simulator_step_picks_the_scheme_and_checks_the_log_strictly():
 def test_swift_jobs_print_the_toolchain_before_building():
     jobs = load("swift.yml")["jobs"]
     macos = [s.get("run", "") for s in jobs["macos"]["steps"]]
-    assert macos.index("swift --version") < macos.index("swift build")
+    assert macos.index("swift --version") < macos.index("swift build -Xswiftc -warnings-as-errors")
     ios = [s.get("run", "") for s in jobs["ios-simulator"]["steps"]]
     scheme_step = next(i for i, run in enumerate(ios) if "xcodebuild -list" in run)
     assert ios.index("xcodebuild -version") < scheme_step
+
+
+def test_swift_jobs_make_warnings_errors():
+    # Package.swift sets no warning flag (ADR 0018): only these commands fail CI on a warning.
+    jobs = load("swift.yml")["jobs"]
+    macos = [s.get("run", "") for s in jobs["macos"]["steps"]]
+    assert "swift build -Xswiftc -warnings-as-errors" in macos
+    assert "swift test -Xswiftc -warnings-as-errors" in macos
+    ios = [s.get("run", "") for s in jobs["ios-simulator"]["steps"]]
+    test_run = next(run for run in ios if 'xcodebuild -scheme "$scheme"' in run)
+    assert "SWIFT_TREAT_WARNINGS_AS_ERRORS=YES test" in test_run
 
 
 def test_swift_workflow_is_read_only_and_path_filtered():
