@@ -293,7 +293,7 @@ extension MaqsMapView {
                     style.setImage(image, forName: name)
                 }
                 return MarkerKey(id: marker.id, coordinate: marker.coordinate, imageName: name, label: marker.label,
-                                 isHidden: marker.isHidden)
+                                 isHidden: marker.isHidden, rank: marker.rank)
             }
             setShape(MarkerFeatures.geoJSON(keys, selectedID: map.selectedMarkerID), of: source)
         }

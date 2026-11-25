@@ -263,6 +263,7 @@ enum StyleAssembler {
             "maqs-markers": ["type": "geojson", "data": empty] as JSON,
         ]
         let active: [Any] = ["==", ["get", "maqs_active"], true]
+        let unselected: [Any] = ["!=", ["get", "maqs_selected"], true]
         var layers: [JSON] = [
             line("maqs-lines-hidden", source: "maqs-lines", filter: ["==", ["get", "maqs_style"], "hidden"] as [Any], paint: [
                 "line-color": palette.hiddenLine, "line-width": 3, "line-dasharray": [1.333, 1.667],
@@ -285,20 +286,25 @@ enum StyleAssembler {
             line("maqs-lines-active", source: "maqs-lines", filter: ["all", isSolid(), active] as [Any], paint: [
                 "line-color": palette.accent, "line-width": 5,
             ]),
-            markerLayer("maqs-markers", filter: ["!=", ["get", "maqs_selected"], true], palette),
+            markerLayer("maqs-markers-ranked", filter: ["all", ["has", "maqs_rank"], unselected] as [Any], palette, ranked: true),
+            markerLayer("maqs-markers", filter: ["all", ["!", ["has", "maqs_rank"]], unselected] as [Any], palette),
             markerLayer("maqs-markers-selected", filter: ["==", ["get", "maqs_selected"], true], palette),
         ]
         return (sources, layers)
     }
 
-    private static func markerLayer(_ id: String, filter: [Any], _ palette: Palette) -> JSON {
-        [
+    /// The markers' symbol layer. Ranked markers (`maqs_rank`) do not overlap one another and are placed highest rank
+    /// first, so the less important give way; the others are always drawn.
+    private static func markerLayer(_ id: String, filter: [Any], _ palette: Palette, ranked: Bool = false) -> JSON {
+        var layout: JSON = [
+            "icon-image": ["get", "maqs_image"], "icon-allow-overlap": !ranked,
+            "text-field": ["get", "maqs_label"], "text-font": boldFont, "text-size": 13,
+            "text-anchor": "top", "text-offset": [0, 0.8], "text-optional": true,
+        ]
+        if ranked { layout["symbol-sort-key"] = ["-", 0, ["get", "maqs_rank"]] as [Any] }
+        return [
             "id": id, "type": "symbol", "source": "maqs-markers", "filter": filter,
-            "layout": [
-                "icon-image": ["get", "maqs_image"], "icon-allow-overlap": true,
-                "text-field": ["get", "maqs_label"], "text-font": boldFont, "text-size": 13,
-                "text-anchor": "top", "text-offset": [0, 0.8], "text-optional": true,
-            ] as JSON,
+            "layout": layout,
             "paint": ["text-color": palette.casing == "#FFFFFF" ? "#101620" : "#E6EDF3", "text-halo-color": palette.casing, "text-halo-width": 2] as JSON,
         ]
     }

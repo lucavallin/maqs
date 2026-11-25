@@ -173,7 +173,7 @@ import Testing
 
     @Test func appendsOnlyTheContentLayersAfterTheBaseLayers() throws {
         let overlays = Self.overlays(["veneto", "friuli"])
-        let base = try Array(ids(bundled(dark: false, Self.inputs())).dropLast(7))
+        let base = try Array(ids(bundled(dark: false, Self.inputs())).dropLast(8))
         let style = try bundled(dark: false, Self.inputs(overlays: overlays))
         // Every overlay layer sits among the base layers (the next test); only the app's content follows them.
         let all = ids(style).filter { !Self.overlayBlock.contains($0) }
@@ -327,14 +327,14 @@ import Testing
 
     @Test func appendsTheContentLayersLastInOrder() throws {
         let light = ids(try bundled(dark: false, Self.inputs()))
-        #expect(Array(light.suffix(7)) == [
+        #expect(Array(light.suffix(8)) == [
             "maqs-lines-hidden", "maqs-lines-casing-edge", "maqs-lines-casing", "maqs-lines-solid", "maqs-lines-active",
-            "maqs-markers", "maqs-markers-selected",
+            "maqs-markers-ranked", "maqs-markers", "maqs-markers-selected",
         ])
         let dark = ids(try bundled(dark: true, Self.inputs(dark: true)))
-        #expect(Array(dark.suffix(7)) == [
+        #expect(Array(dark.suffix(8)) == [
             "maqs-lines-hidden", "maqs-lines-glow", "maqs-lines-casing", "maqs-lines-solid", "maqs-lines-active",
-            "maqs-markers", "maqs-markers-selected",
+            "maqs-markers-ranked", "maqs-markers", "maqs-markers-selected",
         ])
         #expect(!light.contains("maqs-lines-glow"))
         #expect(!dark.contains("maqs-lines-casing-edge"))
@@ -400,7 +400,7 @@ import Testing
         let style = try bundled(dark: false, Self.inputs())
         let markers = try layer(style, "maqs-markers")
         #expect(markers["source"] as? String == "maqs-markers")
-        #expect(json(markers["filter"]) == #"["!=",["get","maqs_selected"],true]"#)
+        #expect(json(markers["filter"]) == #"["all",["!",["has","maqs_rank"]],["!=",["get","maqs_selected"],true]]"#)
         let layout = try #require(markers["layout"] as? JSON)
         #expect(json(layout["icon-image"]) == #"["get","maqs_image"]"#)
         #expect(json(layout["text-field"]) == #"["get","maqs_label"]"#)
@@ -414,6 +414,21 @@ import Testing
         let selected = try layer(style, "maqs-markers-selected")
         #expect(json(selected["filter"]) == #"["==",["get","maqs_selected"],true]"#)
         #expect(json((selected["layout"] as? JSON)?["icon-image"]) == #"["get","maqs_image"]"#)
+    }
+
+    /// Ranked markers give way: they never overlap one another, the higher rank is placed first, and a label that does
+    /// not fit is dropped before its marker.
+    @Test func rankedMarkersGiveWayToHigherRankedOnes() throws {
+        let style = try bundled(dark: false, Self.inputs())
+        let ranked = try layer(style, "maqs-markers-ranked")
+        #expect(ranked["source"] as? String == "maqs-markers")
+        #expect(json(ranked["filter"]) == #"["all",["has","maqs_rank"],["!=",["get","maqs_selected"],true]]"#)
+        let layout = try #require(ranked["layout"] as? JSON)
+        #expect(layout["icon-allow-overlap"] as? Bool == false)
+        #expect(json(layout["symbol-sort-key"]) == #"["-",0,["get","maqs_rank"]]"#)
+        #expect(layout["text-optional"] as? Bool == true)
+        #expect(json(layout["icon-image"]) == #"["get","maqs_image"]"#)
+        #expect(json(layout["text-field"]) == #"["get","maqs_label"]"#)
     }
 
     @Test func worksOnAMinimalCustomStyle() throws {

@@ -8,18 +8,19 @@ struct MarkerKey: Equatable {
     var imageName: String
     var label: String?
     var isHidden: Bool
+    var rank: Double?
 
     static func == (lhs: MarkerKey, rhs: MarkerKey) -> Bool {
         lhs.id == rhs.id && lhs.coordinate.latitude == rhs.coordinate.latitude
             && lhs.coordinate.longitude == rhs.coordinate.longitude && lhs.imageName == rhs.imageName
-            && lhs.label == rhs.label && lhs.isHidden == rhs.isHidden
+            && lhs.label == rhs.label && lhs.isHidden == rhs.isHidden && lhs.rank == rhs.rank
     }
 }
 
 /// Builds the GeoJSON of the `maqs-markers` source.
 enum MarkerFeatures {
     /// One `Point` feature per marker with `maqs_id`, `maqs_image`, `maqs_label` (omitted without a label),
-    /// `maqs_hidden` and `maqs_selected`.
+    /// `maqs_hidden`, `maqs_selected` and `maqs_rank` (omitted for an unranked marker).
     ///
     /// `imageName` is the name of the variant to draw, selected or not; the caller picks it. Duplicate ids keep the
     /// last marker, a marker with a bad coordinate is skipped, and an unknown `selectedID` marks nothing.
@@ -36,6 +37,7 @@ enum MarkerFeatures {
                 "maqs_selected": marker.id == selectedID,
             ]
             if let label = marker.label { properties["maqs_label"] = label }
+            if let rank = marker.rank { properties["maqs_rank"] = rank }
             return [
                 "type": "Feature",
                 "geometry": ["type": "Point", "coordinates": [marker.coordinate.longitude, marker.coordinate.latitude]] as [String: Any],
