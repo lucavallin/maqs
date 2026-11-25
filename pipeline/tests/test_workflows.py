@@ -88,11 +88,27 @@ def test_build_maps_run_bodies_take_matrix_values_through_env():
             assert "${{ matrix." not in step.get("run", ""), step.get("name")
 
 
-def test_build_restores_the_geofabrik_extract_strictly():
+def test_build_restores_the_geofabrik_extracts_strictly():
     steps = load("build-maps.yml")["jobs"]["build"]["steps"]
-    restore = next(s for s in steps if s.get("name") == "Restore the Geofabrik extract")
+    restore = next(s for s in steps if s.get("name") == "Restore the Geofabrik extracts")
     assert restore["uses"].startswith("actions/cache/restore@")
     assert restore["with"]["fail-on-cache-miss"] is True
+    assert restore["with"]["key"] == "${{ needs.prepare.outputs.geofabrik-key }}"
+
+
+def test_prepare_caches_every_extract_the_config_names():
+    """ADR 0020: the extracts come from maqs regions --json, each fetched once, the cache keyed on
+    all their published MD5s, so no extract is hard-coded in the workflow."""
+    plan = prepare_step("Plan the run")["run"]
+    assert 'echo "extracts=$(jq -c \'.geofabrik_extracts\' <<<"$json")" >> "$GITHUB_OUTPUT"' in plan
+    sums = prepare_step("Geofabrik extract checksums")
+    assert sums["env"]["EXTRACTS"] == "${{ steps.plan.outputs.extracts }}"
+    assert "-latest.osm.pbf.md5" in sums["run"] and "sha256sum" in sums["run"]
+    assert "nord-est" not in sums["run"]
+    cache = prepare_step("Cache the Geofabrik extracts")
+    assert cache["with"]["key"] == "${{ steps.geofabrik.outputs.key }}"
+    fetch = prepare_step("Download each extract once")["run"]
+    assert 'uv run maqs fetch --extract "$extract"' in fetch
 
 
 def release_step(name: str) -> dict:
@@ -158,7 +174,7 @@ def test_disk_space_is_checked_on_each_build_leg_before_the_build():
     assert not any("df " in s.get("run", "") for s in jobs["prepare"]["steps"])
     names = [s.get("name") for s in jobs["build"]["steps"]]
     disk = jobs["build"]["steps"][names.index("Disk space")]
-    assert "df -BG --output=avail /" in disk["run"] and '[[ "$avail" -ge 6 ]]' in disk["run"]
+    assert "df -BG --output=avail /" in disk["run"] and '[[ "$avail" -ge 9 ]]' in disk["run"]
     assert names.index("Disk space") < names.index("Build ${{ matrix.target }}")
 
 

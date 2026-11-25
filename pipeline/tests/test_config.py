@@ -38,7 +38,15 @@ def test_loads_the_real_config():
     assert cfg.region("veneto").osm == {"geofabrik": "europe/italy/nord-est"}
     assert cfg.region("veneto").clip == {"admin": [43648]}
     assert cfg.base_pack("triveneto").regions == ("triveneto",)
-    assert cfg.geofabrik_extracts() == ["europe/italy/nord-est"]
+    # the regions' own extract, then the neighbours their places reach into (ADR 0020)
+    assert cfg.geofabrik_extracts() == [
+        "europe/italy/nord-est",
+        "europe/austria",
+        "europe/slovenia",
+        "europe/switzerland",
+        "europe/italy/nord-ovest",
+        "europe/croatia",
+    ]
     assert "test" not in cfg.region_ids(include_fixtures=False)
     assert "test" in cfg.region_ids(include_fixtures=True)
 
@@ -354,3 +362,51 @@ def test_real_config_has_veneto_expectations():
     assert cfg.region("veneto").expect["trails"] == RowRange(1500, 3000)
     assert cfg.region("veneto").expect["places"] == RowRange(10000, 18000)
     assert cfg.region("test").expect == {}
+
+
+def test_places_follow_the_clip_by_default(tmp_path):
+    r = load_config(write(tmp_path, MINIMAL)).region("a")
+    assert r.places_extent == "clip" and r.places_neighbours == ()
+
+
+def test_places_can_cover_the_box_from_the_neighbouring_extracts(tmp_path):
+    text = with_region_key(
+        "osm: { geofabrik: europe/italy/nord-est }\n"
+        "    places: { extent: bbox, neighbours: [europe/austria, europe/slovenia] }"
+    )
+    cfg = load_config(write(tmp_path, text))
+    r = cfg.region("a")
+    assert r.places_extent == "bbox"
+    assert r.places_neighbours == ("europe/austria", "europe/slovenia")
+    assert cfg.geofabrik_extracts() == [
+        "europe/italy/nord-est",
+        "europe/austria",
+        "europe/slovenia",
+    ]
+
+
+@pytest.mark.parametrize(
+    "extra, message",
+    [
+        ("places: { extent: polygon }", "places.extent must be clip or bbox"),
+        ("places: { neighbours: [europe/austria] }", "places.neighbours need extent: bbox"),
+        (
+            "places: { extent: bbox, neighbours: [1] }",
+            "places.neighbours must be Geofabrik extract names",
+        ),
+        ("places: { extent: bbox }", "places with extent: bbox need osm.geofabrik"),
+        ("places: [bbox]", "places must be a mapping"),
+    ],
+)
+def test_rejects_bad_places(tmp_path, extra, message):
+    with pytest.raises(ConfigError, match=f"region 'a': {message}"):
+        load_config(write(tmp_path, with_region_key(extra)))
+
+
+def test_real_config_carries_places_across_the_borders():
+    cfg = load_config(REAL)
+    triveneto = cfg.region("triveneto")
+    assert triveneto.places_extent == "bbox"
+    assert "europe/austria" in triveneto.places_neighbours
+    assert cfg.region("test").places_extent == "clip"
+    assert "europe/austria" in cfg.geofabrik_extracts()

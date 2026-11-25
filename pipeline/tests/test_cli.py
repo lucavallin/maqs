@@ -497,7 +497,14 @@ def test_regions_json_lists_regions_base_packs_and_extracts():
     assert test["bbox"] == [12.21, 46.08, 12.29, 46.13]
     assert all(r["fixture"] is False for r in doc["regions"][1:])
     assert doc["base_packs"] == [{"id": "triveneto", "regions": ["triveneto"], "max_zoom": 10}]
-    assert doc["geofabrik_extracts"] == ["europe/italy/nord-est"]
+    assert doc["geofabrik_extracts"] == [
+        "europe/italy/nord-est",
+        "europe/austria",
+        "europe/slovenia",
+        "europe/switzerland",
+        "europe/italy/nord-ovest",
+        "europe/croatia",
+    ]
     assert [r["id"] for r in doc["regions"] if not r["fixture"]] == ids[1:]
 
 

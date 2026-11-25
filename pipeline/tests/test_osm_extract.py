@@ -349,3 +349,58 @@ def test_osm_timestamp(osmium_bin, monkeypatch):
     assert extract.osm_timestamp(Path("/x.pbf")) == "2026-10-06T20:21:06Z"
     monkeypatch.setattr(tools, "run", reply("\n"))
     assert extract.osm_timestamp(Path("/x.pbf")) is None
+
+
+def seed_extract(ctx, extract_id):
+    path = ctx.cache / "geofabrik" / f"{extract.extract_name(extract_id)}-latest.osm.pbf"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"pbf")
+    return path
+
+
+def test_places_pbf_cuts_every_extract_by_the_box_and_merges_them(
+    cfg, tmp_path, osmium_bin, no_download, monkeypatch
+):
+    calls = record_runs(monkeypatch)
+    region = dataclasses.replace(
+        cfg.region("veneto"), places_extent="bbox", places_neighbours=("europe/austria",)
+    )
+    ctx = dataclasses.replace(make_ctx(cfg, tmp_path, "veneto"), region=region)
+    nord_est = seed_extract(ctx, "europe/italy/nord-est")
+    seed_extract(ctx, "europe/austria")
+    peaks = ["n/natural=peak"]
+    out = extract.places_pbf(ctx, peaks)
+    assert out == ctx.cache / "veneto" / "places-box.osm.pbf"
+    assert [c[1] for c in calls] == ["tags-filter", "extract", "tags-filter", "extract", "merge"]
+    filtered = ctx.cache / "veneto" / f"places-filtered-{NORD_EST}.osm.pbf"
+    assert calls[0][2:4] == [str(nord_est), *peaks]
+    assert calls[1][2:4] == ["--bbox", "10.6231,44.7923,13.1021,46.6806"]
+    assert calls[1][4] == str(filtered)
+    cuts = [
+        ctx.cache / "veneto" / f"places-{NORD_EST}.osm.pbf",
+        ctx.cache / "veneto" / "places-europe-austria.osm.pbf",
+    ]
+    tmp = ctx.cache / "veneto" / "places-box.tmp.osm.pbf"
+    assert calls[-1] == ["/usr/bin/osmium", "merge", *map(str, cuts), "-o", str(tmp), "--overwrite"]
+    assert out.exists() and not tmp.exists()
+    extract.places_pbf(ctx, peaks)
+    assert len(calls) == 5  # everything reused
+    ctx.force = True
+    extract.places_pbf(ctx, peaks)
+    assert [c[1] for c in calls[5:]] == [
+        "tags-filter",
+        "extract",
+        "tags-filter",
+        "extract",
+        "merge",
+    ]
+
+
+def test_places_pbf_keeps_the_region_cut_without_a_box_extent(
+    test_region, osmium_bin, no_download, monkeypatch
+):
+    calls = record_runs(monkeypatch)
+    seed_geofabrik(test_region)
+    out = extract.places_pbf(test_region, ["n/natural=peak"])
+    assert out == test_region.cache / "test" / "places.osm.pbf"
+    assert [c[1] for c in calls] == ["extract", "tags-filter"]

@@ -218,6 +218,38 @@ def filtered_region_pbf(ctx: BuildContext, name: str, expressions: Sequence[str]
     return dst
 
 
+def places_pbf(ctx: BuildContext, expressions: Sequence[str]) -> Path:
+    """The region's places input. With `places.extent: bbox` (ADR 0020): every extract it names,
+    its own and the neighbours', tag-filtered, cut to the region's box and merged, so the places
+    reach wherever the box's terrain does; osmium merge keeps one copy of a node two extracts share.
+    Otherwise the region cut narrowed by the expressions, as every other layer reads it.
+
+    Each step is cached in the region's directory by name, never in the shared Geofabrik cache: a
+    change to the expressions needs --force, and a CI cache of the extracts never carries a
+    filtered file built with old expressions.
+    """
+    region = ctx.require_region()
+    if region.places_extent != "bbox":
+        return filtered_region_pbf(ctx, "places", expressions)
+    dst = ctx.cache / region.id / "places-box.osm.pbf"
+    if dst.exists() and not ctx.force:
+        return dst
+    cuts: list[Path] = []
+    for extract_id in (region_extract_id(ctx), *region.places_neighbours):
+        name = extract_name(extract_id)
+        filtered = ctx.cache / region.id / f"places-filtered-{name}.osm.pbf"
+        if ctx.force or not filtered.exists():
+            tags_filter(fetch_extract(ctx.cache, extract_id), filtered, expressions)
+        cut = ctx.cache / region.id / f"places-{name}.osm.pbf"
+        tmp = _partial_path(cut)
+        argv = [_osmium(), "extract", "--bbox", format_bbox(region.bbox), str(filtered)]
+        _run_into([*argv, "-o", str(tmp), "--overwrite"], tmp, cut)
+        cuts.append(cut)
+    tmp = _partial_path(dst)
+    _run_into([_osmium(), "merge", *map(str, cuts), "-o", str(tmp), "--overwrite"], tmp, dst)
+    return dst
+
+
 def osm_timestamp(pbf: Path) -> str | None:
     header = "header.option.osmosis_replication_timestamp"
     result = tools.run([_osmium(), "fileinfo", "-g", header, str(pbf)])

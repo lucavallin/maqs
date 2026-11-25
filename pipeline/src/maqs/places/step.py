@@ -165,7 +165,7 @@ class PlacesStep:
         return Expectation(PLACES_MIN_ZOOM, PLACES_MAX_ZOOM, frozenset({"mvt"}))
 
     def build(self, ctx: BuildContext) -> StepOutcome:
-        filtered = extract.filtered_region_pbf(ctx, "places", PLACE_FILTERS)
+        filtered = extract.places_pbf(ctx, PLACE_FILTERS)
         meta = metadata_for(ctx, "places")
         records = read_places(filtered)
         anomalies = [a for r in records for a in r.anomalies]

@@ -741,7 +741,7 @@ The target of about 2 s for a full look on local data is met on macOS and missed
 8. **Matching stays with the app.** `Roads.segments(near:within:limit:)` returns the segments near a position with the distance, the position along the segment and the drawing-direction heading at the nearest point. Once the app has matched, `cornersAhead(from:distance:)` takes the segment, the direction of travel and the position along it.
 9. **Opening.** Each file is opened as the URI `file:<percent-encoded path>?immutable=1` with `SQLITE_OPEN_READONLY | SQLITE_OPEN_URI`. A file is accepted only when its `metadata` table has one row, its `layer` matches the reader, its `schema_version` is 1 and the tables and columns the reader needs exist; columns are selected by name and unknown ones are ignored (the compatibility rule). `init` and `setFiles` open every file or none. No query suspends, so `setFiles` cannot interleave with one. Nothing writes, and no `-wal`, `-shm` or `-journal` file appears.
 10. **Errors.** `QueryError` has `cannotOpen`, `wrongLayer`, `unsupportedSchemaVersion`, `incompatibleFile`, `duplicateRegion`, `corruptData`, `unreadable`, `invalidInput` and `unknownSegment`. Messages name a file by its last path component only. `SQLITE_IOERR_SHORT_READ` (a truncated file) is `corruptData`; other `SQLITE_IOERR` codes, `SQLITE_PERM` and `SQLITE_CANTOPEN` are `unreadable`; anything else is `corruptData` with the result code, never the SQL. Logging is `os.Logger`, category `data`: a file opened at info, a rejection at error, never a query, and every position `privacy: .private`.
-11. **The gap report is dropped.** The first design offered to say from which distance along a line no places data was installed. The SQLite files do not record their region's outline and the regions are clipped to admin polygons, so `MaqsData` cannot tell a stretch with no places from a stretch outside every region. A bounding box would claim coverage over land the file does not hold, the pretending that decision 8 of ADR 0015 forbids (unknown, never visible). The app knows the installed regions through `MaqsCore`'s catalog. A report can be added later without breaking the API.
+11. **The gap report is dropped.** The first design offered to say from which distance along a line no places data was installed. The SQLite files do not record their region's outline and the regions are clipped to admin polygons (since ADR 0020 a region's places cover its box, and the box is still not recorded in the file), so `MaqsData` cannot tell a stretch with no places from a stretch outside every region. A bounding box would claim coverage over land the file does not hold, the pretending that decision 8 of ADR 0015 forbids (unknown, never visible). The app knows the installed regions through `MaqsCore`'s catalog. A report can be added later without breaking the API.
 
 **The lookahead.** `cornersAhead` walks the road from the matched segment for `distance` metres (up to 10,000, 1,000 by default) and reports the corners whose apex lies ahead, including one the rider is already in. For travel against the drawing direction every distance flips, `left` and `right` swap and ordinals run backwards. At the next **junction point** (the segment's end, or the nearest `junctions` row ahead) it lists the branches: every segment through the node in any open file, with the direction that leads away from it. Branches against an effective one-way, and branches whose first stretch is already on the path, are left out, so the walk never turns back and a loop cannot repeat.
 - No branch: the walk stops with `noContinuation(at:)` at that distance. One: it continues. Several: the **fork rule**. The candidates are narrowed by `ref`, then `name`, then `highway`, each step only when it leaves at least one. The `ref` and `name` compared against are the last non-empty ones on the path, so an unnamed link or a roundabout between two stretches of one road leads back onto it; a branch without the tag never matches. `ref` is compared as a whole string, whitespace collapsed, case ignored, and `name` and `highway` use the same normalisation. Among what remains the smallest absolute turn wins, measured over 20 m either side of the node (or the whole stretch when it is shorter; the incoming bearing is the road's last 20 m). Turns within 1e-6° tie; ties go to the lower way id, then `forward`.
@@ -961,3 +961,35 @@ The full circle needed sorting on number keys and skipping the repeat check acro
 **Rejected.**
 - **`place=suburb` and `place=quarter`:** they name parts of a city, not the place a viewer would say they stand in, and there are many more of them.
 - **Leaving towns to the apps:** an app cannot query the basemap's labels, and a gazetteer of its own would duplicate the places layer.
+
+## 0020 — A region's places cover its box
+
+**Date:** 2026-11-25 · **Status:** accepted (owner decision, 2026-11-25); amends the budget "one Geofabrik download per run" and the single-extract release workflow (ADR 0013), and 0016's decision 11 (its reasoning holds)
+
+**Context.** A region's terrain is cut by its box plus a tile ring, and its places are cut by its admin polygons. A line of sight from inside a region crosses the border long before it leaves the terrain. From Treviso, Triveneto's terrain reaches the Großglockner, 160 km away in Austria, but no place there has a name. Monte Adamello in Lombardy and the Julian Alps in Slovenia are the same. The Geofabrik extract every region is cut from, `europe/italy/nord-est`, does not even hold those places: its edge runs near 46.7° N north of the Piave.
+
+**Decision.**
+1. **Configuration:** a region may set `places: { extent: bbox, neighbours: [<extract>, …] }`. Its places are then every place in its box, read from its own extract and each neighbour. The default, `extent: clip`, keeps today's cut. Neighbours need `extent: bbox`, and `extent: bbox` needs `osm.geofabrik`.
+2. **The cut** (`maqs.osm.extract.places_pbf`):
+   - each extract is tag-filtered, then cut with `osmium extract --bbox` to the region's box;
+   - `osmium merge` joins the cuts and keeps one copy of a node two extracts share (Geofabrik's polygons overlap at borders);
+   - every step is cached in the region's directory, never beside the shared extract, so a CI cache of the extracts never carries a file filtered with old expressions.
+3. **Scope:** trails and curvature keep the admin clip. A trail relation already stays whole across the border (ADR 0006); road curvature outside the region is not this change.
+4. **The neighbours** of each region are the extracts whose Geofabrik `.poly` meets its box, checked against the polygons on 2026-11-25:
+   - `triveneto`: Austria, Slovenia, Switzerland, `italy/nord-ovest`, Croatia;
+   - `veneto`: Austria, `italy/nord-ovest`;
+   - `friuli-venezia-giulia`: Austria, Slovenia;
+   - `trentino-alto-adige`: Austria, Switzerland, `italy/nord-ovest`.
+
+   Where a polygon's buffer meets a box only over the sea (Croatia for Veneto and Friuli), it is left out.
+5. **The release workflow** downloads every extract `regions.yaml` names, `maqs regions --json`'s `geofabrik_extracts`, once per run. It caches them together under a key made from Geofabrik's published MD5s, so a file is fetched again only when Geofabrik replaces it. `pipeline.yml`'s smoke job keeps its own cache of the nord-est extract.
+
+**Consequences.**
+- **Downloads:** a monthly run now downloads about 2.4 GB more from Geofabrik: Austria about 779 MB, Switzerland 526 MB, `italy/nord-ovest` 569 MB, Slovenia 300 MB, plus Croatia (sizes from 2026-11-25). That happens once a month, cached, and only when Geofabrik's files change. Every region leg restores all of them.
+- **Larger places files:** each region's places file grows by the places in its box beyond its polygons. A region's box now names places of its neighbours too: Veneto's box holds most of Trentino. Overlapping regions already deduplicate by `PlaceID` in `MaqsData`, and the overlay draws overlaps once per region (ADR 0017). The `expect.places` ranges are re-measured with this change's first real build.
+- **No new layer version:** the format is unchanged; rows change, not columns.
+
+**Rejected.**
+- **A buffered admin polygon:** it needs geometry code, which ADR 0010 rejected, and a buffer has no natural width. The box is where the terrain is.
+- **Geofabrik's `europe/alps` extract (2.2 GB):** one download, but no Istria and no plains beyond the border.
+- **Austria only:** the reference line's hidden peak, and nothing toward Slovenia, Switzerland or Lombardy.

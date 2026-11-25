@@ -79,6 +79,10 @@ class Region:
     bbox_border: int
     trail_sources: tuple[str, ...]
     expect: dict[str, RowRange]
+    # "clip": the places follow the region's cut (its admin polygons, else its box). "bbox": every
+    # place in the box, where its terrain is, from its own extract and the neighbours (ADR 0020).
+    places_extent: str = "clip"
+    places_neighbours: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -112,10 +116,14 @@ class Config:
         return union_bbox(self.region(rid).bbox for rid in pack.regions)
 
     def geofabrik_extracts(self) -> list[str]:
+        """Every Geofabrik extract a build needs, each once: the regions' own, then their places'
+        neighbours."""
         seen: list[str] = []
         for r in self.regions:
-            if r.osm and r.osm.get("geofabrik") and r.osm["geofabrik"] not in seen:
-                seen.append(r.osm["geofabrik"])
+            own = [r.osm["geofabrik"]] if r.osm and r.osm.get("geofabrik") else []
+            for extract in (*own, *r.places_neighbours):
+                if extract not in seen:
+                    seen.append(extract)
         return seen
 
     def region_ids(self, include_fixtures: bool) -> list[str]:
@@ -256,6 +264,7 @@ def _parse_region(raw: dict) -> Region:
     fixture = raw.get("fixture", False)
     if not isinstance(fixture, bool):
         raise ConfigError(f"{where}: fixture must be true or false, got {fixture!r}")
+    places_extent, places_neighbours = _parse_places(raw.get("places"), raw.get("osm"), where)
     return Region(
         id=rid,
         name={k: str(v) for k, v in name.items()},
@@ -267,7 +276,27 @@ def _parse_region(raw: dict) -> Region:
         bbox_border=border,
         trail_sources=_parse_trail_sources(raw.get("trails"), where),
         expect=_parse_expect(raw.get("expect"), where),
+        places_extent=places_extent,
+        places_neighbours=places_neighbours,
     )
+
+
+def _parse_places(raw: object, osm: object, where: str) -> tuple[str, tuple[str, ...]]:
+    if raw is None:
+        return "clip", ()
+    if not isinstance(raw, dict):
+        raise ConfigError(f"{where}: places must be a mapping, got {raw!r}")
+    extent = raw.get("extent", "clip")
+    if extent not in ("clip", "bbox"):
+        raise ConfigError(f"{where}: places.extent must be clip or bbox, got {extent!r}")
+    neighbours = raw.get("neighbours", [])
+    if not isinstance(neighbours, list) or not all(isinstance(n, str) and n for n in neighbours):
+        raise ConfigError(f"{where}: places.neighbours must be Geofabrik extract names")
+    if neighbours and extent != "bbox":
+        raise ConfigError(f"{where}: places.neighbours need extent: bbox")
+    if extent == "bbox" and not (isinstance(osm, dict) and osm.get("geofabrik")):
+        raise ConfigError(f"{where}: places with extent: bbox need osm.geofabrik")
+    return extent, tuple(neighbours)
 
 
 def _parse_base_pack(raw: dict, regions: dict[str, Region]) -> BasePack:
