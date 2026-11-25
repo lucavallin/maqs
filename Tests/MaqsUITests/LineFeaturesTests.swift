@@ -69,4 +69,26 @@ import Testing
     @Test func noLinesGiveAnEmptyCollection() throws {
         #expect(try features(LineFeatures.geoJSON([], activeID: nil)).isEmpty)
     }
+
+    private static let b = [CLLocationCoordinate2D(latitude: 46.3, longitude: 12.4), CLLocationCoordinate2D(latitude: 46.4, longitude: 12.5)]
+
+    @Test func drawsSeveralRunsAsOneMultiLineStringFeature() throws {
+        let line = MapLine(id: "sight", segments: [Self.a, Self.b])
+        let list = try features(LineFeatures.geoJSON([line], activeID: "sight"))
+        #expect(list.count == 1)
+        let geometry = try #require(list[0]["geometry"] as? [String: Any])
+        #expect(geometry["type"] as? String == "MultiLineString")
+        #expect(geometry["coordinates"] as? [[[Double]]] == [[[12.2, 46.1], [12.3, 46.2]], [[12.4, 46.3], [12.5, 46.4]]])
+        #expect(properties(list[0])["maqs_id"] as? String == "sight")
+        #expect(properties(list[0])["maqs_active"] as? Bool == true)
+        #expect(line.coordinates.count == 4)
+    }
+
+    @Test func dropsRunsWithFewerThanTwoUsablePoints() throws {
+        let lone = [CLLocationCoordinate2D(latitude: 46.5, longitude: 12.6)]
+        let list = try features(LineFeatures.geoJSON([MapLine(id: "one", segments: [Self.a, lone])], activeID: nil))
+        #expect((list[0]["geometry"] as? [String: Any])?["type"] as? String == "LineString")
+        #expect(coordinates(list[0]) == [[12.2, 46.1], [12.3, 46.2]])
+        #expect(try features(LineFeatures.geoJSON([MapLine(id: "none", segments: [lone, []])], activeID: nil)).isEmpty)
+    }
 }
