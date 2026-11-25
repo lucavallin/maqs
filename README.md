@@ -135,12 +135,13 @@ let map = try MaqsMap(maqs: maqs, configuration: MapConfiguration(accent: .orang
 map.overlays = MapOverlays(trails: true, places: nil)        // the installed regions' trails and every place kind
 map.lines = [MapLine(id: "track", coordinates: [here, peak.coordinate])]
 map.activeLineID = "track"                                    // the one line drawn in the accent
-map.markers = [MapMarker(id: "peak", coordinate: peak.coordinate, label: "Peak")]
+map.markers = [MapMarker(id: "peak", coordinate: peak.coordinate, label: "Peak", rank: 2565)] // ranked: gives way when crowded
 map.onTap = { [weak map] tap in                               // what the tap touched, topmost first
     guard case .trail(let feature)? = tap.hits.first else { return }
     map?.selectedOverlayFeature = feature                     // the trail in the accent
     Task { print(try await trails.trail(region: feature.region, featureID: feature.featureID) as Any) }
 }
+map.onLongPress = { tap in print("held at", tap.coordinate) }  // a half-second hold, reported once
 
 struct MapScreen: View {
     let map: MaqsMap
@@ -155,6 +156,8 @@ struct MapScreen: View {
 Inside an installed region the map draws everything from the downloaded files and sends no tile request, even with signal; elsewhere it streams the `sources.json` provider's tiles, and with no network it shows what it cached earlier. Installing or removing a pack changes what it draws without a new view. The map draws only the layers the `Maqs` configuration names: the basemap always, hillshade with `.terrain`, the overlays with `.trails` and `.places`. A 429 from the provider pauses online tiles for at least a minute, and `onlineTilesPaused` says so.
 
 The app draws its own controls: the map hides MapLibre's compass, logo and attribution button, and `follow(_:)`, `resetNorth()`, `setPitch(_:)` and `show(_:)` are there for the app's buttons. `connectivity` and `uninstalledRegion` tell the app when to offer a download, and `credits` lists the sources the map draws, which `MapAttributionView` shows. Set `contentInsets` to the room your chrome takes, and count the status bar and the home indicator in when the map runs under them.
+
+A line can be several runs drawn as one, `MapLine(id:segments:)`, so the active line can be every stretch of a sight line that is in view. Each marker the map draws is also a button for VoiceOver, labelled with its label.
 
 A custom style needs a vector source named `basemap`, and a `raster-dem` source named `terrain` for hillshade; the package fills in the tiles, fonts and sprite. Any other source in it is fetched by MapLibre directly, so it needs the network even inside an installed region. [`docs/architecture.md`](docs/architecture.md#map) has the contract and the design rules, and ADR 0017 in [`docs/decisions.md`](docs/decisions.md) has the reasons.
 

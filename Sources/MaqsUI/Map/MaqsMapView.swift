@@ -70,7 +70,7 @@ extension MaqsMapView {
         /// The side of the square around a tap that counts as touched, in points.
         static let tapSide: CGFloat = 44
 
-        let mapView: MLNMapView
+        let mapView: OrnamentlessMapView
         /// The map's own single tap. It waits for MapLibre's double tap and tap-and-drag zoom to fail, as MapLibre's own
         /// single tap does, so neither gesture is reported as a tap.
         let tapRecognizer: UITapGestureRecognizer
@@ -124,6 +124,7 @@ extension MaqsMapView {
             longPressRecognizer.minimumPressDuration = 0.5
             longPressRecognizer.addTarget(self, action: #selector(handleLongPress(_:)))
             mapView.addGestureRecognizer(longPressRecognizer)
+            mapView.markerElements = { [weak self] in self?.markerAccessibilityElements() ?? [] }
             mapView.showsCompassView = false
             mapView.showsLogoView = false
             mapView.showsAttributionButton = false
@@ -266,6 +267,7 @@ extension MaqsMapView {
         func showMarkers() {
             guard let style = mapView.style else { return }
             showMarkers(on: style)
+            mapView.invalidateMarkerElements()
         }
 
         /// Filters each region's selected-trail layer to the selected feature, or to nothing.
@@ -333,6 +335,33 @@ extension MaqsMapView {
         @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
             guard recognizer.state == .ended else { return }
             tap(at: recognizer.location(in: mapView))
+        }
+
+        // MARK: Markers for VoiceOver
+
+        /// One button per marker drawn in the view, labelled with its label, whose activation taps the map on it.
+        private func markerAccessibilityElements() -> [Any] {
+            guard let style = mapView.style else { return [] }
+            let layers = Set(["maqs-markers-ranked", "maqs-markers", "maqs-markers-selected"].filter {
+                style.layer(withIdentifier: $0) != nil
+            })
+            guard !layers.isEmpty else { return [] }
+            let drawn = mapView.visibleFeatures(in: mapView.bounds, styleLayerIdentifiers: layers).compactMap {
+                feature -> (id: String, label: String?, point: CGPoint)? in
+                guard let id = feature.attribute(forKey: "maqs_id") as? String else { return nil }
+                return (id, feature.attribute(forKey: "maqs_label") as? String,
+                        mapView.convert(feature.coordinate, toPointTo: mapView))
+            }
+            return MarkerAccessibility.items(drawn, in: mapView.bounds).map { item in
+                let element = MarkerAccessibilityElement(accessibilityContainer: mapView)
+                element.accessibilityLabel = item.label
+                element.accessibilityIdentifier = item.id
+                element.accessibilityTraits = .button
+                element.accessibilityFrameInContainerSpace = item.frame
+                let point = CGPoint(x: item.frame.midX, y: item.frame.midY)
+                element.onActivate = { [weak self] in self?.tap(at: point) }
+                return element
+            }
         }
 
         @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
@@ -431,11 +460,14 @@ extension MaqsMapView {
 
         func mapViewDidBecomeIdle(_ mapView: MLNMapView) {
             idlesSinceStyleLoad += 1
+            // Markers are placed, or given way, once a frame is drawn: VoiceOver's buttons follow.
+            self.mapView.invalidateMarkerElements()
         }
 
         /// The first layout with a size changes the region too: a box or a centre the map was asked to show before is
         /// applied then, at once.
         func mapView(_ mapView: MLNMapView, regionDidChangeWith reason: MLNCameraChangeReason, animated: Bool) {
+            self.mapView.invalidateMarkerElements()
             if canFitBounds, let pending = map?.takePendingCamera() {
                 switch pending {
                 case .bounds(let bounds):

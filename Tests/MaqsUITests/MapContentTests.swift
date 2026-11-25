@@ -154,6 +154,29 @@ extension SharedGatewaySuite {
             #expect(host.coordinator.styleLoads == loads)
         }
 
+        /// VoiceOver cannot see what MapLibre draws, so each drawn marker is a button among the map's accessibility
+        /// children; activating it reports a tap on it.
+        @Test func drawnMarkersAreButtonsVoiceOverCanActivate() async throws {
+            let maqs = try TestRegion.maqs(on: server, layers: [.basemap], in: directory)
+            let map = try MaqsMap(maqs: maqs, configuration: MapConfiguration(), seams: seams())
+            let center = TestRegion.center
+            map.markers = [MapMarker(id: "peak", coordinate: center, label: "Monte Pizzoc", rank: 2565)]
+            var taps: [MapTap] = []
+            map.onTap = { taps.append($0) }
+            let host = try await MapHost.show(map)
+            defer { host.close() }
+            host.mapView.setCenter(center, zoomLevel: 13, animated: false)
+            try await host.waitUntilDrawn()
+
+            let view = host.mapView
+            let children = (0..<view.accessibilityElementCount()).compactMap { view.accessibilityElement(at: $0) as? NSObject }
+            #expect(children.filter { $0.accessibilityLabel == "Monte Pizzoc" }.count == 1, "MapLibre adds no button of its own")
+            let marker = try #require(children.first { $0.accessibilityLabel == "Monte Pizzoc" })
+            #expect(marker.accessibilityTraits.contains(.button))
+            #expect(marker.accessibilityActivate())
+            #expect(taps.first?.hits.contains(.marker("peak")) == true)
+        }
+
         @Test func aTapOnAFixtureTrailReturnsTheRowMaqsDataReads() async throws {
             let maqs = try await TestRegion.install(on: server, layers: [.basemap, .trails], in: directory)
             let trails = try Trails(files: [try await readerFile(maqs, .trails)])

@@ -816,7 +816,7 @@ The full circle needed sorting on number keys and skipping the repeat check acro
 
 ## 0017 — `MaqsUI`: the map, the tile gateway and the demo app
 
-**Date:** 2026-10-29 · **Status:** accepted (owner decisions 2026-10-28, look decisions 2026-10-29); closes the question ADR 0014 left open for `MaqsUI`; puts ADR 0007's base pack in use
+**Date:** 2026-10-29 · **Status:** accepted (owner decisions 2026-10-28, look decisions 2026-10-29); closes the question ADR 0014 left open for `MaqsUI`; puts ADR 0007's base pack in use; amended 2026-11-25: long press, ranked markers, lines in several stretches and markers for VoiceOver (*Amendment*, below)
 
 **Context.** `MaqsUI` is the last of the four sub-projects of Phase 4 (ADR 0014): a SwiftUI map over MapLibre Native that shows the basemap online or from installed regions, draws what an app hands it and credits the sources it shows. Three uses set the requirements: a ride, where the map follows the rider and the recorded track grows behind them; a hike, where a trail picked from the trails layer is drawn in the accent deep in valleys with no signal; and a sight line, a great-circle line along a bearing with the places along it as markers and the stretches out of sight drawn differently. The logic behind each (recording, the sight-line maths, search) stays in the app. The brief asks for the switching strategy between downloaded files and online tiles as an ADR. MapLibre's SwiftPM binary is iOS only (ADR 0003). The design is in `docs/superpowers/specs/2026-10-28-maqs-ui-design.md`, and [`docs/architecture.md`](architecture.md#map) describes the result.
 
@@ -908,6 +908,16 @@ The full circle needed sorting on number keys and skipping the repeat check acro
   - the cause of straight seams in the hillshade at tile borders, seen in the demo in both schemes and with local terrain as well: MapLibre's DEM border backfill and the gateway's 204 for a missing neighbour tile are candidates;
   - the pause lengths against VersaTiles' real limit, which it does not publish;
   - the device and release-build timings ADRs 0015 and 0016 left to the demo app, which ran on the simulator only.
+
+**Amendment (2026-11-25): long press, ranked markers, lines in several stretches, markers for VoiceOver.** A sight-line app needs four things the first version lacked. All four are additive: no existing call changes meaning.
+- **`MaqsMap.onLongPress`:** a half-second hold, reported once when it begins, with the same `MapTap` a tap gets. It waits for MapLibre's one-tap-then-hold zoom to fail, as the tap does. It is exclusive with the other gestures, so a hold that moves first is a pan. This makes "a line through any point" possible without a public point-to-coordinate conversion.
+- **`MapMarker.rank`:** ranked markers are drawn in their own layer, `maqs-markers-ranked`, without overlap, highest rank first. When an app hands the map every peak in view, the less notable give way where they crowd, as the places overlay's markers do. Unranked markers keep the always-drawn layer, so an existing app sees no change; the selected marker is always drawn.
+- **`MapLine(id:segments:)`:** several runs drawn as one `MultiLineString` feature. The single active line can then be every stretch of a sight line that is in view, and a tap on any run hits the line. `coordinates` became every point, run after run.
+- **Markers reachable by VoiceOver:** MapLibre exposes its annotations to accessibility but not the symbols of a style layer, so the markers an app draws were invisible to VoiceOver, and to UI tests. The map view now lists one button per drawn marker, labelled with its label and identified by its id, and activating it taps the marker. The buttons come from `visibleFeatures`, so a ranked marker that gave way has none. A test pins that MapLibre adds no button of its own for the same marker.
+- **Rejected:**
+  - a public point-to-coordinate conversion, so apps build their own gestures: it would put MapLibre's coordinate space in the public API;
+  - several active line ids: one active line made of runs keeps "the one line in the accent" true.
+- **Not verified:** the long press with real touches (the tests call the handler and check the recognizer's settings), and VoiceOver on a device.
 
 ## 0018 — Warnings as errors from the CI commands, not from `Package.swift`
 
