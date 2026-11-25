@@ -86,6 +86,11 @@ struct MapStyles: Equatable {
     /// location itself. A double tap zooms the map and is not reported.
     @ObservationIgnored public var onTap: ((MapTap) -> Void)?
 
+    /// Called on the main actor once for each long press on the map (a half-second hold), when it begins, with where it
+    /// landed and what lies in the 44-point square around it, as ``onTap`` reports a tap. A hold that moves before
+    /// then is a pan, and MapLibre's one-tap-then-hold zoom is not reported.
+    @ObservationIgnored public var onLongPress: ((MapTap) -> Void)?
+
     /// Room the app's chrome takes at the map's edges, such as a card along the bottom. The map's centre, the followed
     /// location and ``show(_:)`` keep to the rest of the view. The map adds no safe area of its own: count
     /// the status bar or the home indicator in when the map runs under them. A change keeps the coordinate at the

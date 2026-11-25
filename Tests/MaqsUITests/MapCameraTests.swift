@@ -553,6 +553,39 @@ extension SharedGatewaySuite {
             #expect(!coordinator.gestureRecognizer(ours, shouldRecognizeSimultaneouslyWith: appTap))
         }
 
+        // MARK: Long press
+
+        @Test func aLongPressReportsWhereItLandsAndWhatLiesThere() async throws {
+            let map = try newMap()
+            var presses: [MapTap] = []
+            map.onLongPress = { presses.append($0) }
+            let host = try await MapHost.show(map)
+            defer { host.close() }
+            let point = CGPoint(x: host.mapView.bounds.midX, y: host.mapView.bounds.midY)
+
+            host.coordinator.longPress(at: point)
+
+            let press = try #require(presses.first)
+            #expect(presses.count == 1)
+            let expected = host.mapView.convert(point, toCoordinateFrom: host.mapView)
+            #expect(abs(press.coordinate.latitude - expected.latitude) < 1e-9)
+            #expect(abs(press.coordinate.longitude - expected.longitude) < 1e-9)
+            #expect(press.hits.isEmpty)
+        }
+
+        /// The long press is the map's own recognizer, a half-second hold, separate from MapLibre's one-tap-then-hold
+        /// quick zoom; without a handler nothing is reported.
+        @Test func theLongPressIsAHalfSecondHoldOnTheMap() async throws {
+            let map = try newMap()
+            let host = try await MapHost.show(map)
+            defer { host.close() }
+            let ours = host.coordinator.longPressRecognizer
+            #expect(ours.minimumPressDuration == 0.5)
+            #expect(ours.numberOfTapsRequired == 0)
+            #expect(host.mapView.gestureRecognizers?.contains(ours) == true)
+            host.coordinator.longPress(at: .zero)
+        }
+
         // MARK: Connectivity
 
         @Test func goingOfflineSendsNoTileOnlineUntilTheNetworkIsBack() async throws {

@@ -74,6 +74,8 @@ extension MaqsMapView {
         /// The map's own single tap. It waits for MapLibre's double tap and tap-and-drag zoom to fail, as MapLibre's own
         /// single tap does, so neither gesture is reported as a tap.
         let tapRecognizer: UITapGestureRecognizer
+        /// The map's own long press, which ``MaqsMap/onLongPress`` hears.
+        let longPressRecognizer: UILongPressGestureRecognizer
         @ObservationIgnored private weak var map: MaqsMap?
         /// The style last handed to MapLibre, the last one that loaded, and one MapLibre failed to load, which is not
         /// handed over again.
@@ -103,6 +105,7 @@ extension MaqsMapView {
         init(map: MaqsMap) {
             mapView = OrnamentlessMapView(frame: .zero, styleJSON: Self.emptyStyle)
             tapRecognizer = UITapGestureRecognizer()
+            longPressRecognizer = UILongPressGestureRecognizer()
             self.map = map
             super.init()
             mapView.delegate = self
@@ -114,9 +117,13 @@ extension MaqsMapView {
                 }
                 if let quickZoom = recognizer as? UILongPressGestureRecognizer, quickZoom.numberOfTapsRequired == 1 {
                     tapRecognizer.require(toFail: quickZoom)
+                    longPressRecognizer.require(toFail: quickZoom)
                 }
             }
             mapView.addGestureRecognizer(tapRecognizer)
+            longPressRecognizer.minimumPressDuration = 0.5
+            longPressRecognizer.addTarget(self, action: #selector(handleLongPress(_:)))
+            mapView.addGestureRecognizer(longPressRecognizer)
             mapView.showsCompassView = false
             mapView.showsLogoView = false
             mapView.showsAttributionButton = false
@@ -326,6 +333,17 @@ extension MaqsMapView {
         @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
             guard recognizer.state == .ended else { return }
             tap(at: recognizer.location(in: mapView))
+        }
+
+        @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            guard recognizer.state == .began else { return }
+            longPress(at: recognizer.location(in: mapView))
+        }
+
+        /// Hands the app a long press at `point` of the map view, with what lies around it as for a tap.
+        func longPress(at point: CGPoint) {
+            guard let onLongPress = map?.onLongPress else { return }
+            onLongPress(MapTap(coordinate: mapView.convert(point, toCoordinateFrom: mapView), hits: hits(at: point)))
         }
 
         /// Hands the app a tap at `point` of the map view with what lies in the ``tapSide`` square around it.
