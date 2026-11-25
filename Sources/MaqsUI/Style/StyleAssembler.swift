@@ -216,7 +216,7 @@ enum StyleAssembler {
     }
 
     /// The kinds the places overlay draws as a name only, without a marker.
-    static let settlementKinds = ["hamlet", "isolated_dwelling", "village"]
+    static let settlementKinds = ["city", "hamlet", "isolated_dwelling", "town", "village"]
 
     /// One of a region's two places layers: its settlements as a name only (`<source>-names`), or every other kind as a
     /// round marker with the name under it (`<source>-markers`). Like every overlay layer, each id is its source id plus

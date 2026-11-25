@@ -11,6 +11,8 @@ extension PlaceKind {
         case .alpineHut: "Alpine hut"
         case .wildernessHut: "Wilderness hut"
         case .shelter: "Shelter"
+        case .city: "City"
+        case .town: "Town"
         case .village: "Village"
         case .hamlet: "Hamlet"
         case .isolatedDwelling: "Isolated dwelling"

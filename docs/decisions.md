@@ -940,3 +940,24 @@ The full circle needed sorting on number keys and skipping the repeat check acro
 **Consequences.** A plain `swift build`, a plain `swift test` and a build in Xcode now only warn; the commands in CLAUDE.md and CONTRIBUTING.md pass the flag, as CI does. The package builds with the same flags for an app on Xcode 26.6 or 27, whether the app takes it from its URL or from a local checkout. The demo build in CI is the check that a dependency build keeps working.
 
 **Rejected.** `SWIFT_SUPPRESS_WARNINGS=NO` on the demo's CI build only: not tested on 26.6, and the demo would still fail for someone opening it in Xcode 26.6. Xcode 27 for the demo step: hides the incompatibility instead of removing it. `unsafeFlags(["-warnings-as-errors"])`: a package with unsafe flags cannot be a versioned dependency (ADR 0014).
+
+## 0019 — Towns and cities in the places layer
+
+**Date:** 2026-11-25 · **Status:** accepted (owner decision, 2026-11-25); amends the brief's locked place tag set (*Locked decisions*, 5)
+
+**Context.** The brief keeps named villages, hamlets and isolated dwellings, and no towns or cities. A sight-line app lists the towns along a bearing and names where the viewer stands after the settlement around them, and a city like Treviso or Belluno has no row today. The basemap already labels towns and cities, but its labels carry no id a query can return, so `Places` cannot find them.
+
+**Decision.**
+1. **Tags:** `place=city` and `place=town` nodes with a `name` tag become kinds `city` and `town`. They are in the `osmium tags-filter` list, and `place_kind` checks them with the other settlements. Unnamed ones are skipped, like every settlement.
+2. **Package:** `MaqsData.PlaceKind` gains `.city` and `.town`.
+3. **Map:** the places overlay draws towns and cities as a name only, as it draws villages (`StyleAssembler.settlementKinds`). The base map's own place labels still win label placement, so a town the basemap labels shows once.
+4. **Versioning:** a new `kind` value keeps the places layer's version. It adds rows, not columns. A client that does not know the kind reads it as `.other("town")` and can still filter on it. `docs/data-format.md`'s compatibility rule says so.
+
+**Consequences.**
+- **Every region's places file grows by its towns and cities:** a few hundred rows for Triveneto. A city with a `wikidata` tag ranks like a notable peak (`rank_score` 1000 + `ele`). The `expect.places` ranges are re-measured with the next real build.
+- **Older clients:** an older `MaqsUI` draws towns as markers with the generic pictogram, and an older `MaqsData` returns them as `.other`. No package version is tagged yet, so no released client is affected.
+- **The demo** shows towns and cities with the settlement symbol.
+
+**Rejected.**
+- **`place=suburb` and `place=quarter`:** they name parts of a city, not the place a viewer would say they stand in, and there are many more of them.
+- **Leaving towns to the apps:** an app cannot query the basemap's labels, and a gazetteer of its own would duplicate the places layer.

@@ -165,9 +165,9 @@ One row per OSM node of a kind below, by ascending node id; `osm_type` is always
 | `natural=peak`, `natural=volcano`, `natural=saddle` | `peak`, `volcano`, `saddle` |
 | `tourism=alpine_hut`, `tourism=wilderness_hut` | `alpine_hut`, `wilderness_hut` |
 | `amenity=shelter` | `shelter` |
-| `place=village`, `place=hamlet`, `place=isolated_dwelling`, with a `name` tag | `village`, `hamlet`, `isolated_dwelling` |
+| `place=city`, `place=town`, `place=village`, `place=hamlet`, `place=isolated_dwelling`, with a `name` tag | `city`, `town`, `village`, `hamlet`, `isolated_dwelling` (towns and cities since ADR 0019) |
 
-A village, hamlet or isolated dwelling without a `name` tag is skipped (a `name:*` tag alone does not count); every other kind is kept with or without a name. A node without a location is skipped. `name`, `name_it`, `name_de`, `name_fur` and `name_sl` are the `name`, `name:it`, `name:de`, `name:fur` and `name:sl` tags; `wikidata` is the tag as written; `lon` and `lat` are the node's position.
+A city, town, village, hamlet or isolated dwelling without a `name` tag is skipped (a `name:*` tag alone does not count); every other kind is kept with or without a name. A node without a location is skipped. `name`, `name_it`, `name_de`, `name_fur` and `name_sl` are the `name`, `name:it`, `name:de`, `name:fur` and `name:sl` tags; `wikidata` is the tag as written; `lon` and `lat` are the node's position.
 
 **`ele`** is the `ele` tag in metres: an optional minus sign, digits, an optional decimal part, an optional unit `m`, `meters` or `metres` (any case), spaces around allowed. A comma followed by exactly three digits groups thousands (`1,763` is 1763); any other comma is a decimal comma (`1,5` is 1.5); a dot is always decimal. Anything else, such as `ca. 1700` or `5000 ft`, is null with an `ele` anomaly.
 
@@ -377,6 +377,8 @@ A client knows which `layer_schema_version`s it can read for each layer. When it
 2. For each region and layer, takes the first entry whose `layer_schema_version` it can read. Entries are sorted highest first, so that is the newest version it understands. For trails and places it takes both files of that version, the SQLite file and the overlay.
 3. Treats a layer with no readable entry as not available in that region. That is a typed error for that layer only: the other layers work, and the client can tell the user to update.
 4. Ignores fields and layer keys it does not know, and any entry whose `role` it does not know.
+
+A new `kind` value in the places layer keeps its `layer_schema_version`: it adds rows, not columns, and a client reads a kind it does not know as other (`MaqsData`'s `.other`), which it can still filter on.
 
 Adding a field or a layer key keeps `manifest_version`. Renaming or removing a field, or changing what one means, bumps it. The schema is strict, so a new field goes into `config/schemas/manifest.schema.json` in the same change.
 

@@ -150,7 +150,7 @@ struct SightLine {
         case .peak, .volcano: "mountain.2.fill"
         case .saddle, .pass: "arrow.left.and.right"
         case .alpineHut, .wildernessHut, .shelter: "house.fill"
-        case .village, .hamlet, .isolatedDwelling: "building.2.fill"
+        case .city, .town, .village, .hamlet, .isolatedDwelling: "building.2.fill"
         case .other: "mappin"
         }
         // A symbol image draws as it is given, so it is tinted white for the brown disc.

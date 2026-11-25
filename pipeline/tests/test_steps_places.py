@@ -32,7 +32,11 @@ from tests.step_fixtures import stub_tags_filter, stub_tippecanoe
         ({"place": "hamlet", "name": "X"}, "hamlet"),
         ({"place": "isolated_dwelling", "name": "X"}, "isolated_dwelling"),
         ({"place": "village"}, None),  # unnamed settlements are skipped
-        ({"place": "town", "name": "Belluno"}, None),
+        ({"place": "town", "name": "Belluno"}, "town"),
+        ({"place": "city", "name": "Treviso"}, "city"),
+        ({"place": "town"}, None),
+        ({"place": "city"}, None),
+        ({"place": "suburb", "name": "Sant'Angelo"}, None),
         ({"highway": "bus_stop"}, None),
     ],
 )
@@ -70,7 +74,7 @@ def test_place_filters_cover_the_brief():
         "n/mountain_pass=yes",
         "n/tourism=alpine_hut,wilderness_hut",
         "n/amenity=shelter",
-        "n/place=village,hamlet,isolated_dwelling",
+        "n/place=city,town,village,hamlet,isolated_dwelling",
     )
 
 

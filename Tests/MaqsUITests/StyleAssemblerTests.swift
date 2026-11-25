@@ -288,7 +288,7 @@ import Testing
         #expect(layout["text-offset"] as? [Double] == [0, 0.8])
         #expect((places["paint"] as? JSON)?["text-halo-width"] as? Double == 2)
         #expect((places["paint"] as? JSON)?["text-halo-color"] as? String == "#191F28")
-        #expect(json(places["filter"]) == #"["!",["in",["get","kind"],["literal",["hamlet","isolated_dwelling","village"]]]]"#)
+        #expect(json(places["filter"]) == #"["!",["in",["get","kind"],["literal",["city","hamlet","isolated_dwelling","town","village"]]]]"#)
         #expect(layout["visibility"] as? String != "none")
     }
 
@@ -299,7 +299,7 @@ import Testing
         #expect(names["type"] as? String == "symbol")
         #expect(names["source"] as? String == "maqs-places-veneto")
         #expect(names["source-layer"] as? String == "places")
-        #expect(json(names["filter"]) == #"["in",["get","kind"],["literal",["hamlet","isolated_dwelling","village"]]]"#)
+        #expect(json(names["filter"]) == #"["in",["get","kind"],["literal",["city","hamlet","isolated_dwelling","town","village"]]]"#)
         let layout = try #require(names["layout"] as? JSON)
         #expect(layout["icon-image"] == nil)
         #expect(layout["text-offset"] == nil)
@@ -314,7 +314,7 @@ import Testing
 
     @Test func filtersPlaceKindsAndHidesWhenEmpty() throws {
         let some = try bundled(dark: false, Self.inputs(overlays: Self.overlays(["v"]), kinds: ["peak", "village"]))
-        let settlements = #"["literal",["hamlet","isolated_dwelling","village"]]"#
+        let settlements = #"["literal",["city","hamlet","isolated_dwelling","town","village"]]"#
         #expect(json(try layer(some, "maqs-places-v-markers")["filter"])
             == #"["all",["!",["in",["get","kind"],"# + settlements + #"]],["in",["get","kind"],["literal",["peak","village"]]]]"#)
         #expect(json(try layer(some, "maqs-places-v-names")["filter"])

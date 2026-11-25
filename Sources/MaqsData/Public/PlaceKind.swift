@@ -14,6 +14,10 @@ public enum PlaceKind: Sendable, Hashable {
     case wildernessHut
     /// An open shelter.
     case shelter
+    /// A named city.
+    case city
+    /// A named town.
+    case town
     /// A named village.
     case village
     /// A named hamlet.
@@ -33,6 +37,8 @@ public enum PlaceKind: Sendable, Hashable {
         case "alpine_hut": self = .alpineHut
         case "wilderness_hut": self = .wildernessHut
         case "shelter": self = .shelter
+        case "city": self = .city
+        case "town": self = .town
         case "village": self = .village
         case "hamlet": self = .hamlet
         case "isolated_dwelling": self = .isolatedDwelling
@@ -50,6 +56,8 @@ public enum PlaceKind: Sendable, Hashable {
         case .alpineHut: "alpine_hut"
         case .wildernessHut: "wilderness_hut"
         case .shelter: "shelter"
+        case .city: "city"
+        case .town: "town"
         case .village: "village"
         case .hamlet: "hamlet"
         case .isolatedDwelling: "isolated_dwelling"

@@ -39,7 +39,7 @@ These were chosen after research. Treat them as fixed. In Phase 0, verify that e
 5. **Places:**
    - `natural=peak`, `natural=volcano`, `natural=saddle`, `mountain_pass=yes`
    - `tourism=alpine_hut`, `tourism=wilderness_hut`, `amenity=shelter`
-   - named villages and hamlets (`place=village|hamlet|isolated_dwelling`)
+   - named cities, towns, villages and hamlets (`place=city|town|village|hamlet|isolated_dwelling`; cities and towns added by ADR 0019)
    - Keep `name`, `name:it`, `name:de`, `name:fur`, `name:sl`, `ele`, `wikidata`.
    - Compute a `rank_score` for label priority: a `wikidata` tag counts as a strong notability signal, combined with elevation. Keep the formula simple and documented.
 6. **Road curvature: our own small implementation** (ADR 0005). Adam Franco's `curvature` was evaluated in Phase 0: it runs on Python 3.12 only with two dependency pins, is GPLv3 with no LICENSE file, and has had no commit since 2022. We do not depend on dormant tools.

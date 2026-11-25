@@ -24,7 +24,7 @@ PLACE_FILTERS: tuple[str, ...] = (
     "n/mountain_pass=yes",
     "n/tourism=alpine_hut,wilderness_hut",
     "n/amenity=shelter",
-    "n/place=village,hamlet,isolated_dwelling",
+    "n/place=city,town,village,hamlet,isolated_dwelling",
 )
 KINDS: tuple[str, ...] = (
     "peak",
@@ -34,6 +34,8 @@ KINDS: tuple[str, ...] = (
     "alpine_hut",
     "wilderness_hut",
     "shelter",
+    "city",
+    "town",
     "village",
     "hamlet",
     "isolated_dwelling",
@@ -59,7 +61,7 @@ def place_kind(tags: Mapping[str, str]) -> str | None:
     if tags.get("amenity") == "shelter":
         return "shelter"
     place = tags.get("place")
-    if place in ("village", "hamlet", "isolated_dwelling") and tags.get("name"):
+    if place in ("city", "town", "village", "hamlet", "isolated_dwelling") and tags.get("name"):
         return place
     return None
 
