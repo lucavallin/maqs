@@ -988,6 +988,18 @@ The full circle needed sorting on number keys and skipping the repeat check acro
 - **Downloads:** a monthly run now downloads about 2.4 GB more from Geofabrik: Austria about 779 MB, Switzerland 526 MB, `italy/nord-ovest` 569 MB, Slovenia 300 MB, plus Croatia (sizes from 2026-11-25). That happens once a month, cached, and only when Geofabrik's files change. Every region leg restores all of them.
 - **Larger places files:** each region's places file grows by the places in its box beyond its polygons. A region's box now names places of its neighbours too: Veneto's box holds most of Trentino. Overlapping regions already deduplicate by `PlaceID` in `MaqsData`, and the overlay draws overlaps once per region (ADR 0017). The `expect.places` ranges are re-measured with this change's first real build.
 - **No new layer version:** the format is unchanged; rows change, not columns.
+- **Measured** by a places-only run of `build-maps.yml` on 2026-11-26 (run 45720277070, nothing published), with the town and city kinds of ADR 0019:
+
+  | Region | Places before | Places now | `expect.places` |
+  |---|---|---|---|
+  | `triveneto` | 29,198 | 43,610 | 26,000–87,000 |
+  | `veneto` | about 13,400 | 24,556 | 14,700–49,000 |
+  | `friuli-venezia-giulia` | — | 11,056 | 6,600–22,000 |
+  | `trentino-alto-adige` | — | 20,309 | 12,000–40,600 |
+
+  - **Contents:** Triveneto's file now holds the Großglockner (3,798 m), Triglav, Treviso as a `city` and Belluno as a `town` (224 towns and 15 cities in all).
+  - **Sizes:** 6,807,552 bytes for the SQLite file, 11,148,125 for the overlay.
+  - **Ranges:** each is the measured count × 0.6–2, ADR 0011's rule. The old ranges failed Veneto and Trentino-Alto Adige.
 
 **Rejected.**
 - **A buffered admin polygon:** it needs geometry code, which ADR 0010 rejected, and a buffer has no natural width. The box is where the terrain is.
