@@ -13,6 +13,8 @@ struct MapTemplates: Sendable, Equatable {
     var basemap: TileTemplate
     /// The style's terrain source; `nil`: no hillshade.
     var terrain: TileTemplate?
+    /// The style's land cover source; `nil` when `.landcover` is not configured.
+    var landcover: TileTemplate? = nil
     /// What the gateway claims. It serves every map of the process, so it depends only on what the whole `Maqs` says:
     /// terrain whenever `.terrain` is configured, whatever one map's hillshade switch says.
     var gateway: TileTemplates
@@ -45,10 +47,12 @@ enum MapInputs {
     /// never sends to the network, because the network is then not allowed.
     static let reservedBasemap = "https://maqs.invalid/basemap/{z}/{x}/{y}"
     static let reservedTerrain = "https://maqs.invalid/terrain/{z}/{x}/{y}"
+    static let reservedLandcover = "https://maqs.invalid/landcover/{z}/{x}/{y}"
 
     /// The templates for the configured layers: the first `sources.json` entry of each layer, or the reserved host when
-    /// there is none (`onlineTiles` false). The gateway gets terrain whenever the app configured `.terrain`; the style
-    /// only when it also wants hillshade.
+    /// there is none (`onlineTiles` false, or land cover in a cached file from before it). The gateway gets terrain
+    /// whenever the app configured `.terrain`; the style only when it also wants hillshade. Land cover goes to both
+    /// whenever `.landcover` is configured.
     static func templates(sources: OnlineSources?, layers: Set<Layer>, showsHillshade: Bool) -> MapTemplates {
         let basemap = sources?.basemap.first.map(template)
             ?? TileTemplate(template: reservedBasemap, minZoom: 0, maxZoom: 14, tileSize: nil, attribution: [])
@@ -57,18 +61,24 @@ enum MapInputs {
             terrain = sources?.terrain.first.map(template)
                 ?? TileTemplate(template: reservedTerrain, minZoom: 0, maxZoom: 12, tileSize: 512, attribution: [])
         }
+        var landcover: TileTemplate?
+        if layers.contains(.landcover) {
+            landcover = sources?.landcover.first.map(template)
+                ?? TileTemplate(template: reservedLandcover, minZoom: 0, maxZoom: 10, tileSize: nil, attribution: [])
+        }
         return MapTemplates(
-            basemap: basemap, terrain: showsHillshade ? terrain : nil,
-            gateway: TileTemplates(basemap: basemap.template, terrain: terrain?.template),
+            basemap: basemap, terrain: showsHillshade ? terrain : nil, landcover: landcover,
+            gateway: TileTemplates(basemap: basemap.template, terrain: terrain?.template, landcover: landcover?.template),
             onlineAllowed: sources?.basemap.first != nil)
     }
 
-    /// The basemap and terrain files of `packs`, whose headers ``content(packs:layers:catalog:archives:)`` needs.
+    /// The basemap, land cover and terrain files of `packs`, whose headers ``content(packs:layers:catalog:archives:)``
+    /// needs.
     static func tileArchives(of packs: [InstalledPack]) -> [URL] {
         packs.flatMap { pack in tileFiles(of: pack).map(\.file.url) }
     }
 
-    /// The routing table and overlays of `packs`. Regions answer for their basemap and terrain files and cover their
+    /// The routing table and overlays of `packs`. Regions answer for their tile files and cover their
     /// catalog box (the union of their archives' bounds when the catalog does not list them); base packs answer only
     /// below online. An archive missing from `archives` (its header could not be read) is left out, so its region
     /// answers that layer empty. Overlays come only for the configured `trails` and `places` layers.
@@ -104,12 +114,16 @@ enum MapInputs {
     }
 
     /// What the style built from `templates`, `content` and `overlays` draws, and where its data comes from: the
-    /// basemap always, terrain when the style has hillshade, trails and places while they are shown and a region has
-    /// their overlay. The online credits stay while the device is offline, because the map still draws the tiles it
+    /// basemap always, land cover when configured, terrain when the style has hillshade, trails and places while they
+    /// are shown and a region has their overlay. The online credits stay while the device is offline, because the map still draws the tiles it
     /// cached.
     static func creditInputs(templates: MapTemplates, content: InstalledContent, overlays: MapOverlays) -> CreditInputs {
         var drawn: Set<Layer> = [.basemap]
         var online: [Layer: [String]] = [.basemap: templates.basemap.attribution]
+        if let landcover = templates.landcover {
+            drawn.insert(.landcover)
+            online[.landcover] = landcover.attribution
+        }
         if let terrain = templates.terrain {
             drawn.insert(.terrain)
             online[.terrain] = terrain.attribution
@@ -122,7 +136,7 @@ enum MapInputs {
             }
         }
         let archives = content.table.regions.flatMap(\.archives) + content.table.basePacks
-        let installed = archives.map { $0.layer == .basemap ? Layer.basemap : .terrain }
+        let installed = archives.map(\.layer.dataLayer)
             + content.overlays.map { $0.layer == .trails ? Layer.trails : .places }
         return CreditInputs(drawn: drawn, online: online, installed: Set(installed))
     }
@@ -132,10 +146,10 @@ enum MapInputs {
                      attribution: source.attribution)
     }
 
-    /// The main basemap and terrain files of a pack, basemap first.
+    /// The main tile files of a pack: basemap, land cover, terrain.
     private static func tileFiles(of pack: InstalledPack) -> [(layer: TileLayer, file: InstalledFile)] {
-        [(Layer.basemap, TileLayer.basemap), (.terrain, .terrain)].compactMap { layer, tileLayer in
-            pack.files[layer]?.first { $0.role == nil }.map { (tileLayer, $0) }
+        [TileLayer.basemap, .landcover, .terrain].compactMap { tileLayer in
+            pack.files[tileLayer.dataLayer]?.first { $0.role == nil }.map { (tileLayer, $0) }
         }
     }
 
@@ -144,6 +158,17 @@ enum MapInputs {
         return boxes.dropFirst().reduce(first) { box, next in
             BoundingBox(minLon: min(box.minLon, next.minLon), minLat: min(box.minLat, next.minLat),
                         maxLon: max(box.maxLon, next.maxLon), maxLat: max(box.maxLat, next.maxLat))
+        }
+    }
+}
+
+extension TileLayer {
+    /// The pack layer whose files hold these tiles.
+    var dataLayer: Layer {
+        switch self {
+        case .basemap: .basemap
+        case .landcover: .landcover
+        case .terrain: .terrain
         }
     }
 }

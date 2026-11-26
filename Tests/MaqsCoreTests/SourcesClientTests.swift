@@ -37,7 +37,24 @@ import MaqsTestSupport
         #expect(sources.terrain.first?.tileSize == 512)
         #expect(sources.terrain.first?.maxZoom == 12)
         #expect(sources.terrain.first?.attribution == ["© Mapterhorn"])
+        #expect(sources.basemap.first?.attribution == ["© OpenStreetMap contributors"])
+        let landcover = try #require(sources.landcover.first)
+        #expect(landcover.id == "versatiles-landcover")
+        #expect(landcover.schema == "versatiles-landcover-1.0" && landcover.format == "mvt")
+        #expect(landcover.maxZoom == 10 && landcover.tileSize == nil)
+        #expect(landcover.attribution == ["© OpenStreetMap contributors", "ESA WorldCover 2021 (CC BY 4.0)"])
         #expect(server.requests.isEmpty)
+    }
+
+    @Test("a document from before land cover decodes with no land cover source")
+    func withoutLandcover() throws {
+        var object = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: SourcesClient.bundledURL)) as? [String: Any])
+        var layers = try #require(object["layers"] as? [String: Any])
+        layers["landcover"] = nil
+        object["layers"] = layers
+        let sources = try SourcesDocument.decode(JSONSerialization.data(withJSONObject: object))
+        #expect(sources.landcover.isEmpty)
+        #expect(sources.basemap.first?.id == "versatiles-osm")
     }
 
     @Test("refresh fetches, caches, and the cached copy is preferred to the bundled one")
@@ -154,9 +171,15 @@ import MaqsTestSupport
               message: "terrain.[0].schema: must be terrarium"),
         .init(name: "terrain format", layer: "terrain", change: { $0["format"] = "mvt" },
               message: "terrain.[0].format: must be webp or png"),
+        .init(name: "landcover schema", layer: "landcover", change: { $0["schema"] = "shortbread-1.0" },
+              message: "landcover.[0].schema: must be versatiles-landcover-1.0"),
+        .init(name: "landcover format", layer: "landcover", change: { $0["format"] = "png" },
+              message: "landcover.[0].format: must be mvt"),
+        .init(name: "landcover http tiles", layer: "landcover", change: { $0["tiles"] = "http://t.example/{z}/{x}/{y}" },
+              message: "landcover.[0].tiles: must be https and contain {z}, {x} and {y}"),
     ]
 
-    @Test("an empty layer list is rejected", arguments: ["basemap", "terrain"])
+    @Test("an empty layer list is rejected", arguments: ["basemap", "terrain", "landcover"])
     func emptyLayer(_ layer: String) throws {
         var object = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: SourcesClient.bundledURL)) as? [String: Any])
         var layers = try #require(object["layers"] as? [String: [[String: Any]]])

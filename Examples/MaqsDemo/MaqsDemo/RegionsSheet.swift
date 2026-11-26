@@ -18,7 +18,7 @@ struct RegionsSheet: View {
                             }
                         }
                     } footer: {
-                        Text("Data release \(catalog.release). Each region holds the basemap, terrain, trails and places.")
+                        Text("Data release \(catalog.release). Each region holds the basemap, land cover, terrain, trails and places.")
                     }
                 } else if model.maqs.state.lastRefreshError == nil {
                     ProgressView("Loading the catalog")

@@ -4,6 +4,8 @@
 public enum Layer: String, Codable, Sendable, CaseIterable, Hashable, CodingKeyRepresentable {
     /// Shortbread vector tiles (PMTiles).
     case basemap
+    /// Land cover vector tiles, zoom 0–10 (PMTiles): ESA WorldCover with OSM's land use, drawn under the basemap.
+    case landcover
     /// Terrarium DEM tiles, zoom 0–12 (PMTiles).
     case terrain
     /// Optional higher-zoom terrain (PMTiles); the manifest key is `terrain-hd`.

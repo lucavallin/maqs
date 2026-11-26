@@ -157,6 +157,7 @@ def test_sources_are_renamed_and_become_placeholders() -> None:
     assert style["sources"] == {
         "basemap": {"type": "vector", "tiles": ["maqs://placeholder"]},
         "terrain": {"type": "raster-dem", "tiles": ["maqs://placeholder"]},
+        "landcover": {"type": "vector", "tiles": ["maqs://placeholder"]},
     }
     assert by_id(style, "water-ocean")["source"] == "basemap"
     assert by_id(style, "hillshade")["source"] == "terrain"
@@ -308,3 +309,50 @@ def test_main_writes_both_styles(tmp_path: Path) -> None:
     assert json.loads(light_text) == transform(sample_style(), LIGHT)
     assert light_text == json.dumps(json.loads(light_text), indent=1, sort_keys=False) + "\n"
     assert json.loads((out / "default-dark.json").read_text()) == transform(sample_style(), DARK)
+
+
+def test_landcover_copies_each_land_fill_under_the_ocean() -> None:
+    """ADR 0021: VersaTiles' land cover is a second source drawn under OSM: a copy of each of the
+    style's land fills (and the water fill), reading the `landcover` layer, without a minzoom,
+    opaque to z12 and fading to 25 % by z14, between `slot-below-fills` and `water-ocean`."""
+    source = sample_style()
+    source["layers"].insert(
+        4,
+        layer(
+            "water-area",
+            "fill",
+            source="versatiles-shortbread",
+            paint={"fill-color": "rgb(190,221,243)"},
+        ),
+    )
+    for item in source["layers"]:
+        if item["id"] == "land-forest":
+            item["minzoom"] = 7
+            item["source-layer"] = "land"
+            item["filter"] = ["in", ["get", "kind"], ["literal", ["forest"]]]
+    style = transform(source, LIGHT)
+    ids = [item["id"] for item in style["layers"]]
+    twins = [i for i in ids if i.startswith("landcover-")]
+    assert twins == [
+        "landcover-water-area",
+        "landcover-land-forest",
+        "landcover-land-park",
+        "landcover-land-residential",
+    ]
+    assert ids.index("slot-below-fills") < ids.index(twins[0])
+    assert ids.index(twins[-1]) < ids.index("water-ocean")
+    forest = by_id(style, "landcover-land-forest")
+    assert forest["source"] == "landcover"
+    assert forest["source-layer"] == "landcover"
+    assert forest["filter"] == ["in", ["get", "kind"], ["literal", ["forest"]]]
+    assert "minzoom" not in forest
+    assert forest["paint"]["fill-color"] == by_id(style, "land-forest")["paint"]["fill-color"]
+    assert forest["paint"]["fill-opacity"] == ["interpolate", ["linear"], ["zoom"], 12, 1, 14, 0.25]
+    assert by_id(style, "land-forest")["source"] == "basemap"
+
+
+def test_a_style_without_the_fill_slot_names_what_is_missing() -> None:
+    source = sample_style()
+    source["layers"] = [item for item in source["layers"] if item["id"] != "slot-below-fills"]
+    with pytest.raises(ValueError, match="slot-below-fills"):
+        transform(source, LIGHT)

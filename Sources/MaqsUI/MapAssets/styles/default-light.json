@@ -19,6 +19,12 @@
    "tiles": [
     "maqs://placeholder"
    ]
+  },
+  "landcover": {
+   "type": "vector",
+   "tiles": [
+    "maqs://placeholder"
+   ]
   }
  },
  "layers": [
@@ -35,6 +41,616 @@
    "paint": {
     "background-opacity": 0
    }
+  },
+  {
+   "id": "landcover-land-glacier",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "==",
+    [
+     "get",
+     "kind"
+    ],
+    "glacier"
+   ],
+   "paint": {
+    "fill-color": "rgb(248,248,248)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-commercial",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "commercial",
+      "retail"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgb(242,237,237)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-industrial",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "industrial",
+      "quarry",
+      "railway"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgb(243,240,231)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-residential",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "garages",
+      "residential"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgb(240,238,236)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-agriculture",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "farmland",
+      "farmyard",
+      "greenhouse_horticulture",
+      "orchard",
+      "plant_nursery",
+      "vineyard"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgb(234,238,220)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-waste",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "landfill"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgb(222,219,207)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-park",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "park",
+      "village_green",
+      "recreation_ground"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgba(208,238,233,0.5)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-garden",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "allotments",
+      "garden"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "#D0EEE9",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-burial",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "cemetery",
+      "grave_yard"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgb(227,229,225)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-leisure",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "miniature_golf",
+      "playground",
+      "golf_course"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgb(232,235,228)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-rock",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "bare_rock",
+      "scree",
+      "shingle"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgb(239,239,233)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-forest",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "forest"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "#D0EEE9",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-grass",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "grass",
+      "grassland",
+      "meadow",
+      "wet_meadow"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "#D0EEE9",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-vegetation",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "heath",
+      "scrub"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "#D0EEE9",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-sand",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "beach",
+      "sand"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgb(238,239,221)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-land-wetland",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "in",
+    [
+     "get",
+     "kind"
+    ],
+    [
+     "literal",
+     [
+      "bog",
+      "marsh",
+      "string_bog",
+      "swamp"
+     ]
+    ]
+   ],
+   "paint": {
+    "fill-color": "rgb(220,230,224)",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
+  },
+  {
+   "id": "landcover-water-area",
+   "type": "fill",
+   "source-layer": "landcover",
+   "filter": [
+    "==",
+    [
+     "get",
+     "kind"
+    ],
+    "water"
+   ],
+   "paint": {
+    "fill-color": "#C1E5F6",
+    "fill-opacity": [
+     "interpolate",
+     [
+      "linear"
+     ],
+     [
+      "zoom"
+     ],
+     12,
+     1,
+     14,
+     0.25
+    ]
+   },
+   "source": "landcover"
   },
   {
    "id": "water-ocean",

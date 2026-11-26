@@ -9,14 +9,14 @@
     "manifest_version": { "const": 1 },
     "created_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
     "release": { "type": "string", "pattern": "^data-([0-9]{4}-(0[1-9]|1[0-2])|ci)$" },
-    "shortbread_version": { "const": "1.0" },
+    "shortbread_version": { "enum": ["1.0", "1.1"] },
     "attribution": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/attribution" } },
     "regions": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/region" } },
     "base": { "type": "array", "items": { "$ref": "#/$defs/basePack" } }
   },
   "$defs": {
     "id": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$" },
-    "layerName": { "enum": ["basemap", "terrain", "terrain-hd", "trails", "places", "curvature"] },
+    "layerName": { "enum": ["basemap", "landcover", "terrain", "terrain-hd", "trails", "places", "curvature"] },
     "attribution": {
       "type": "object",
       "additionalProperties": false,
@@ -34,8 +34,8 @@
       "required": ["layer_schema_version", "file", "url", "bytes", "sha256", "data_date", "osm_timestamp"],
       "properties": {
         "layer_schema_version": { "type": "integer", "minimum": 1 },
-        "file": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*-(basemap|terrain|terrain-hd|trails|places|curvature)\\.v[1-9][0-9]*\\.(pmtiles|sqlite)$" },
-        "url": { "type": "string", "pattern": "^https://github\\.com/lucavallin/maqs/releases/download/data-([0-9]{4}-(0[1-9]|1[0-2])|ci)/[a-z0-9]+(-[a-z0-9]+)*-(basemap|terrain|terrain-hd|trails|places|curvature)\\.v[1-9][0-9]*\\.(pmtiles|sqlite)$" },
+        "file": { "type": "string", "pattern": "^[a-z0-9]+(-[a-z0-9]+)*-(basemap|landcover|terrain|terrain-hd|trails|places|curvature)\\.v[1-9][0-9]*\\.(pmtiles|sqlite)$" },
+        "url": { "type": "string", "pattern": "^https://github\\.com/lucavallin/maqs/releases/download/data-([0-9]{4}-(0[1-9]|1[0-2])|ci)/[a-z0-9]+(-[a-z0-9]+)*-(basemap|landcover|terrain|terrain-hd|trails|places|curvature)\\.v[1-9][0-9]*\\.(pmtiles|sqlite)$" },
         "bytes": { "type": "integer", "minimum": 1, "maximum": 2040109465 },
         "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
         "data_date": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
@@ -50,6 +50,7 @@
       "required": ["basemap", "terrain", "trails", "places", "curvature"],
       "properties": {
         "basemap": { "$ref": "#/$defs/entries" },
+        "landcover": { "$ref": "#/$defs/entries" },
         "terrain": { "$ref": "#/$defs/entries" },
         "terrain-hd": { "$ref": "#/$defs/entries" },
         "trails": { "$ref": "#/$defs/entries" },

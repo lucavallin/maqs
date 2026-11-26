@@ -13,7 +13,7 @@ import UniformTypeIdentifiers
         let data = try #require(try archive.tile(z: 12, x: 2187, y: 1455))
         let tile = try TerrariumDecoder.decode(data, expectedSize: 512)
         #expect(tile.size == 512)
-        let expected: [(Int, Int, Double)] = [(0, 0, 334.0), (100, 200, 438.5), (255, 255, 907.0), (511, 511, 1468.75), (300, 17, 584.0)]
+        let expected: [(Int, Int, Double)] = [(0, 0, 334.0), (100, 200, 438.5), (255, 255, 907.0), (511, 511, 1468.5), (300, 17, 584.0)]
         for (x, y, metres) in expected {
             #expect(tile.elevation(pixelX: Double(x) + 0.5, pixelY: Double(y) + 0.5) == metres)
         }

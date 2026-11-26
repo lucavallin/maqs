@@ -18,7 +18,7 @@ from maqs.schemas import SchemaError, validate
 log = logging.getLogger("maqs.manifest")
 
 MANIFEST_VERSION = 1
-SHORTBREAD_VERSION = "1.0"
+SHORTBREAD_VERSION = "1.1"
 REPO = "lucavallin/maqs"
 CI_RELEASE = "data-ci"
 RELEASE_TAG = re.compile(r"data-[0-9]{4}-(0[1-9]|1[0-2])")
@@ -32,13 +32,15 @@ ATTRIBUTION: tuple[dict, ...] = (
         "text": "© OpenStreetMap contributors",
         "licence": "ODbL 1.0",
         "url": "https://www.openstreetmap.org/copyright",
-        "layers": ["basemap", "trails", "places", "curvature"],
+        "layers": ["basemap", "landcover", "trails", "places", "curvature"],
     },
     {
-        "text": "CC BY 4.0 ESA WorldCover 2021",
+        "text": "ESA WorldCover 2021 (CC BY 4.0)",
         "licence": "CC BY 4.0",
         "url": "https://esa-worldcover.org/en/data-access",
-        "layers": ["basemap"],
+        # The basemap keeps the credit while basemaps cut from `osm-landcover`, with WorldCover
+        # inside, can still be installed (ADR 0021); on a newer basemap it over-credits, harmlessly.
+        "layers": ["basemap", "landcover"],
     },
     {
         "text": "© Mapterhorn",

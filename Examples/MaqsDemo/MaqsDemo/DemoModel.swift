@@ -43,7 +43,7 @@ final class DemoModel {
 
     /// Makes the one `Maqs` and the map, before any map view exists.
     init() throws {
-        var configuration = MaqsConfiguration(layers: [.basemap, .terrain, .trails, .places], userAgent: Self.userAgent)
+        var configuration = MaqsConfiguration(layers: [.basemap, .landcover, .terrain, .trails, .places], userAgent: Self.userAgent)
         configuration.backgroundSessionIdentifier = "com.lucavallin.maqs.demo.downloads"
         // Launched with `-onlineTiles NO`, the package hands out no online source: no tile request leaves the device.
         // The argument arrives as the string "NO", which `bool(forKey:)` reads and a cast to Bool does not.

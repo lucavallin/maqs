@@ -13,6 +13,13 @@ def test_sources_json_validates_and_names_one_versatiles_source_per_layer():
     validate(doc, "sources")
     assert [s["id"] for s in doc["layers"]["basemap"]] == ["versatiles-osm"]
     assert [s["id"] for s in doc["layers"]["terrain"]] == ["versatiles-elevation"]
+    assert [s["id"] for s in doc["layers"]["landcover"]] == ["versatiles-landcover"]
+    landcover = doc["layers"]["landcover"][0]
+    assert landcover["tiles"] == "https://tiles.versatiles.org/tiles/landcover-vector/{z}/{x}/{y}"
+    assert landcover["tilejson"] == "https://tiles.versatiles.org/tiles/landcover-vector/tiles.json"
+    assert (landcover["schema"], landcover["format"]) == ("versatiles-landcover-1.0", "mvt")
+    assert (landcover["min_zoom"], landcover["max_zoom"]) == (0, 10)
+    assert doc["layers"]["basemap"][0]["attribution"] == ["© OpenStreetMap contributors"]
     basemap, terrain = doc["layers"]["basemap"][0], doc["layers"]["terrain"][0]
     assert basemap["tiles"] == "https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}"
     assert basemap["tilejson"] == "https://tiles.versatiles.org/tiles/osm/tiles.json"

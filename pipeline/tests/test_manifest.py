@@ -63,12 +63,19 @@ def test_build_manifest_assembles_every_region_and_base_pack(cfg, full_dist):
     m = build_manifest(cfg, full_dist, "data-2026-11", now=NOW)
     validate(m, "manifest")
     assert m["manifest_version"] == 1 and m["release"] == "data-2026-11"
-    assert m["created_at"] == "2026-11-01T03:12:44Z" and m["shortbread_version"] == "1.0"
+    assert m["created_at"] == "2026-11-01T03:12:44Z" and m["shortbread_version"] == "1.1"
     assert [r["id"] for r in m["regions"]] == list(REGIONS)  # regions.yaml order, fixture excluded
     veneto = next(r for r in m["regions"] if r["id"] == "veneto")
     assert veneto["name"] == {"it": "Veneto", "en": "Veneto"}
     assert veneto["bbox"] == [10.6231, 44.7923, 13.1021, 46.6806]
-    assert set(veneto["layers"]) == {"basemap", "terrain", "trails", "places", "curvature"}
+    assert set(veneto["layers"]) == {
+        "basemap",
+        "landcover",
+        "terrain",
+        "trails",
+        "places",
+        "curvature",
+    }
     trail_files = [e["file"] for e in veneto["layers"]["trails"]]
     assert trail_files == ["veneto-trails.v1.sqlite", "veneto-trails.v1.pmtiles"]
     assert veneto["layers"]["trails"][1]["role"] == "overlay"
@@ -492,3 +499,11 @@ def test_a_report_without_a_valid_built_at_fails(cfg, tmp_path, built_at):
     dist = write_dist(tmp_path / "dist", _reports(veneto=report))
     with pytest.raises(ManifestError, match="veneto: build-report.json has no valid built_at"):
         build_manifest(cfg, dist, "data-2026-11", now=NOW)
+
+
+def test_land_cover_carries_both_credits_and_older_basemaps_keep_esa():
+    """ADR 0021: land cover holds OSM's land use and ESA WorldCover. The basemap keeps the ESA
+    credit while basemaps cut from `osm-landcover`, with WorldCover in them, can be installed."""
+    layers = {a["text"]: a["layers"] for a in ATTRIBUTION}
+    assert "landcover" in layers["© OpenStreetMap contributors"]
+    assert layers["ESA WorldCover 2021 (CC BY 4.0)"] == ["basemap", "landcover"]

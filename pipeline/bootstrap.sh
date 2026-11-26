@@ -4,7 +4,7 @@
 # Pins here must match maqs/tools.py PINS; `maqs check-tools` is the authority.
 set -eu
 
-VERSATILES_VERSION="5.0.0"
+VERSATILES_VERSION="5.16.0"
 PMTILES_VERSION="1.31.2"
 OSMIUM_VERSION="1.19.1"
 LIBOSMIUM_VERSION="2.23.1"

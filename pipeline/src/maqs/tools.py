@@ -15,7 +15,7 @@ from pathlib import Path
 log = logging.getLogger("maqs.tools")
 
 PINS: dict[str, str] = {
-    "versatiles": "5.0.0",
+    "versatiles": "5.16.0",
     "pmtiles": "1.31.2",
     "osmium": "1.19.1",
     "tippecanoe": "2.79.0",

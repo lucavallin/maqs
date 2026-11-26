@@ -24,7 +24,7 @@ concurrency:
 
 env:
   # Must match the pins in pipeline/bootstrap.sh and maqs.tools.PINS (same as pipeline.yml).
-  TOOLS_KEY: versatiles-5.0.0-pmtiles-1.31.2-osmium-1.19.1-tippecanoe-2.79.0
+  TOOLS_KEY: versatiles-5.16.0-pmtiles-1.31.2-osmium-1.19.1-tippecanoe-2.79.0
 
 jobs:
   prepare:

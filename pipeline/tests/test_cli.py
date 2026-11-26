@@ -30,8 +30,10 @@ def fake_run_writing_archives(argv, **kw):
     argv = [str(a) for a in argv]
     out = Path(argv[-1])
     out.parent.mkdir(parents=True, exist_ok=True)
-    if "elevation.versatiles" in argv[-2]:
+    if argv[-2] == tiles.ELEVATION_SOURCE:
         write_pmtiles(out, tile_type=4, max_zoom=12, tile_compression=1)
+    elif argv[-2] == tiles.LANDCOVER_SOURCE:
+        write_pmtiles(out, tile_type=1, max_zoom=10)
     else:
         write_pmtiles(out, tile_type=1, max_zoom=14, metadata={"attribution": "© OSM"})
 
@@ -286,10 +288,18 @@ def test_build_base_puts_every_pack_in_one_report(monkeypatch, tmp_path):
 
 
 def test_default_layers_include_the_data_layers_in_build_order():
-    assert DEFAULT_LAYERS == ("basemap", "terrain", "trails", "places", "curvature")
-    assert LAYER_ORDER == ("basemap", "terrain", "terrain-hd", "trails", "places", "curvature")
+    assert DEFAULT_LAYERS == ("basemap", "landcover", "terrain", "trails", "places", "curvature")
+    assert LAYER_ORDER == (
+        "basemap",
+        "landcover",
+        "terrain",
+        "terrain-hd",
+        "trails",
+        "places",
+        "curvature",
+    )
     assert set(LAYER_STEPS) == set(LAYER_ORDER)
-    assert "basemap,terrain,trails,places,curvature" in (
+    assert "basemap,landcover,terrain,trails,places,curvature" in (
         CliRunner().invoke(main, ["build", "--help"]).output.replace("\n", "").replace(" ", "")
     )
 
@@ -311,7 +321,7 @@ def test_build_runs_the_default_layers_in_order_without_terrain_hd(monkeypatch, 
     monkeypatch.setattr(cli, "run_step", fake_run_step)
     result = build("--region", "test", "--dist", str(tmp_path))
     assert result.exit_code == 0, result.output
-    assert ran == ["basemap", "terrain", "trails", "places", "curvature"]
+    assert ran == ["basemap", "landcover", "terrain", "trails", "places", "curvature"]
 
 
 def check_config(*args: str):

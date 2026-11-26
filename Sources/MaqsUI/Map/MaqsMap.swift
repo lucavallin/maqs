@@ -27,7 +27,8 @@ struct MapStyles: Equatable {
 /// Inside an installed region the map draws from the downloaded files, even with signal; elsewhere it streams the
 /// `sources.json` tiles, and with no network it shows what it cached from earlier viewing. A pack installed or removed
 /// while the map shows changes what it draws, with no new view. Only the layers the app configured in `Maqs` are drawn
-/// or requested: the basemap always, hillshade with `.terrain`, the overlays with `.trails` and `.places`.
+/// or requested: the basemap always, land cover under it with `.landcover`, hillshade with `.terrain`, the overlays with
+/// `.trails` and `.places`.
 ///
 /// Every map of a process shares one tile gateway, so all of them use the same ``Maqs``. Create the first `MaqsMap`
 /// before any map view exists in the process: its initialiser puts the gateway in front of MapLibre's network, which
@@ -135,7 +136,8 @@ struct MapStyles: Equatable {
     public private(set) var onlineTilesPaused = false
 
     /// The credits of the sources the map draws, for ``MapAttributionView`` or the app's own credits: the basemap's
-    /// always, the hillshade's while it draws, the trails' and places' while their overlays show. A layer drawn from
+    /// always, the land cover's with `.landcover`, the hillshade's while it draws, the trails' and places' while their
+    /// overlays show. A layer drawn from
     /// the online source carries the source's `sources.json` credits, one an installed pack provides the manifest's,
     /// each with its page when the manifest names one. They follow every style the map builds and the catalog.
     public private(set) var credits: [MapCredit] = []
@@ -430,7 +432,8 @@ struct MapStyles: Equatable {
 
     private func assemble(_ base: Data, _ templates: MapTemplates, dark: Bool) throws(MapError) -> String {
         let inputs = StyleInputs(
-            basemap: templates.basemap, terrain: templates.terrain, glyphs: BundledAssets.glyphsTemplate,
+            basemap: templates.basemap, terrain: templates.terrain, landcover: templates.landcover,
+            glyphs: BundledAssets.glyphsTemplate,
             sprite: BundledAssets.spriteURL, labelLanguage: configuration.labelLanguage ?? Self.deviceLanguage,
             pointsOfInterest: configuration.pointsOfInterest, overlays: content.overlays,
             visiblePlaceKinds: overlays.places, showsTrails: overlays.trails,
@@ -445,7 +448,7 @@ struct MapStyles: Equatable {
         GatewayState.shared.configure(GatewayConfiguration(
             templates: key.templates, onlineAllowed: key.onlineAllowed, userAgent: maqs.configuration.fullUserAgent,
             sessionConfiguration: seams.gatewaySession))
-        logger.info("map tile gateway configured: online \(key.onlineAllowed ? "allowed" : "off", privacy: .public), terrain \(key.templates.terrain == nil ? "off" : "on", privacy: .public)")
+        logger.info("map tile gateway configured: online \(key.onlineAllowed ? "allowed" : "off", privacy: .public), terrain \(key.templates.terrain == nil ? "off" : "on", privacy: .public), land cover \(key.templates.landcover == nil ? "off" : "on", privacy: .public)")
     }
 
     // MARK: Camera actions

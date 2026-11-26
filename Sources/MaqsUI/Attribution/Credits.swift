@@ -4,7 +4,7 @@ import MaqsCore
 /// Works out the credits for the layers the map is drawing.
 enum Credits {
     /// The layers that draw something, in the order their credits appear.
-    private static let order: [Layer] = [.basemap, .terrain, .trails, .places]
+    private static let order: [Layer] = [.basemap, .landcover, .terrain, .trails, .places]
 
     /// Credits for the `drawn` layers: per layer, the online provider strings when it is online (`online` has the
     /// layer), then the manifest's entries for it when its data is installed. A string that equals a manifest

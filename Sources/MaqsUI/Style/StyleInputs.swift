@@ -34,6 +34,8 @@ struct StyleInputs: Sendable, Equatable {
     var basemap: TileTemplate
     /// `nil`: no hillshade and no terrain source.
     var terrain: TileTemplate?
+    /// `nil`: no land cover source and none of its fills.
+    var landcover: TileTemplate? = nil
     var glyphs: String
     var sprite: String
     var labelLanguage: String?

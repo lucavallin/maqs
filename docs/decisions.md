@@ -1005,3 +1005,37 @@ The full circle needed sorting on number keys and skipping the repeat check acro
 - **A buffered admin polygon:** it needs geometry code, which ADR 0010 rejected, and a buffer has no natural width. The box is where the terrain is.
 - **Geofabrik's `europe/alps` extract (2.2 GB):** one download, but no Istria and no plains beyond the border.
 - **Austria only:** the reference line's hidden peak, and nothing toward Slovenia, Switzerland or Lombardy.
+
+## 0021 — Land cover as its own layer
+
+**Date:** 2026-11-26 · **Status:** accepted (owner decision, 2026-11-26); amends ADR 0004's basemap source and the brief's basemap line (*Locked decisions*), and ADR 0001's pinned `shortbread_version`
+
+**Context.** VersaTiles retired `osm-landcover.versatiles` in November 2026; the URL answers 404, so no region can be built. Checked on 2026-11-26:
+- `download.versatiles.org/osm-vector/osm-vector.versatiles` (66.6 GB) is OSM alone, Shortbread **1.1** (`tile_schema` `shortbread@1.1`), z0–14, brotli. The online `tiles.versatiles.org/tiles/osm` serves the same, attributed to OpenStreetMap only.
+- `download.versatiles.org/landcover-vector/landcover-vector.versatiles` (4.4 GB) and online `tiles.versatiles.org/tiles/landcover-vector` hold the land cover: one MVT layer, `landcover`, with one attribute, `kind`, z0–10, `tile_schema` `versatiles/landcover@1.0`. Each ESA WorldCover 2021 class becomes a Shortbread `kind` (tree cover `forest`, cropland `farmland`, built-up `residential`, bare `bare_rock`, moss and lichen `heath`, shrubland `scrub`, grassland `grassland`, herbaceous wetland `marsh`, mangroves `swamp`, snow and ice `glacier`, water `water`), OSM's land use is burned in, and the sea is a hole for Shortbread's `ocean`. Attribution: © OpenStreetMap contributors and ESA WorldCover 2021 (CC BY 4.0); from its version 4 the tileset is ODbL as well.
+- VersaTiles' guidance (the `landcover-vectors` README, *Using it with OSM*): two vector sources; draw the background, then a copy of each OSM land and water fill reading `landcover`, opaque to z12 and fading to 25 % by z14, then OSM's ocean and everything else.
+- `elevation.versatiles` now redirects (301) to `elevation-raster/elevation-raster.versatiles`.
+- Shortbread's versioning policy: "A style written for version X.Y of the schema should work on any tilesets with the same MAJOR version and an equal or greater MINOR version"; a minor version only adds layers, fields and kinds.
+- `versatiles` 5.0.0 does not know the `versatiles/landcover@1.0` schema and writes such an archive with an empty TileJSON; 5.6.0 added it. 5.16.0 is the newest release (2026-11-25) and Homebrew's.
+
+**Decision.**
+1. **A `landcover` layer**, `layer_schema_version` 1: `<region>-landcover.v1.pmtiles`, cut from `landcover-vector.versatiles` by the region's box and border, gzip, z0–10. It is a standard layer: every region the pipeline builds has it, and `--layers` defaults to `basemap,landcover,terrain,trails,places,curvature`. Base packs stay basemap only.
+2. **The basemap** is cut from `osm-vector.versatiles` and keeps version 1: Shortbread 1.1 is forward-compatible with 1.0 styles, so `shortbread_version` becomes `"1.1"` (the manifest schema accepts `"1.0"` and `"1.1"`, so earlier manifests still validate) and the `sources.json` basemap schema stays `shortbread-1.0`, the style contract it promises. The basemap loses the land cover it had inside it; the land cover layer brings it back.
+3. **The manifest** lists `landcover` as an optional region layer in its schema, so releases from before it still validate as a `--previous`.
+4. **`sources.json`** gains an optional `landcover` list (schema `versatiles-landcover-1.0`, format `mvt`). A client decodes a file without it as having no land cover source, so the bundled and cached copies from before keep working. Credits move with the data: the online basemap source is credited to OSM alone, land cover to OSM and "ESA WorldCover 2021 (CC BY 4.0)", the string the TileJSON now gives. The manifest keeps the ESA credit on the basemap too: basemaps cut from `osm-landcover` hold WorldCover and can still be installed or bundled, and an installed basemap is credited from the manifest. On a newer basemap that over-credits, which is harmless.
+5. **`MaqsCore`:** `Layer.landcover`; `OnlineSources.landcover`, empty when the file has none.
+6. **`MaqsUI`:** a third tile template and gateway layer. The style has a `landcover` vector source and VersaTiles' fills, added by `map_style.py` (a copy of each `land-*` fill and of `water-area`, between `slot-below-fills` and `water-ocean`, taking the fill's colour). With `.landcover` configured, the source points at the online land cover, or at the reserved host when there is none; without it, the source and its fills are removed. Inside an installed region with no land cover file (a pack from before this change) its tiles are empty, never fetched: the no-network rule holds. A template on the reserved host never becomes an online URL. Credits order: basemap, land cover, terrain, trails, places.
+7. **Tools:** `versatiles` is pinned to 5.16.0.
+
+**Consequences.**
+- **Size:** Triveneto's land cover measured 8,210,726 bytes (328 tiles, z0–10, border 1) on 2026-11-26; the `test` region's is 331,355 bytes. The `test` basemap went from 1,617,480 to 1,544,912 bytes without its land cover.
+- **Terrain from `elevation-raster`:** the old URL redirects there, so this is upstream's change, not a choice. The same Mapterhorn data, still terrarium WebP 512 px z0–12, re-encoded: at the `test` region's 625 golden points the elevations moved by at most 0.25 m (mean 0.09 m), and the file grew from 1,496,730 to 2,498,557 bytes (×1.67). Region terrain files grow by about that factor; the next release measures them.
+- **Apps** add `.landcover` to their configured layers to draw it. An app that does not keeps a correct map with OSM's own fills only, which are sparse below z10.
+- **Packs installed before this change** have no land cover file, but their basemap still holds WorldCover's colour at low zoom. Inside such a region the land cover source answers empty, never online. Against a release with land cover, the catalog offers the pack as an update (its basemap and terrain files changed too); against an older manifest it stays installed.
+- **Old clients** keep working: they read `basemap.v1` (now without land cover at low zoom), ignore the `landcover` key in `sources.json` and the manifest, and decode `shortbread_version` as a string.
+- **Fixtures** are regenerated: the `test` region gains `test-landcover.v1.pmtiles`, and the basemap and terrain are cut from the new containers.
+
+**Rejected.**
+- **Merging land cover into the basemap file:** one file per region again, but VersaTiles ships two containers and draws them as two sources; merging vector tiles is a tool and a format of our own to maintain.
+- **A basemap version bump:** Shortbread 1.1 needs none by its own policy, and a bump would carry `basemap.v1` files for a release with nothing to gain.
+- **No land cover:** the map below z10 would be flat background with OSM's few fills, and VersaTiles' own styles draw it.

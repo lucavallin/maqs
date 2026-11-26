@@ -13,6 +13,7 @@
       "required": ["basemap", "terrain"],
       "properties": {
         "basemap": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/basemapSource" } },
+        "landcover": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/landcoverSource" } },
         "terrain": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/terrainSource" } }
       }
     }
@@ -36,6 +37,14 @@
       "unevaluatedProperties": false,
       "properties": {
         "schema": { "const": "shortbread-1.0" },
+        "format": { "const": "mvt" }
+      }
+    },
+    "landcoverSource": {
+      "allOf": [{ "$ref": "#/$defs/common" }],
+      "unevaluatedProperties": false,
+      "properties": {
+        "schema": { "const": "versatiles-landcover-1.0" },
         "format": { "const": "mvt" }
       }
     },

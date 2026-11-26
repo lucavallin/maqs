@@ -25,6 +25,12 @@ enum StyleAssembler {
             sources["terrain"] = nil
             layers.removeAll { $0["source"] as? String == "terrain" }
         }
+        if let landcover = inputs.landcover, let source = sources["landcover"] as? JSON {
+            sources["landcover"] = tileSource(source, landcover, encoding: nil)
+        } else {
+            sources["landcover"] = nil
+            layers.removeAll { $0["source"] as? String == "landcover" }
+        }
 
         style["glyphs"] = inputs.glyphs
         style["sprite"] = inputs.sprite

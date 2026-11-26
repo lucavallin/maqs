@@ -13,8 +13,20 @@ import Testing
         [
             entry("© OpenStreetMap contributors", [.basemap, .trails, .places]),
             entry("CC BY 4.0 ESA WorldCover 2021", [.basemap]),
+            entry("ESA WorldCover 2021 (CC BY 4.0)", [.landcover]),
             entry("© Mapterhorn", [.terrain]),
         ]
+    }
+
+    @Test func landCoverIsCreditedAfterTheBasemapAndBeforeTerrain() {
+        let result = Credits.credits(
+            drawn: [.terrain, .landcover, .basemap],
+            online: [.basemap: ["© OpenStreetMap contributors"], .landcover: ["© OpenStreetMap contributors",
+                                                                               "ESA WorldCover 2021 (CC BY 4.0)"],
+                     .terrain: ["© Mapterhorn"]],
+            manifest: manifest, installed: [])
+        #expect(result.map(\.text) == ["© OpenStreetMap contributors", "ESA WorldCover 2021 (CC BY 4.0)", "© Mapterhorn"])
+        #expect(Credits.uncredited(drawn: [.landcover], online: [:], manifest: manifest, installed: []) == [.landcover])
     }
 
     @Test func basemapOnlineShowsTheProviderStringsWithoutUrl() {

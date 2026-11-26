@@ -11,7 +11,7 @@ import MaqsTestSupport
         let manifest = try Manifest.decode(try Fixtures.manifestData(), manifestHost: host)
         #expect(manifest.manifestVersion == 1)
         #expect(manifest.release == "data-ci")
-        #expect(manifest.shortbreadVersion == "1.0")
+        #expect(manifest.shortbreadVersion == "1.1")
         let test = try #require(manifest.regions.first { $0.id == "test" })
         #expect(test.name["it"] == "Nevegal (test)")
         #expect(test.bbox.count == 4)

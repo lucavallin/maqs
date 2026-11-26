@@ -11,7 +11,8 @@ enum SourcesDocument {
 
         enum CodingKeys: String, CodingKey { case sourcesVersion = "sources_version", layers }
 
-        struct Layers: Decodable { let basemap: [Source]; let terrain: [Source] }
+        /// Land cover is optional: cached and bundled copies from before it have none.
+        struct Layers: Decodable { let basemap: [Source]; let terrain: [Source]; let landcover: [Source]? }
 
         struct Source: Decodable {
             let id: String, provider: String, tiles: String, tilejson: String, schema: String, format: String
@@ -44,8 +45,17 @@ enum SourcesDocument {
         }
         return OnlineSources(
             version: version,
-            basemap: try convert(document.layers.basemap, layer: "basemap", isTerrain: false),
-            terrain: try convert(document.layers.terrain, layer: "terrain", isTerrain: true))
+            basemap: try convert(document.layers.basemap, layer: "basemap", kind: .vector(schema: "shortbread-1.0")),
+            terrain: try convert(document.layers.terrain, layer: "terrain", kind: .terrain),
+            landcover: try document.layers.landcover.map {
+                try convert($0, layer: "landcover", kind: .vector(schema: "versatiles-landcover-1.0"))
+            } ?? [])
+    }
+
+    /// What a layer's sources must be: vector tiles of one schema, or terrarium terrain.
+    private enum Kind {
+        case vector(schema: String)
+        case terrain
     }
 
     private static let urlReason = "must be an https URL with a host and no credentials"
@@ -57,7 +67,7 @@ enum SourcesDocument {
         return components.user == nil && components.password == nil
     }
 
-    private static func convert(_ sources: [Document.Source], layer: String, isTerrain: Bool) throws -> [TileSource] {
+    private static func convert(_ sources: [Document.Source], layer: String, kind: Kind) throws -> [TileSource] {
         if sources.isEmpty { throw SourcesError.invalid("\(layer): must not be empty") }
         return try sources.enumerated().map { index, source in
             func fail(_ field: String, _ reason: String) -> SourcesError {
@@ -72,11 +82,12 @@ enum SourcesDocument {
             let probe = ["{z}", "{x}", "{y}"].reduce(source.tiles) { $0.replacingOccurrences(of: $1, with: "0") }
             guard isPlainHTTPS(probe) else { throw fail("tiles", urlReason) }
             guard isPlainHTTPS(source.tilejson), let tilejson = URL(string: source.tilejson) else { throw fail("tilejson", urlReason) }
-            if isTerrain {
+            switch kind {
+            case .terrain:
                 if source.schema != "terrarium" { throw fail("schema", "must be terrarium") }
                 if source.format != "webp", source.format != "png" { throw fail("format", "must be webp or png") }
-            } else {
-                if source.schema != "shortbread-1.0" { throw fail("schema", "must be shortbread-1.0") }
+            case .vector(let schema):
+                if source.schema != schema { throw fail("schema", "must be \(schema)") }
                 if source.format != "mvt" { throw fail("format", "must be mvt") }
             }
             guard source.minZoom >= 0, source.minZoom <= source.maxZoom else {
@@ -85,7 +96,9 @@ enum SourcesDocument {
             guard source.maxZoom <= 22 else { throw fail("max_zoom", "must be between 0 and max_zoom, at most 22") }
             if source.attribution.isEmpty { throw fail("attribution", "must not be empty") }
             if source.attribution.contains(where: \.isEmpty) { throw fail("attribution", "must not contain empty strings") }
-            if isTerrain, source.tileSize != 256, source.tileSize != 512 { throw fail("tile_size", "must be 256 or 512") }
+            if case .terrain = kind, source.tileSize != 256, source.tileSize != 512 {
+                throw fail("tile_size", "must be 256 or 512")
+            }
             return TileSource(id: source.id, provider: source.provider, tiles: source.tiles, tilejson: tilejson,
                               schema: source.schema, format: source.format, tileSize: source.tileSize,
                               minZoom: source.minZoom, maxZoom: source.maxZoom, attribution: source.attribution)

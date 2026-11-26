@@ -6,7 +6,7 @@ from maqs import tools
 from maqs.config import load_config
 from maqs.context import BuildContext
 from maqs.steps import tiles
-from maqs.steps.tiles import BasemapStep, BasePackStep, TerrainStep, format_bbox
+from maqs.steps.tiles import BasemapStep, BasePackStep, LandcoverStep, TerrainStep, format_bbox
 
 REAL = Path(__file__).resolve().parents[2] / "config" / "regions.yaml"
 
@@ -66,6 +66,39 @@ def test_basemap_argv_and_outputs(veneto, versatiles_bin):
     e = step.expectation(veneto, step.outputs(veneto)[0])
     assert (e.min_zoom, e.max_zoom) == (0, 14) and e.tile_types == frozenset({"mvt"})
     assert e.source == tiles.OSM_SOURCE
+
+
+def test_the_sources_are_versatiles_current_containers():
+    """ADR 0021: `osm-landcover.versatiles` is gone; OSM and land cover are two containers, and
+    `elevation.versatiles` redirects to `elevation-raster`."""
+    assert tiles.OSM_SOURCE == "https://download.versatiles.org/osm-vector/osm-vector.versatiles"
+    assert tiles.LANDCOVER_SOURCE == (
+        "https://download.versatiles.org/landcover-vector/landcover-vector.versatiles"
+    )
+    assert tiles.ELEVATION_SOURCE == (
+        "https://download.versatiles.org/elevation-raster/elevation-raster.versatiles"
+    )
+
+
+def test_landcover_argv_and_outputs(veneto, versatiles_bin):
+    step = LandcoverStep()
+    assert step.layer == "landcover"
+    assert step.outputs(veneto) == [veneto.dist / "veneto" / "veneto-landcover.v1.pmtiles"]
+    assert step.argv(veneto) == [
+        "/usr/bin/versatiles",
+        "convert",
+        "--bbox",
+        "10.6231,44.7923,13.1021,46.6806",
+        "--bbox-border",
+        "1",
+        "--compress",
+        "gzip",
+        tiles.LANDCOVER_SOURCE,
+        str(veneto.dist / "veneto" / "veneto-landcover.v1.pmtiles"),
+    ]
+    e = step.expectation(veneto, step.outputs(veneto)[0])
+    assert (e.min_zoom, e.max_zoom) == (0, 10) and e.tile_types == frozenset({"mvt"})
+    assert e.source == tiles.LANDCOVER_SOURCE
 
 
 def test_terrain_argv_and_outputs(veneto, versatiles_bin):

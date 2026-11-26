@@ -1,7 +1,8 @@
 """Tile layers cut from the VersaTiles planet archives by remote range requests (ADR 0004).
 
-Basemap and base packs are recompressed to gzip because MapLibre Native rejects brotli
-PMTiles; the elevation archive is already uncompressed WebP and is left untouched.
+Basemap, land cover and base packs are recompressed to gzip because MapLibre Native rejects
+brotli PMTiles; the elevation archive is already uncompressed WebP and is left untouched. OSM and
+land cover are two containers since VersaTiles retired `osm-landcover.versatiles` (ADR 0021).
 """
 
 from __future__ import annotations
@@ -15,9 +16,11 @@ from maqs.layers import output_name
 from maqs.steps.base import StepOutcome
 from maqs.validate import BASE_PACK_CAP, Expectation
 
-OSM_SOURCE = "https://download.versatiles.org/osm-landcover.versatiles"
-ELEVATION_SOURCE = "https://download.versatiles.org/elevation.versatiles"
+OSM_SOURCE = "https://download.versatiles.org/osm-vector/osm-vector.versatiles"
+LANDCOVER_SOURCE = "https://download.versatiles.org/landcover-vector/landcover-vector.versatiles"
+ELEVATION_SOURCE = "https://download.versatiles.org/elevation-raster/elevation-raster.versatiles"
 BASEMAP_MAX_ZOOM = 14
+LANDCOVER_MAX_ZOOM = 10
 TERRAIN_MAX_ZOOM = 12
 
 
@@ -70,6 +73,31 @@ class BasemapStep(_VersatilesStep):
 
     def expectation(self, ctx: BuildContext, output: Path) -> Expectation:
         return Expectation(0, BASEMAP_MAX_ZOOM, frozenset({"mvt"}), source=OSM_SOURCE)
+
+
+class LandcoverStep(_VersatilesStep):
+    """ESA WorldCover with OSM's land use burned in, one `landcover` layer of Shortbread kinds,
+    z0-10: the colour under OSM's own fills where OSM maps none (ADR 0021)."""
+
+    name = "landcover"
+    suffix = "landcover"
+
+    def argv(self, ctx: BuildContext) -> list[str]:
+        assert ctx.region is not None
+        return [
+            str(tools.find_tool("versatiles")),
+            "convert",
+            "--bbox",
+            format_bbox(ctx.region.bbox),
+            *_border_args(ctx.region),
+            "--compress",
+            "gzip",
+            LANDCOVER_SOURCE,
+            str(self.outputs(ctx)[0]),
+        ]
+
+    def expectation(self, ctx: BuildContext, output: Path) -> Expectation:
+        return Expectation(0, LANDCOVER_MAX_ZOOM, frozenset({"mvt"}), source=LANDCOVER_SOURCE)
 
 
 class TerrainStep(_VersatilesStep):
@@ -127,4 +155,8 @@ class BasePackStep(_VersatilesStep):
         )
 
 
-TILE_STEPS: dict[str, type[_VersatilesStep]] = {"basemap": BasemapStep, "terrain": TerrainStep}
+TILE_STEPS: dict[str, type[_VersatilesStep]] = {
+    "basemap": BasemapStep,
+    "landcover": LandcoverStep,
+    "terrain": TerrainStep,
+}

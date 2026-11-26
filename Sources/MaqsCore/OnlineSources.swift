@@ -11,6 +11,8 @@ public struct OnlineSources: Sendable, Equatable {
     public let basemap: [TileSource]
     /// Terrain (elevation) providers, preferred first.
     public let terrain: [TileSource]
+    /// Land cover providers, preferred first; empty in a file from before land cover.
+    public let landcover: [TileSource]
 }
 
 /// One provider entry of `sources.json`, verbatim.
@@ -23,7 +25,7 @@ public struct TileSource: Sendable, Equatable, Identifiable {
     public let tiles: String
     /// The provider's TileJSON document.
     public let tilejson: URL
-    /// `"shortbread-1.0"` or `"terrarium"`.
+    /// `"shortbread-1.0"`, `"versatiles-landcover-1.0"` or `"terrarium"`.
     public let schema: String
     /// `"mvt"`, `"webp"` or `"png"`.
     public let format: String

@@ -1,8 +1,8 @@
 # maqs
 
-Map data and a Swift package for native Apple apps: Shortbread basemap tiles, terrarium terrain, hiking trails, places and road curvature, per region. Online-first, offline optional, zero hosting cost: code in this repository, data as GitHub Release assets, compute in GitHub Actions. One map provider, [VersaTiles](https://versatiles.org), serves every tile online and offline.
+Map data and a Swift package for native Apple apps: Shortbread basemap tiles, land cover, terrarium terrain, hiking trails, places and road curvature, per region. Online-first, offline optional, zero hosting cost: code in this repository, data as GitHub Release assets, compute in GitHub Actions. One map provider, [VersaTiles](https://versatiles.org), serves every tile online and offline.
 
-**Status:** the pipeline builds all five layers of a region (basemap, terrain, trails, places, curvature) and the bundled base packs, and writes `manifest.json` from the build reports. A GitHub Actions workflow builds every region each month and publishes the files as a release. The Swift package has its four products: `MaqsCore`, which discovers, downloads and installs region packs, `MaqsTerrain`, which reads elevations and tells which peaks the user can see, `MaqsData`, which searches trails, finds places along a bearing and looks up the corners ahead on a road, and `MaqsUI`, the map, which draws installed regions from their files and streams everywhere else. [`docs/BRIEF.md`](docs/BRIEF.md) has the plan and [`docs/decisions.md`](docs/decisions.md) has every decision and the numbers behind it.
+**Status:** the pipeline builds all six layers of a region (basemap, land cover, terrain, trails, places, curvature) and the bundled base packs, and writes `manifest.json` from the build reports. A GitHub Actions workflow builds every region each month and publishes the files as a release. The Swift package has its four products: `MaqsCore`, which discovers, downloads and installs region packs, `MaqsTerrain`, which reads elevations and tells which peaks the user can see, `MaqsData`, which searches trails, finds places along a bearing and looks up the corners ahead on a road, and `MaqsUI`, the map, which draws installed regions from their files and streams everywhere else. [`docs/BRIEF.md`](docs/BRIEF.md) has the plan and [`docs/decisions.md`](docs/decisions.md) has every decision and the numbers behind it.
 
 ## Data releases
 
@@ -159,7 +159,7 @@ The app draws its own controls: the map hides MapLibre's compass, logo and attri
 
 A line can be several runs drawn as one, `MapLine(id:segments:)`, so the active line can be every stretch of a sight line that is in view. Each marker the map draws is also a button for VoiceOver, labelled with its label.
 
-A custom style needs a vector source named `basemap`, and a `raster-dem` source named `terrain` for hillshade; the package fills in the tiles, fonts and sprite. Any other source in it is fetched by MapLibre directly, so it needs the network even inside an installed region. [`docs/architecture.md`](docs/architecture.md#map) has the contract and the design rules, and ADR 0017 in [`docs/decisions.md`](docs/decisions.md) has the reasons.
+A custom style needs a vector source named `basemap`, a vector source named `landcover` for land cover, and a `raster-dem` source named `terrain` for hillshade; the package fills in the tiles, fonts and sprite. Any other source in it is fetched by MapLibre directly, so it needs the network even inside an installed region. [`docs/architecture.md`](docs/architecture.md#map) has the contract and the design rules, and ADR 0017 in [`docs/decisions.md`](docs/decisions.md) has the reasons.
 
 `MaqsUI` never asks for location permission. An app that shows the user's location sets `NSLocationWhenInUseUsageDescription` in its Info.plist and asks for permission itself, with `CLLocationManager.requestWhenInUseAuthorization()`, before it sets the map's `userLocation` to `.system`; `.provided` shows the fixes the app passes to `provide(_:)` instead. One prompt can still come from MapLibre: if the app's Info.plist declares `NSLocationTemporaryUsageDescriptionDictionary` with an `MLNAccuracyAuthorizationDescription` purpose, MapLibre may ask for temporary full accuracy.
 
@@ -188,14 +188,14 @@ Before a package release, walk through it by hand on a simulator and on a device
 pipeline/bootstrap.sh            # installs versatiles, pmtiles, osmium-tool, tippecanoe (macOS or Ubuntu 24.04)
 cd pipeline && uv sync
 uv run maqs check-tools
-uv run maqs build --region test  # all five layers and build-report.json in dist/test/ at the repository root
+uv run maqs build --region test  # all six default layers and build-report.json in dist/test/ at the repository root
 uv run maqs build --region veneto
 uv run maqs build --region veneto --layers basemap,terrain  # only some layers
 uv run maqs build --region base  # the base packs, in dist/base/
 uv run maqs regions
 ```
 
-Outputs go to `dist/<region>/` at the repository root, even when you run from `pipeline/`; `--dist` overrides it. A full build writes `<region>-basemap.v1.pmtiles`, `<region>-terrain.v1.pmtiles`, `<region>-trails.v1.sqlite`, `<region>-trails.v1.pmtiles`, `<region>-places.v1.sqlite`, `<region>-places.v1.pmtiles`, `<region>-curvature.v1.sqlite` and `build-report.json`, all described in [`docs/data-format.md`](docs/data-format.md). The `.v1` is the layer's schema version. The trails, places and curvature layers read the region's Geofabrik extract (about 625 MB for `europe/italy/nord-est` in October 2026), downloaded once into `.cache/` and reused; delete it to get a fresh one. Adding a region anywhere in the world is one entry in `config/regions.yaml` when the region is cut from the `europe/italy/nord-est` extract; a region from another Geofabrik extract also needs an edit to `.github/workflows/build-maps.yml` (ADR 0013). [`docs/architecture.md`](docs/architecture.md) lists the fields.
+Outputs go to `dist/<region>/` at the repository root, even when you run from `pipeline/`; `--dist` overrides it. A full build writes `<region>-basemap.v1.pmtiles`, `<region>-landcover.v1.pmtiles`, `<region>-terrain.v1.pmtiles`, `<region>-trails.v1.sqlite`, `<region>-trails.v1.pmtiles`, `<region>-places.v1.sqlite`, `<region>-places.v1.pmtiles`, `<region>-curvature.v1.sqlite` and `build-report.json`, all described in [`docs/data-format.md`](docs/data-format.md). The `.v1` is the layer's schema version. The trails, places and curvature layers read the region's Geofabrik extract (about 625 MB for `europe/italy/nord-est` in October 2026), downloaded once into `.cache/` and reused; delete it to get a fresh one. Adding a region anywhere in the world is one entry in `config/regions.yaml` when the region is cut from the `europe/italy/nord-est` extract; a region from another Geofabrik extract also needs an edit to `.github/workflows/build-maps.yml` (ADR 0013). [`docs/architecture.md`](docs/architecture.md) lists the fields.
 
 ## Develop
 

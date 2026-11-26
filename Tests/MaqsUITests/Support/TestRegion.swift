@@ -45,12 +45,12 @@ enum TestRegion {
         }
     }
 
-    /// The region installed with every layer a map draws (basemap, terrain, trails and places), from `manifest` when
+    /// The region installed with every layer a map draws (basemap, land cover, terrain, trails and places), from `manifest` when
     /// given; from then on every request of the release fails. With ``mapShowingEveryOverlay(_:seams:)``, the setup of
     /// the headline map, which draws inside the region with no network.
     @MainActor static func installEveryMapLayer(on server: StubServer, in directory: TemporaryDirectory,
                                                 manifest: Data? = nil) async throws -> Maqs {
-        let maqs = try await install(on: server, layers: [.basemap, .terrain, .trails, .places], in: directory,
+        let maqs = try await install(on: server, layers: [.basemap, .landcover, .terrain, .trails, .places], in: directory,
                                      manifest: manifest)
         try failEveryRequest(on: server)
         return maqs

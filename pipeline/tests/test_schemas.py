@@ -136,7 +136,7 @@ TRAIL_PATH = "/regions/0/layers/trails/0"
     ("path", "value", "where"),
     [
         (["manifest_version"], 2, "/manifest_version"),
-        (["shortbread_version"], "1.1", "/shortbread_version"),
+        (["shortbread_version"], "2.0", "/shortbread_version"),
         (["release"], "latest", "/release"),
         (["created_at"], "2026-11-01", "/created_at"),
         (["attribution"], [], "/attribution"),

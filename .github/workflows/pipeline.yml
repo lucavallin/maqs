@@ -37,7 +37,7 @@ jobs:
     timeout-minutes: 30
     env:
       # Must match the pins in pipeline/bootstrap.sh and maqs.tools.PINS.
-      TOOLS_KEY: versatiles-5.0.0-pmtiles-1.31.2-osmium-1.19.1-tippecanoe-2.79.0
+      TOOLS_KEY: versatiles-5.16.0-pmtiles-1.31.2-osmium-1.19.1-tippecanoe-2.79.0
     steps:
       - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
@@ -94,7 +94,7 @@ jobs:
         working-directory: pipeline
       - name: Assert the fixture budget (live network test)
         # Builds the test region again into a temp dir (reusing the repo-root .cache) and asserts
-        # all five layers' outputs and row-count ranges plus gzip, zoom, tile type, tile count and
+        # all six layers' outputs and row-count ranges plus gzip, zoom, tile type, tile count and
         # the 5 MB budget, so a fixture regression fails CI instead of warning.
         run: uv run pytest tests/test_integration_network.py --run-network -q
         working-directory: pipeline

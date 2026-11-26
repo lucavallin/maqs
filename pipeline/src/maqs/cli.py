@@ -35,6 +35,7 @@ from maqs.validate import TEST_REGION_WARN
 
 LAYER_ORDER: tuple[str, ...] = (
     "basemap",
+    "landcover",
     "terrain",
     "terrain-hd",
     "trails",
@@ -48,7 +49,14 @@ LAYER_STEPS: dict[str, type] = {
     "places": PlacesStep,
     "curvature": CurvatureStep,
 }
-DEFAULT_LAYERS: tuple[str, ...] = ("basemap", "terrain", "trails", "places", "curvature")
+DEFAULT_LAYERS: tuple[str, ...] = (
+    "basemap",
+    "landcover",
+    "terrain",
+    "trails",
+    "places",
+    "curvature",
+)
 LOG_FORMAT = "%(levelname)s %(name)s: %(message)s"
 
 
@@ -307,8 +315,8 @@ def run_build(
     default=",".join(DEFAULT_LAYERS),
     show_default=True,
     help=(
-        "Comma-separated layer names, built in this order: basemap, terrain, terrain-hd,"
-        " trails, places, curvature. terrain-hd is opt-in."
+        "Comma-separated layer names, built in this order: basemap, landcover, terrain,"
+        " terrain-hd, trails, places, curvature. terrain-hd is opt-in."
     ),
 )
 @click.option("--force", is_flag=True, help="Rebuild even when outputs exist.")

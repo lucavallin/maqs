@@ -53,6 +53,7 @@ def step(name: str, outputs: list[dict], status: str = "built", error: str | Non
 def region_report(label: str, *, drop: str | None = None, fail: str | None = None) -> dict:
     steps = [
         step("basemap", [output(label, "basemap", "pmtiles", ts="2026-06-07T23:59:58Z")]),
+        step("landcover", [output(label, "landcover", "pmtiles", ts=None)]),
         step("terrain", [output(label, "terrain", "pmtiles", ts=None)]),
         step("trails", [output(label, "trails", "sqlite"), output(label, "trails", "pmtiles")]),
         step("places", [output(label, "places", "sqlite"), output(label, "places", "pmtiles")]),

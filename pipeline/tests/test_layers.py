@@ -4,7 +4,7 @@ from maqs.layers import LAYER_SCHEMA_VERSION, STANDARD_LAYERS, output_name
 
 
 def test_every_standard_layer_has_schema_version_one_today():
-    assert STANDARD_LAYERS == ("basemap", "terrain", "trails", "places", "curvature")
+    assert STANDARD_LAYERS == ("basemap", "landcover", "terrain", "trails", "places", "curvature")
     assert {LAYER_SCHEMA_VERSION[layer] for layer in STANDARD_LAYERS} == {1}
     assert LAYER_SCHEMA_VERSION["terrain-hd"] == 1
 

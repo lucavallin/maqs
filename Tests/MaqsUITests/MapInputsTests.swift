@@ -20,6 +20,11 @@ import Testing
             TileSource(id: "dem", provider: "P", tiles: "https://tiles.example/elevation/{z}/{x}/{y}",
                        tilejson: URL(filePath: "/dem.json"), schema: "terrarium", format: "webp", tileSize: 512,
                        minZoom: 0, maxZoom: 12, attribution: ["© DEM"]),
+        ],
+        landcover: [
+            TileSource(id: "cover", provider: "P", tiles: "https://tiles.example/landcover/{z}/{x}/{y}",
+                       tilejson: URL(filePath: "/cover.json"), schema: "versatiles-landcover-1.0", format: "mvt",
+                       tileSize: nil, minZoom: 0, maxZoom: 10, attribution: ["© Cover"]),
         ])
 
     private static let box = BoundingBox(minLon: 12.21, minLat: 46.08, maxLon: 12.29, maxLat: 46.13)
@@ -34,6 +39,7 @@ import Testing
         InstalledPack(id: .region("test"), release: "data-ci", files: [
             .basemap: [file("test-basemap.v1.pmtiles")],
             .terrain: [file("test-terrain.v1.pmtiles")],
+            .landcover: [file("test-landcover.v1.pmtiles")],
             .trails: [file("test-trails.v1.sqlite"), file("test-trails.v1.pmtiles", role: "overlay")],
             .places: [file("test-places.v1.sqlite"), file("test-places.v1.pmtiles", role: "overlay")],
             .curvature: [file("test-curvature.v1.sqlite")],
@@ -51,6 +57,7 @@ import Testing
     private var infos: [URL: ArchiveInfo] {
         Dictionary(uniqueKeysWithValues: [
             info("test-basemap.v1.pmtiles"), info("test-terrain.v1.pmtiles", maxZoom: 12), info("base.pmtiles", maxZoom: 9),
+            info("test-landcover.v1.pmtiles", maxZoom: 10),
         ])
     }
 
@@ -71,6 +78,27 @@ import Testing
         #expect(templates.onlineAllowed)
         #expect(templates.gateway == TileTemplates(basemap: "https://tiles.example/osm/{z}/{x}/{y}",
                                                    terrain: "https://tiles.example/elevation/{z}/{x}/{y}"))
+    }
+
+    @Test func landCoverComesWithTheLandcoverLayerFromItsFirstOnlineSource() {
+        let templates = MapInputs.templates(sources: Self.sources, layers: [.basemap, .landcover], showsHillshade: true)
+        #expect(templates.landcover == TileTemplate(template: "https://tiles.example/landcover/{z}/{x}/{y}", minZoom: 0,
+                                                    maxZoom: 10, tileSize: nil, attribution: ["© Cover"]))
+        #expect(templates.gateway.landcover == "https://tiles.example/landcover/{z}/{x}/{y}")
+        let without = MapInputs.templates(sources: Self.sources, layers: [.basemap, .terrain], showsHillshade: true)
+        #expect(without.landcover == nil && without.gateway.landcover == nil)
+    }
+
+    /// Online tiles off, or a cached `sources.json` from before land cover: the style still names land cover, on the
+    /// reserved host, so an installed region's land cover draws.
+    @Test func landCoverWithoutAnOnlineSourceIsOnTheReservedHost() {
+        let offline = MapInputs.templates(sources: nil, layers: [.basemap, .landcover], showsHillshade: true)
+        #expect(offline.landcover == TileTemplate(template: "https://maqs.invalid/landcover/{z}/{x}/{y}", minZoom: 0,
+                                                  maxZoom: 10, tileSize: nil, attribution: []))
+        let older = OnlineSources(version: 1, basemap: Self.sources.basemap, terrain: Self.sources.terrain, landcover: [])
+        let cached = MapInputs.templates(sources: older, layers: [.basemap, .landcover], showsHillshade: true)
+        #expect(cached.onlineAllowed)
+        #expect(cached.gateway.landcover == "https://maqs.invalid/landcover/{z}/{x}/{y}")
     }
 
     @Test func hillshadeIsAbsentWithoutTheTerrainLayer() {
@@ -107,9 +135,18 @@ import Testing
 
     @Test func aRegionsTileArchivesAreReadForTheirHeaders() {
         #expect(MapInputs.tileArchives(of: [region, base]) == [
-            URL(filePath: "/packs/test-basemap.v1.pmtiles"), URL(filePath: "/packs/test-terrain.v1.pmtiles"),
-            URL(filePath: "/packs/base.pmtiles"),
+            URL(filePath: "/packs/test-basemap.v1.pmtiles"), URL(filePath: "/packs/test-landcover.v1.pmtiles"),
+            URL(filePath: "/packs/test-terrain.v1.pmtiles"), URL(filePath: "/packs/base.pmtiles"),
         ])
+    }
+
+    @Test func aRegionAnswersItsLandCover() throws {
+        let content = MapInputs.content(packs: [region], layers: [.basemap, .landcover, .terrain],
+                                        catalog: try catalog(), archives: infos)
+        #expect(content.table.regions.first?.archives.map(\.layer) == [.basemap, .landcover, .terrain])
+        #expect(content.table.regions.first?.archives[1] == LocalArchive(
+            pack: .region("test"), layer: .landcover, url: URL(filePath: "/packs/test-landcover.v1.pmtiles"),
+            minZoom: 0, maxZoom: 10, bounds: Self.box, dataDate: Self.date))
     }
 
     @Test func aRegionAnswersItsBasemapAndTerrainAndAddsItsOverlays() throws {
@@ -122,6 +159,8 @@ import Testing
         #expect(installed.archives == [
             LocalArchive(pack: .region("test"), layer: .basemap, url: URL(filePath: "/packs/test-basemap.v1.pmtiles"),
                          minZoom: 0, maxZoom: 14, bounds: Self.box, dataDate: Self.date),
+            LocalArchive(pack: .region("test"), layer: .landcover, url: URL(filePath: "/packs/test-landcover.v1.pmtiles"),
+                         minZoom: 0, maxZoom: 10, bounds: Self.box, dataDate: Self.date),
             LocalArchive(pack: .region("test"), layer: .terrain, url: URL(filePath: "/packs/test-terrain.v1.pmtiles"),
                          minZoom: 0, maxZoom: 12, bounds: Self.box, dataDate: Self.date),
         ])
@@ -154,12 +193,12 @@ import Testing
         let content = MapInputs.content(packs: [region], layers: [.basemap, .terrain], catalog: try catalog(),
                                         archives: unreadable)
         // The region still covers its box, so its terrain tiles are empty there rather than fetched online.
-        #expect(content.table.regions.first?.archives.map(\.layer) == [.basemap])
+        #expect(content.table.regions.first?.archives.map(\.layer) == [.basemap, .landcover])
     }
 
     // MARK: Credit inputs
 
-    private var everyLayer: Set<Layer> { [.basemap, .terrain, .trails, .places] }
+    private var everyLayer: Set<Layer> { [.basemap, .landcover, .terrain, .trails, .places] }
 
     @Test func theBasemapAlwaysDrawsAndTerrainWithHillshadeEachWithItsOnlineCredits() {
         let on = MapInputs.templates(sources: Self.sources, layers: [.basemap, .terrain], showsHillshade: true)
@@ -168,6 +207,16 @@ import Testing
         let off = MapInputs.templates(sources: Self.sources, layers: [.basemap, .terrain], showsHillshade: false)
         #expect(MapInputs.creditInputs(templates: off, content: .none, overlays: MapOverlays()) == CreditInputs(
             drawn: [.basemap], online: [.basemap: ["© OSM"]], installed: []))
+    }
+
+    @Test func landCoverDrawsWithItsOnlineCreditAndCountsAsInstalledWithARegion() throws {
+        let layers: Set<Layer> = [.basemap, .landcover]
+        let templates = MapInputs.templates(sources: Self.sources, layers: layers, showsHillshade: false)
+        #expect(MapInputs.creditInputs(templates: templates, content: .none, overlays: MapOverlays()) == CreditInputs(
+            drawn: [.basemap, .landcover], online: [.basemap: ["© OSM"], .landcover: ["© Cover"]], installed: []))
+        let content = MapInputs.content(packs: [region], layers: layers, catalog: try catalog(), archives: infos)
+        #expect(MapInputs.creditInputs(templates: templates, content: content, overlays: MapOverlays()).installed
+            == [.basemap, .landcover, .terrain])
     }
 
     @Test func withOnlineTilesOffNoLayerHasAnOnlineCredit() {
@@ -186,16 +235,17 @@ import Testing
         #expect(every.installed == everyLayer)
         let somePlaces = MapInputs.creditInputs(templates: templates, content: content,
                                                 overlays: MapOverlays(places: ["peak"]))
-        #expect(somePlaces.drawn == [.basemap, .terrain, .places])
+        #expect(somePlaces.drawn == [.basemap, .landcover, .terrain, .places])
     }
 
     @Test func hiddenOverlaysAndOverlaysWithNothingInstalledDoNotDraw() throws {
         let templates = MapInputs.templates(sources: Self.sources, layers: everyLayer, showsHillshade: true)
         let content = MapInputs.content(packs: [region], layers: everyLayer, catalog: try catalog(), archives: infos)
         #expect(MapInputs.creditInputs(templates: templates, content: content, overlays: MapOverlays()).drawn
-            == [.basemap, .terrain])
+            == [.basemap, .landcover, .terrain])
         #expect(MapInputs.creditInputs(templates: templates, content: .none,
-                                       overlays: MapOverlays(trails: true, places: nil)).drawn == [.basemap, .terrain])
+                                       overlays: MapOverlays(trails: true, places: nil)).drawn
+            == [.basemap, .landcover, .terrain])
     }
 
     @Test func aBasePackProvidesTheBasemapAndAnUnreadableArchiveNothing() throws {
@@ -208,7 +258,7 @@ import Testing
         let withoutTerrain = MapInputs.content(packs: [region], layers: [.basemap, .terrain], catalog: try catalog(),
                                                archives: unreadable)
         #expect(MapInputs.creditInputs(templates: templates, content: withoutTerrain, overlays: MapOverlays()).installed
-            == [.basemap])
+            == [.basemap, .landcover])
     }
 
     @Test func withoutACatalogTheRegionCoversItsArchives() {

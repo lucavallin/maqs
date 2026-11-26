@@ -9,6 +9,8 @@ import Foundation
 ///
 /// - Hillshade needs a `raster-dem` source named `terrain` in the JSON, which the package fills in like `basemap`;
 ///   a style without one draws no hillshade.
+/// - Land cover needs a vector source named `landcover` in the JSON, with its fills reading the `landcover` source
+///   layer; the package fills it in when `.landcover` is configured and removes it and its layers when it is not.
 /// - A point-of-interest layer, marked with `"metadata": {"maqs:poi-key": "<OSM key>"}`, needs its `filter`, if it
 ///   has one, written as an expression. The package wraps it in `["all", filter, …]` with an expression, and MapLibre
 ///   reads an `all` with a legacy member, such as `["==", "class", "hut"]`, as a legacy filter, in which the package's

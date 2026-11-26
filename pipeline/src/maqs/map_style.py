@@ -27,6 +27,15 @@ GREEN_LAYERS = frozenset(
 )
 # Piers and dams are drawn in the land colour, not the water colour.
 LAND_COLOURED_WATER_LAYERS = frozenset({"water-dam-area", "water-pier-area", "water-pier"})
+# VersaTiles' land cover (ADR 0021) is a second vector source drawn under OSM: one copy of each of
+# the style's land fills, and of the water fill, reading its one layer. Opaque to z12, where its
+# z10 outlines grow coarse, then faded to 25 % by z14: OSM's own fills draw on top wherever OSM has
+# them, and land OSM does not map keeps a hint of colour. VersaTiles' recipe
+# (github.com/versatiles-org/landcover-vectors, "Using it with OSM").
+LANDCOVER_SOURCE = "landcover"
+LANDCOVER_OPACITY = ["interpolate", ["linear"], ["zoom"], 12, 1, 14, 0.25]
+LANDCOVER_SLOT = "slot-below-fills"
+
 # Top-level keys that would switch on 3D terrain or a globe, which the package does not use.
 DROPPED_KEYS = ("terrain", "sky", "projection")
 RGBA_ALPHA = re.compile(r"^rgba\(\s*[0-9.]+\s*,\s*[0-9.]+\s*,\s*[0-9.]+\s*,\s*([0-9.]+)\s*\)$")
@@ -148,7 +157,34 @@ def transform(style: dict[str, Any], palette: Palette) -> dict[str, Any]:
             layer["metadata"] = {"maqs:poi-key": layer["id"].removeprefix("poi-")}
             layer["layout"] = {**layout, "visibility": "none"}
         _recolour(layer, palette)
+
+    result["sources"][LANDCOVER_SOURCE] = {"type": "vector", "tiles": [PLACEHOLDER_URL]}
+    twins = [_landcover_twin(layer) for layer in result["layers"] if _has_landcover_twin(layer)]
+    slot = next(
+        (i for i, layer in enumerate(result["layers"]) if layer["id"] == LANDCOVER_SLOT), None
+    )
+    if slot is None:
+        raise ValueError(f"the style has no {LANDCOVER_SLOT} layer to put the land cover above")
+    result["layers"][slot + 1 : slot + 1] = twins
     return result
+
+
+def _has_landcover_twin(layer: dict[str, Any]) -> bool:
+    """A land fill, or the water fill: the kinds VersaTiles' land cover carries."""
+    return layer.get("type") == "fill" and (
+        layer["id"].startswith("land-") or layer["id"] == "water-area"
+    )
+
+
+def _landcover_twin(layer: dict[str, Any]) -> dict[str, Any]:
+    twin = copy.deepcopy(layer)
+    twin["id"] = f"landcover-{layer['id']}"
+    twin["source"] = LANDCOVER_SOURCE
+    twin["source-layer"] = LANDCOVER_SOURCE
+    twin.pop("minzoom", None)
+    twin.pop("maxzoom", None)
+    twin.setdefault("paint", {})["fill-opacity"] = LANDCOVER_OPACITY
+    return twin
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -7,6 +7,10 @@ import Testing
     private let versatiles = TileTemplates(
         basemap: "https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}",
         terrain: "https://tiles.versatiles.org/tiles/elevation/{z}/{x}/{y}")
+    private let withLandcover = TileTemplates(
+        basemap: "https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}",
+        terrain: "https://tiles.versatiles.org/tiles/elevation/{z}/{x}/{y}",
+        landcover: "https://tiles.versatiles.org/tiles/landcover-vector/{z}/{x}/{y}")
     private let reserved = TileTemplates(
         basemap: "https://maqs.invalid/basemap/{z}/{x}/{y}",
         terrain: "https://maqs.invalid/terrain/{z}/{x}/{y}")
@@ -20,6 +24,24 @@ import Testing
             == TileRequest(layer: .basemap, z: 14, x: 8710, y: 5850))
         #expect(request(versatiles, "https://tiles.versatiles.org/tiles/elevation/12/2177/1462")
             == TileRequest(layer: .terrain, z: 12, x: 2177, y: 1462))
+    }
+
+    @Test func parsesTheLandcoverTemplateAndMakesItsURL() throws {
+        let tile = TileRequest(layer: .landcover, z: 10, x: 546, y: 363)
+        #expect(request(withLandcover, "https://tiles.versatiles.org/tiles/landcover-vector/10/546/363") == tile)
+        #expect(withLandcover.url(for: tile)?.absoluteString
+            == "https://tiles.versatiles.org/tiles/landcover-vector/10/546/363")
+        #expect(request(versatiles, "https://tiles.versatiles.org/tiles/landcover-vector/10/546/363") == nil)
+        #expect(versatiles.url(for: tile) == nil)
+    }
+
+    /// A reserved template names a tile the gateway serves from an installed pack; it never becomes a request.
+    @Test func aReservedTemplateNeverMakesAnOnlineURL() {
+        let landcover = TileTemplates(basemap: "https://tiles.versatiles.org/tiles/osm/{z}/{x}/{y}", terrain: nil,
+                                      landcover: "https://maqs.invalid/landcover/{z}/{x}/{y}")
+        #expect(request(landcover, "https://maqs.invalid/landcover/3/4/2") == TileRequest(layer: .landcover, z: 3, x: 4, y: 2))
+        #expect(landcover.url(for: TileRequest(layer: .landcover, z: 3, x: 4, y: 2)) == nil)
+        #expect(reserved.url(for: TileRequest(layer: .basemap, z: 3, x: 4, y: 2)) == nil)
     }
 
     @Test func parsesTheReservedTemplates() {

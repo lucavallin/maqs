@@ -11,12 +11,17 @@ import Testing
     static let terrain = TileTemplate(
         template: "https://tiles.example/dem/{z}/{x}/{y}", minZoom: 0, maxZoom: 12, tileSize: 512, attribution: ["Terrain"])
 
+    static let landcover = TileTemplate(
+        template: "https://tiles.example/cover/{z}/{x}/{y}", minZoom: 0, maxZoom: 10, tileSize: nil, attribution: ["Cover"])
+
     static func inputs(
-        dark: Bool = false, terrain: TileTemplate? = StyleAssemblerTests.terrain, language: String? = nil,
+        dark: Bool = false, terrain: TileTemplate? = StyleAssemblerTests.terrain,
+        landcover: TileTemplate? = StyleAssemblerTests.landcover, language: String? = nil,
         pois: Set<PointOfInterest> = [], overlays: [OverlaySource] = [], kinds: Set<String>? = nil, trails: Bool = true
     ) -> StyleInputs {
         StyleInputs(
-            basemap: basemap, terrain: terrain, glyphs: "glyphs://{fontstack}/{range}", sprite: "sprite://base",
+            basemap: basemap, terrain: terrain, landcover: landcover, glyphs: "glyphs://{fontstack}/{range}",
+            sprite: "sprite://base",
             labelLanguage: language, pointsOfInterest: pois, overlays: overlays, visiblePlaceKinds: kinds,
             showsTrails: trails, content: ContentStyle(dark: dark, accentHex: "#FF5500"))
     }
@@ -96,6 +101,31 @@ import Testing
         for _ in 0..<5 {
             #expect(try StyleAssembler.assemble(base, inputs) == first)
         }
+    }
+
+    @Test(arguments: [false, true])
+    func fillsTheLandcoverSourceUnderTheOcean(dark: Bool) throws {
+        let style = try bundled(dark: dark, Self.inputs(dark: dark))
+        let landcover = try #require(sources(style)["landcover"] as? JSON)
+        #expect(landcover["type"] as? String == "vector")
+        #expect(landcover["tiles"] as? [String] == [Self.landcover.template])
+        #expect(landcover["maxzoom"] as? Int == 10)
+        #expect(landcover["attribution"] as? String == "Cover")
+        let ids = ids(style)
+        let fills = ids.filter { $0.hasPrefix("landcover-") }
+        #expect(fills.contains("landcover-land-forest") && fills.contains("landcover-water-area"))
+        #expect(try fills.allSatisfy { try layer(style, $0)["source-layer"] as? String == "landcover" })
+        let first = try #require(ids.firstIndex(of: fills[0]))
+        let last = try #require(ids.firstIndex(of: fills[fills.count - 1]))
+        #expect(try #require(ids.firstIndex(of: "slot-below-fills")) < first)
+        #expect(last < (try #require(ids.firstIndex(of: "water-ocean"))))
+    }
+
+    @Test func removesTheLandcoverFillsAndSourceWithoutLandcover() throws {
+        let style = try bundled(dark: false, Self.inputs(landcover: nil))
+        #expect(sources(style)["landcover"] == nil)
+        #expect(layers(style).allSatisfy { $0["source"] as? String != "landcover" })
+        #expect(ids(style).contains("land-forest"))
     }
 
     @Test func removesTheHillshadeAndTheTerrainSourceWithoutTerrain() throws {

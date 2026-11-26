@@ -34,9 +34,12 @@ def test_test_region_builds_end_to_end(tmp_path):
     report = json.loads((tmp_path / "test" / "build-report.json").read_text())
     assert report["validation"]["ok"] is True
     by_name = {s["name"]: s for s in report["steps"]}
-    assert set(by_name) == {"basemap", "terrain", "trails", "places", "curvature"}
+    assert set(by_name) == {"basemap", "landcover", "terrain", "trails", "places", "curvature"}
     basemap, terrain = by_name["basemap"]["outputs"][0], by_name["terrain"]["outputs"][0]
     assert basemap["compression"] == "gzip" and basemap["max_zoom"] == 14 and basemap["tiles"] > 20
+    landcover = by_name["landcover"]["outputs"][0]
+    assert landcover["compression"] == "gzip" and landcover["tile_type"] == "mvt"
+    assert (landcover["min_zoom"], landcover["max_zoom"]) == (0, 10)
     assert terrain["tile_type"] == "webp" and terrain["max_zoom"] == 12
     assert basemap["bytes"] + terrain["bytes"] < 5_000_000
     trails_db, trails_overlay = by_name["trails"]["outputs"]

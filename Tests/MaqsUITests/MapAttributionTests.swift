@@ -31,12 +31,12 @@ extension SharedGatewaySuite {
         private static let osm = MapCredit(
             text: "© OpenStreetMap contributors", url: URL(string: "https://www.openstreetmap.org/copyright"))
         private static let esa = MapCredit(
-            text: "CC BY 4.0 ESA WorldCover 2021", url: URL(string: "https://esa-worldcover.org/en/data-access"))
+            text: "ESA WorldCover 2021 (CC BY 4.0)", url: URL(string: "https://esa-worldcover.org/en/data-access"))
         private static let mapterhorn = MapCredit(
             text: "© Mapterhorn", url: URL(string: "https://mapterhorn.com/attribution"))
 
         /// A map with nothing installed and no catalog: the online sources' credits, none with a link.
-        private func onlineMap(layers: Set<Layer> = [.basemap, .terrain], onlineTiles: Bool = true) throws
+        private func onlineMap(layers: Set<Layer> = [.basemap, .landcover, .terrain], onlineTiles: Bool = true) throws
             -> (maqs: Maqs, map: MaqsMap) {
             let maqs = try TestRegion.maqs(on: server, layers: layers, in: directory, onlineTiles: onlineTiles)
             return (maqs, try MaqsMap(maqs: maqs, configuration: MapConfiguration(), seams: seams()))
@@ -44,15 +44,15 @@ extension SharedGatewaySuite {
 
         // MARK: Credits
 
-        @Test func theHeadlineMapCreditsItsBasemapHillshadeTrailsAndPlaces() async throws {
+        @Test func theHeadlineMapCreditsItsBasemapLandCoverHillshadeTrailsAndPlaces() async throws {
             let maqs = try await TestRegion.installEveryMapLayer(on: server, in: directory)
             let map = try TestRegion.mapShowingEveryOverlay(maqs, seams: seams())
 
             try await waitUntil { !map.credits.isEmpty }
 
             #expect(map.credits == [Self.osm, Self.esa, Self.mapterhorn])
-            #expect(map.creditInputs?.drawn == [.basemap, .terrain, .trails, .places])
-            #expect(map.creditInputs?.installed == [.basemap, .terrain, .trails, .places])
+            #expect(map.creditInputs?.drawn == [.basemap, .landcover, .terrain, .trails, .places])
+            #expect(map.creditInputs?.installed == [.basemap, .landcover, .terrain, .trails, .places])
             // The fixture manifest credits trails and places only with OpenStreetMap's entry, which the basemap lists
             // as well, so this shows the entry is there, not that the overlays add it: the next test shows that.
             let overlayCredits = try #require(maqs.state.catalog?.attribution)
@@ -94,20 +94,20 @@ extension SharedGatewaySuite {
             map.configuration.showsHillshade = false
 
             #expect(map.credits == [Self.osm, Self.esa])
-            #expect(map.creditInputs?.drawn == [.basemap, .trails, .places])
+            #expect(map.creditInputs?.drawn == [.basemap, .landcover, .trails, .places])
         }
 
         /// No pack changes when the catalog arrives with nothing installed, yet the credits gain the manifest's links.
         @Test func aCatalogChangeUpdatesTheCredits() async throws {
             let (maqs, map) = try onlineMap(layers: [.basemap])
             try await waitUntil { !map.credits.isEmpty }
-            #expect(map.credits == [MapCredit(text: Self.osm.text, url: nil), MapCredit(text: Self.esa.text, url: nil)])
+            #expect(map.credits == [MapCredit(text: Self.osm.text, url: nil)])
             try Fixtures.serveRelease(on: server)
 
             _ = try await maqs.refreshCatalog()
 
             try await waitUntil { map.credits.first?.url != nil }
-            #expect(map.credits == [Self.osm, Self.esa])
+            #expect(map.credits == [Self.osm])
         }
 
         /// With online tiles off and nothing installed the basemap has no credit: the map reports it (and logs it),

@@ -11,7 +11,20 @@
         "format": "mvt",
         "min_zoom": 0,
         "max_zoom": 14,
-        "attribution": ["© OpenStreetMap contributors", "CC BY 4.0 ESA WorldCover 2021"]
+        "attribution": ["© OpenStreetMap contributors"]
+      }
+    ],
+    "landcover": [
+      {
+        "id": "versatiles-landcover",
+        "provider": "VersaTiles",
+        "tiles": "https://tiles.versatiles.org/tiles/landcover-vector/{z}/{x}/{y}",
+        "tilejson": "https://tiles.versatiles.org/tiles/landcover-vector/tiles.json",
+        "schema": "versatiles-landcover-1.0",
+        "format": "mvt",
+        "min_zoom": 0,
+        "max_zoom": 10,
+        "attribution": ["© OpenStreetMap contributors", "ESA WorldCover 2021 (CC BY 4.0)"]
       }
     ],
     "terrain": [

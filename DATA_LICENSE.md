@@ -2,25 +2,27 @@
 
 The data maqs publishes is derived from the sources below. Anyone who redistributes or displays it must carry these notices. The Swift package's `MapAttributionView` shows the ones for the sources the map draws.
 
-The strings below were checked against the live sources on 2026-10-15: the VersaTiles TileJSON files for the `osm` and `elevation` tilesets, the VersaTiles tileset documentation, and Mapterhorn's `attribution.json`.
+The strings below were checked against the live sources on 2026-10-15, and the land cover's on 2026-11-26: the VersaTiles TileJSON files for the `osm`, `landcover-vector` and `elevation` tilesets, the VersaTiles tileset documentation and the `landcover-vectors` README, and Mapterhorn's `attribution.json`.
 
-## OpenStreetMap (basemap, trails, places, curvature)
+## OpenStreetMap (basemap, land cover, trails, places, curvature)
 
 Map data © OpenStreetMap contributors, available under the [Open Database License (ODbL) 1.0](https://www.openstreetmap.org/copyright). Derived databases that maqs publishes, such as the trails, places and curvature SQLite files, are ODbL as well.
 
 Required display text: **© OpenStreetMap contributors**, linking to https://www.openstreetmap.org/copyright.
 
-## ESA WorldCover 2021 (landcover in the basemap)
+## ESA WorldCover 2021 (land cover)
 
-The basemap tiles include land cover from ESA WorldCover 2021, licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (https://esa-worldcover.org/en/data-access). Attribution: © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium.
+The land cover tiles are ESA WorldCover 2021 with OpenStreetMap's land use burned in (VersaTiles' `landcover-vector`, [ADR 0021](docs/decisions.md)). ESA WorldCover is licensed [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) (https://esa-worldcover.org/en/data-access). Attribution: © ESA WorldCover project 2021 / Contains modified Copernicus Sentinel data (2021) processed by ESA WorldCover consortium. Because they hold OSM's land use, the tiles are also ODbL, © OpenStreetMap contributors.
 
-Required display text: **CC BY 4.0 ESA WorldCover 2021**, as the VersaTiles TileJSON states it.
+Required display text: **© OpenStreetMap contributors** and **ESA WorldCover 2021 (CC BY 4.0)**, as the VersaTiles TileJSON states them.
 
-The basemap archives carry both credits in their metadata as this HTML string:
+The land cover archives carry both credits in their metadata as this HTML string:
 
 ```html
-<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a> · <a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a> <a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a>
+<a href="https://www.openstreetmap.org/copyright" target="_blank">&copy; OpenStreetMap contributors</a> · <a href="https://esa-worldcover.org/en/data-access">ESA WorldCover 2021</a> (<a href="http://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>)
 ```
+
+Basemap archives built before November 2026 were cut from `osm-landcover.versatiles`, which held the land cover inside the basemap and credited it as **CC BY 4.0 ESA WorldCover 2021**. The basemap is OSM alone since, but the manifest keeps the ESA credit on the basemap layer while those older archives can still be installed.
 
 ## Mapterhorn (terrain)
 

@@ -1,7 +1,7 @@
 import Foundation
 
-/// The two tile layers MapLibre asks for.
-enum TileLayer: Sendable { case basemap, terrain }
+/// The tile layers MapLibre asks for.
+enum TileLayer: Sendable { case basemap, landcover, terrain }
 
 /// One tile, as MapLibre requested it.
 struct TileRequest: Sendable, Equatable {
@@ -19,23 +19,36 @@ struct TileRequest: Sendable, Equatable {
 struct TileTemplates: Sendable, Equatable {
     var basemap: String
     var terrain: String?
+    var landcover: String? = nil
+
+    /// The host of the templates the style names when a layer has no online source (RFC 2606): its tiles come from
+    /// installed packs only, so no URL on it is ever requested.
+    static let reservedHost = "maqs.invalid"
 
     /// The tile `url` asks for, or nil when it is not one of these templates' tiles.
     func request(for url: URL) -> TileRequest? {
-        if let tile = Self.match(url, template: basemap) { return TileRequest(layer: .basemap, z: tile.z, x: tile.x, y: tile.y) }
-        if let terrain, let tile = Self.match(url, template: terrain) {
-            return TileRequest(layer: .terrain, z: tile.z, x: tile.x, y: tile.y)
+        let templates: [(TileLayer, String?)] = [(.basemap, basemap), (.terrain, terrain), (.landcover, landcover)]
+        for case let (layer, template?) in templates {
+            if let tile = Self.match(url, template: template) {
+                return TileRequest(layer: layer, z: tile.z, x: tile.x, y: tile.y)
+            }
         }
         return nil
     }
 
-    /// The URL of `tile` under these templates, or nil when they have no template for its layer or the URL they make
-    /// would not read back as the same tile.
+    /// The URL of `tile` under these templates, or nil when they have no template for its layer, the template is on the
+    /// reserved host, or the URL they make would not read back as the same tile.
     func url(for tile: TileRequest) -> URL? {
-        guard let template = tile.layer == .basemap ? basemap : terrain else { return nil }
+        let template: String? = switch tile.layer {
+        case .basemap: basemap
+        case .terrain: terrain
+        case .landcover: landcover
+        }
+        guard let template else { return nil }
         let string = template.replacingOccurrences(of: "{z}", with: String(tile.z))
             .replacingOccurrences(of: "{x}", with: String(tile.x)).replacingOccurrences(of: "{y}", with: String(tile.y))
-        guard let url = URL(string: string), request(for: url) == tile else { return nil }
+        guard let url = URL(string: string), url.host?.lowercased() != Self.reservedHost, request(for: url) == tile
+        else { return nil }
         return url
     }
 
