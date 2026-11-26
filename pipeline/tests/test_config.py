@@ -360,7 +360,7 @@ def test_expect_rejects_bad_shapes(tmp_path, expect, message):
 def test_real_config_has_veneto_expectations():
     cfg = load_config(REAL)
     assert cfg.region("veneto").expect["trails"] == RowRange(1500, 3000)
-    assert cfg.region("veneto").expect["places"] == RowRange(10000, 18000)
+    assert cfg.region("veneto").expect["places"] == RowRange(14700, 49000)
     assert cfg.region("test").expect == {}
 
 
