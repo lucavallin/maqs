@@ -93,7 +93,8 @@ jobs:
           sums=""
           for extract in $(jq -r '.[]' <<<"$EXTRACTS"); do
             [[ "$extract" =~ ^[a-z/-]+$ ]] || { echo "bad extract name: '$extract'" >&2; exit 1; }
-            md5=$(curl -fsSL -A "maqs-pipeline-ci (+https://github.com/lucavallin/maqs)" \
+            md5=$(curl -fsSL --retry 4 --retry-all-errors --retry-delay 10 \
+              -A "maqs-pipeline-ci (+https://github.com/lucavallin/maqs)" \
               "https://download.geofabrik.de/$extract-latest.osm.pbf.md5" | cut -d' ' -f1)
             [[ "$md5" =~ ^[0-9a-f]{32}$ ]] || { echo "bad md5 for $extract: '$md5'" >&2; exit 1; }
             sums+="$extract=$md5;"
@@ -111,8 +112,14 @@ jobs:
           EXTRACTS: ${{ steps.plan.outputs.extracts }}
         run: |
           set -euo pipefail
+          # A reset connection is retried; maqs fetch starts a failed download again from scratch
+          # and does nothing for a file it already has.
           for extract in $(jq -r '.[]' <<<"$EXTRACTS"); do
-            uv run maqs fetch --extract "$extract" --cache "$GITHUB_WORKSPACE/.cache"
+            for attempt in 1 2 3; do
+              uv run maqs fetch --extract "$extract" --cache "$GITHUB_WORKSPACE/.cache" && break
+              [[ "$attempt" == 3 ]] && exit 1
+              sleep 30
+            done
           done
 
   build:

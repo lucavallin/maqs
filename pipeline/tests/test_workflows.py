@@ -111,6 +111,16 @@ def test_prepare_caches_every_extract_the_config_names():
     assert 'uv run maqs fetch --extract "$extract"' in fetch
 
 
+def test_prepare_retries_geofabrik_instead_of_failing_the_month():
+    """Six extracts mean six chances of a reset connection; a transient failure is retried, and a
+    fetch that keeps failing still fails the run."""
+    sums = prepare_step("Geofabrik extract checksums")["run"]
+    assert "--retry 4 --retry-all-errors --retry-delay 10" in sums
+    fetch = prepare_step("Download each extract once")["run"]
+    assert "for attempt in 1 2 3; do" in fetch
+    assert '[[ "$attempt" == 3 ]] && exit 1' in fetch
+
+
 def release_step(name: str) -> dict:
     steps = load("build-maps.yml")["jobs"]["release"]["steps"]
     return next(s for s in steps if s.get("name") == name)
