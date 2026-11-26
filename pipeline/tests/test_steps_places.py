@@ -179,3 +179,36 @@ def test_build_writes_sqlite_and_overlay(ctx, tmp_path, monkeypatch):
     assert captured["features"][0]["geometry"] == {"type": "Point", "coordinates": [12.25, 46.1]}
     assert {a.kind for a in result.anomalies} == {"ele"}
     assert result.outputs[0].rows == {"places": 3}
+
+
+def test_read_places_keeps_the_newest_version_of_a_node(tmp_path):
+    """osmium merge keeps every version of a node when two extracts were cut at different times
+    (ADR 0020); a place is one row, its newest version, and a node whose newest version is no
+    place goes."""
+    path = tmp_path / "merged.osm.pbf"
+    with osmium.SimpleWriter(str(path), overwrite=True) as w:
+        w.add_node(
+            mutable.Node(
+                id=7, version=1, location=(12.3, 46.0), tags={"natural": "peak", "name": "Old"}
+            )
+        )
+        w.add_node(
+            mutable.Node(
+                id=7, version=3, location=(12.3, 46.0), tags={"natural": "peak", "name": "New"}
+            )
+        )
+        w.add_node(
+            mutable.Node(
+                id=7, version=2, location=(12.3, 46.0), tags={"natural": "peak", "name": "Mid"}
+            )
+        )
+        w.add_node(
+            mutable.Node(
+                id=8, version=1, location=(12.4, 46.1), tags={"natural": "peak", "name": "Gone"}
+            )
+        )
+        w.add_node(
+            mutable.Node(id=8, version=2, location=(12.4, 46.1), tags={"highway": "bus_stop"})
+        )
+    records = read_places(path)
+    assert [(r.osm_id, r.name) for r in records] == [(7, "New")]

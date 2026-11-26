@@ -104,33 +104,41 @@ class PlaceRecord:
 
 
 def read_places(pbf: Path) -> list[PlaceRecord]:
-    records: list[PlaceRecord] = []
+    """One record per place node, by ascending node id. When the input holds several versions of a
+    node, as `osmium merge` keeps for extracts cut at different times (ADR 0020), its newest version
+    decides, and a node whose newest version is no place is left out."""
+    newest: dict[int, tuple[int, PlaceRecord | None]] = {}
     for node in osmium.FileProcessor(str(pbf), osmium.osm.NODE):
-        tags = dict(node.tags)
-        kind = place_kind(tags)
-        if kind is None or not node.location.valid():
+        known = newest.get(node.id)
+        if known is not None and known[0] >= node.version:
             continue
-        ele, problem = parse_ele(tags.get("ele"))
-        anomalies = [Anomaly("ele", f"node/{node.id}", problem)] if problem else []
-        wikidata = tags.get("wikidata")
-        records.append(
-            PlaceRecord(
-                node.id,
-                kind,
-                tags.get("name"),
-                tags.get("name:it"),
-                tags.get("name:de"),
-                tags.get("name:fur"),
-                tags.get("name:sl"),
-                ele,
-                wikidata,
-                node.location.lon,
-                node.location.lat,
-                rank_score(wikidata, ele),
-                anomalies,
-            )
-        )
-    return records
+        newest[node.id] = (node.version, _record(node))
+    return [record for _, (_, record) in sorted(newest.items()) if record is not None]
+
+
+def _record(node) -> PlaceRecord | None:
+    tags = dict(node.tags)
+    kind = place_kind(tags)
+    if kind is None or not node.location.valid():
+        return None
+    ele, problem = parse_ele(tags.get("ele"))
+    anomalies = [Anomaly("ele", f"node/{node.id}", problem)] if problem else []
+    wikidata = tags.get("wikidata")
+    return PlaceRecord(
+        node.id,
+        kind,
+        tags.get("name"),
+        tags.get("name:it"),
+        tags.get("name:de"),
+        tags.get("name:fur"),
+        tags.get("name:sl"),
+        ele,
+        wikidata,
+        node.location.lon,
+        node.location.lat,
+        rank_score(wikidata, ele),
+        anomalies,
+    )
 
 
 def place_feature(record: PlaceRecord, place_id: int) -> dict:

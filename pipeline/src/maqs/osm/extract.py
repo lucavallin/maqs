@@ -221,7 +221,9 @@ def filtered_region_pbf(ctx: BuildContext, name: str, expressions: Sequence[str]
 def places_pbf(ctx: BuildContext, expressions: Sequence[str]) -> Path:
     """The region's places input. With `places.extent: bbox` (ADR 0020): every extract it names,
     its own and the neighbours', tag-filtered, cut to the region's box and merged, so the places
-    reach wherever the box's terrain does; osmium merge keeps one copy of a node two extracts share.
+    reach wherever the box's terrain does. osmium merge keeps one copy of a node two extracts
+    share at the same version, and every version when they were cut at different times: the
+    places step keeps the newest.
     Otherwise the region cut narrowed by the expressions, as every other layer reads it.
 
     Each step is cached in the region's directory by name, never in the shared Geofabrik cache: a

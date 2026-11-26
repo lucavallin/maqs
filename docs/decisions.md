@@ -972,7 +972,7 @@ The full circle needed sorting on number keys and skipping the repeat check acro
 1. **Configuration:** a region may set `places: { extent: bbox, neighbours: [<extract>, …] }`. Its places are then every place in its box, read from its own extract and each neighbour. The default, `extent: clip`, keeps today's cut. Neighbours need `extent: bbox`, and `extent: bbox` needs `osm.geofabrik`.
 2. **The cut** (`maqs.osm.extract.places_pbf`):
    - each extract is tag-filtered, then cut with `osmium extract --bbox` to the region's box;
-   - `osmium merge` joins the cuts and keeps one copy of a node two extracts share (Geofabrik's polygons overlap at borders);
+   - `osmium merge` joins the cuts. A node two extracts share (Geofabrik's polygons overlap at borders) comes out once when both extracts hold the same version, and once per version when they were cut at different times (osmium's own warning); the places step keeps each node's newest version;
    - every step is cached in the region's directory, never beside the shared extract, so a CI cache of the extracts never carries a file filtered with old expressions.
 3. **Scope:** trails and curvature keep the admin clip. A trail relation already stays whole across the border (ADR 0006); road curvature outside the region is not this change.
 4. **The neighbours** of each region are the extracts whose Geofabrik `.poly` meets its box, checked against the polygons on 2026-11-25:
