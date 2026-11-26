@@ -20,6 +20,10 @@ public struct MapMarker: Identifiable, Sendable {
     /// overlap, the higher rank is drawn and the others are left out until there is room, and a label that does not
     /// fit goes before its marker. An unranked marker, nil, is always drawn, as is the selected one.
     public let rank: Double?
+    /// What VoiceOver says for the marker, when its label alone does not say enough (that a place is dimmed, say).
+    /// Nil reads the label, else the id; an empty string leaves the marker out of VoiceOver, for one that only
+    /// decorates.
+    public let accessibilityLabel: String?
 
     /// Creates a marker.
     ///
@@ -30,9 +34,10 @@ public struct MapMarker: Identifiable, Sendable {
     ///   - label: A text under the marker, if any.
     ///   - isHidden: Whether the marker is drawn muted.
     ///   - rank: How much the marker matters, for markers that give way to one another; nil to always draw it.
+    ///   - accessibilityLabel: What VoiceOver says for it; nil reads the label, empty leaves it out.
     public init(
         id: String, coordinate: CLLocationCoordinate2D, content: MarkerContent = .dot, label: String? = nil,
-        isHidden: Bool = false, rank: Double? = nil
+        isHidden: Bool = false, rank: Double? = nil, accessibilityLabel: String? = nil
     ) {
         self.id = id
         self.coordinate = coordinate
@@ -40,6 +45,7 @@ public struct MapMarker: Identifiable, Sendable {
         self.label = label
         self.isHidden = isHidden
         self.rank = rank
+        self.accessibilityLabel = accessibilityLabel
     }
 }
 #endif

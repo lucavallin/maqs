@@ -13,12 +13,19 @@ import Testing
     private func properties(_ feature: [String: Any]) -> [String: Any] { feature["properties"] as? [String: Any] ?? [:] }
 
     private func key(
-        _ id: String, lat: Double = 46.1, lon: Double = 12.2, label: String? = nil, hidden: Bool = false, rank: Double? = nil
+        _ id: String, lat: Double = 46.1, lon: Double = 12.2, label: String? = nil, hidden: Bool = false, rank: Double? = nil,
+        spoken: String? = nil
     ) -> MarkerKey {
         MarkerKey(
             id: id, coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon), imageName: "img-\(id)", label: label,
-            isHidden: hidden, rank: rank
+            isHidden: hidden, rank: rank, accessibilityLabel: spoken
         )
+    }
+
+    @Test func carriesTheSpokenLabelOnlyWhenTheAppGivesOne() throws {
+        let list = try features(MarkerFeatures.geoJSON([key("a", spoken: "Peak, hidden"), key("b")], selectedID: nil))
+        #expect(properties(list[0])["maqs_a11y"] as? String == "Peak, hidden")
+        #expect(properties(list[1])["maqs_a11y"] == nil)
     }
 
     @Test func carriesTheRankOnlyWhenRanked() throws {

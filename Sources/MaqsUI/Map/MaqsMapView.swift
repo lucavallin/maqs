@@ -295,7 +295,8 @@ extension MaqsMapView {
                     style.setImage(image, forName: name)
                 }
                 return MarkerKey(id: marker.id, coordinate: marker.coordinate, imageName: name, label: marker.label,
-                                 isHidden: marker.isHidden, rank: marker.rank)
+                                 isHidden: marker.isHidden, rank: marker.rank,
+                                 accessibilityLabel: marker.accessibilityLabel)
             }
             setShape(MarkerFeatures.geoJSON(keys, selectedID: map.selectedMarkerID), of: source)
         }
@@ -347,16 +348,19 @@ extension MaqsMapView {
             })
             guard !layers.isEmpty else { return [] }
             let drawn = mapView.visibleFeatures(in: mapView.bounds, styleLayerIdentifiers: layers).compactMap {
-                feature -> (id: String, label: String?, point: CGPoint)? in
+                feature -> DrawnMarker? in
                 guard let id = feature.attribute(forKey: "maqs_id") as? String else { return nil }
-                return (id, feature.attribute(forKey: "maqs_label") as? String,
-                        mapView.convert(feature.coordinate, toPointTo: mapView))
+                return DrawnMarker(
+                    id: id, label: feature.attribute(forKey: "maqs_label") as? String,
+                    spokenLabel: feature.attribute(forKey: "maqs_a11y") as? String,
+                    isSelected: (feature.attribute(forKey: "maqs_selected") as? NSNumber)?.boolValue ?? false,
+                    point: mapView.convert(feature.coordinate, toPointTo: mapView))
             }
             return MarkerAccessibility.items(drawn, in: mapView.bounds).map { item in
                 let element = MarkerAccessibilityElement(accessibilityContainer: mapView)
                 element.accessibilityLabel = item.label
                 element.accessibilityIdentifier = item.id
-                element.accessibilityTraits = .button
+                element.accessibilityTraits = item.isSelected ? [.button, .selected] : .button
                 element.accessibilityFrameInContainerSpace = item.frame
                 let point = CGPoint(x: item.frame.midX, y: item.frame.midY)
                 element.onActivate = { [weak self] in self?.tap(at: point) }
