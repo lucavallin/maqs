@@ -51,11 +51,13 @@ final class OrnamentlessMapView: MLNMapView {
         accessibleChildren.firstIndex { $0 as AnyObject === element as AnyObject } ?? NSNotFound
     }
 }
-/// A drawn marker as VoiceOver reaches it: activating it taps the map on the marker.
+/// A drawn marker as VoiceOver reaches it: activating it taps the map on the marker; with no action it is text, and
+/// activation is not handled.
 final class MarkerAccessibilityElement: UIAccessibilityElement {
-    var onActivate: () -> Void = {}
+    var onActivate: (() -> Void)?
 
     override func accessibilityActivate() -> Bool {
+        guard let onActivate else { return false }
         onActivate()
         return true
     }

@@ -340,7 +340,8 @@ extension MaqsMapView {
 
         // MARK: Markers for VoiceOver
 
-        /// One button per marker drawn in the view, labelled with its label, whose activation taps the map on it.
+        /// One element per marker drawn in the view, labelled with its label: a button whose activation taps the map on
+        /// it, or text when the app handles no tap.
         private func markerAccessibilityElements() -> [Any] {
             guard let style = mapView.style else { return [] }
             let layers = Set(["maqs-markers-ranked", "maqs-markers", "maqs-markers-selected"].filter {
@@ -356,14 +357,17 @@ extension MaqsMapView {
                     isSelected: (feature.attribute(forKey: "maqs_selected") as? NSNumber)?.boolValue ?? false,
                     point: mapView.convert(feature.coordinate, toPointTo: mapView))
             }
-            return MarkerAccessibility.items(drawn, in: mapView.bounds).map { item in
+            return MarkerAccessibility.items(drawn, in: mapView.bounds, isActionable: map?.onTap != nil).map { item in
                 let element = MarkerAccessibilityElement(accessibilityContainer: mapView)
                 element.accessibilityLabel = item.label
                 element.accessibilityIdentifier = item.id
-                element.accessibilityTraits = item.isSelected ? [.button, .selected] : .button
+                let kind: UIAccessibilityTraits = item.isActionable ? .button : .staticText
+                element.accessibilityTraits = item.isSelected ? [kind, .selected] : kind
                 element.accessibilityFrameInContainerSpace = item.frame
-                let point = CGPoint(x: item.frame.midX, y: item.frame.midY)
-                element.onActivate = { [weak self] in self?.tap(at: point) }
+                if item.isActionable {
+                    let point = CGPoint(x: item.frame.midX, y: item.frame.midY)
+                    element.onActivate = { [weak self] in self?.tap(at: point) }
+                }
                 return element
             }
         }

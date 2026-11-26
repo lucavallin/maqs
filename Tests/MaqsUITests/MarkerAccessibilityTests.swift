@@ -17,7 +17,7 @@ import Testing
             drawn("a", "Monte Pizzoc", 50, 100),
             drawn("c", nil, 10, 300),
             drawn("off", "Away", -100, 0),
-        ], in: CGRect(x: 0, y: 0, width: 400, height: 800))
+        ], in: CGRect(x: 0, y: 0, width: 400, height: 800), isActionable: true)
         #expect(items.map(\.id) == ["a", "b", "c"])
         #expect(items.map(\.label) == ["Monte Pizzoc", "Col Visentin", "c"])
         #expect(items[0].frame == CGRect(x: 28, y: 78, width: 44, height: 44))
@@ -30,8 +30,18 @@ import Testing
             drawn("glockner", "Großglockner", 50, 100, spoken: "Großglockner, hidden"),
             drawn("ring", nil, 100, 100, spoken: ""),
             drawn("pizzoc", "Monte Pizzoc", 150, 100, selected: true),
-        ], in: CGRect(x: 0, y: 0, width: 400, height: 800))
+        ], in: CGRect(x: 0, y: 0, width: 400, height: 800), isActionable: true)
         #expect(items.map(\.label) == ["Großglockner, hidden", "Monte Pizzoc"])
         #expect(items.map(\.isSelected) == [false, true])
+    }
+
+    /// A map whose app handles no tap shows its markers as labels: VoiceOver reads them as text and activating one
+    /// does nothing, rather than offering a button that does nothing.
+    @Test func withoutATapHandlerMarkersAreText() {
+        let bounds = CGRect(x: 0, y: 0, width: 400, height: 800)
+        let markers = [drawn("a", "Monte Pizzoc", 50, 100), drawn("b", "Col Visentin", 200, 100, selected: true)]
+        #expect(MarkerAccessibility.items(markers, in: bounds, isActionable: false).map(\.isActionable) == [false, false])
+        #expect(MarkerAccessibility.items(markers, in: bounds, isActionable: true).map(\.isActionable) == [true, true])
+        #expect(MarkerAccessibility.items(markers, in: bounds, isActionable: false).map(\.isSelected) == [false, true])
     }
 }
