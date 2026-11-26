@@ -82,6 +82,12 @@ for result in try await terrain.visibility(of: [peak], from: Observer(coordinate
     case .outOfRange: print("too far")
     }
 }
+
+// The ridges ahead, band by band: 30° around north-north-east, every 0.5°, in bands to 200 km.
+let fan = try PanoramaBearings(centre: 22, halfWidth: 15, step: 0.5)
+let ridges = try await terrain.panorama(from: Observer(coordinate: here), bearings: fan,
+                                        bands: [0, 10_000, 30_000, 60_000, 200_000])
+print(ridges.columns.first?.ridges.map { $0?.angle } as Any)       // radians above the eye, nil where a band has no ground
 ```
 
 Inside an installed region the elevations come from the pack, and a look fetches online only the ground beyond the pack's border. Elsewhere the package fetches VersaTiles' tiles through the HTTP cache, at most four at a time and 128 per call, and pauses after a 429. A missing value carries its reason, so an app can tell "no data here" from "try again later". Create one `Terrain` and share it: the pause after a 429, the limit of four requests and the HTTP cache directory belong to one instance, so a second instance would double the requests and ignore the first one's pause. The tiles of one online look give away roughly where the user stands, to about 500 m; an app that must not reveal that sets `onlineTiles` to `false`, and `onlineSources` is then nil. After an install, an update or a removal, pass the new file URLs to `terrain.setArchives(_:)`. [`docs/architecture.md`](docs/architecture.md#terrain) describes the sources, the results and the online path, and ADR 0015 in [`docs/decisions.md`](docs/decisions.md) gives the reasons.
