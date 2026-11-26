@@ -30,12 +30,16 @@ jobs:
   prepare:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions:
+      contents: read
+      actions: read   # gh cache list, for the fallback when Geofabrik is unreachable
     outputs:
       targets: ${{ steps.plan.outputs.targets }}
       release: ${{ steps.plan.outputs.release }}
       full: ${{ steps.plan.outputs.full }}
       layers: ${{ steps.plan.outputs.layers }}
       geofabrik-key: ${{ steps.geofabrik.outputs.key }}
+      geofabrik-fallback: ${{ steps.geofabrik.outputs.fallback }}
     steps:
       - uses: actions/checkout@v7
         with: { persist-credentials: false }
@@ -83,23 +87,49 @@ jobs:
       # (ADR 0020). The cache is keyed on Geofabrik's published md5s, so a file is downloaded again
       # only when Geofabrik replaces it, at most once a month. pipeline.yml keeps its own cache of
       # the nord-est extract for the test region.
+      #
+      # Geofabrik sometimes refuses GitHub's runners while it answers elsewhere (2026-11-26). Each
+      # checksum is retried with curl's doubling backoff for up to five minutes; if one still
+      # fails, the run takes the newest cache of every extract this workflow saved (key shape
+      # geofabrik-<32 hex>, not pipeline.yml's geofabrik-nord-est-<md5>) and says so. GitHub
+      # evicts a cache unused for 7 days, so this covers a rerun within the week, not the next
+      # month's cron.
       - name: Geofabrik extract checksums
         id: geofabrik
         shell: bash
         env:
           EXTRACTS: ${{ steps.plan.outputs.extracts }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
           sums=""
+          unreachable=""
           for extract in $(jq -r '.[]' <<<"$EXTRACTS"); do
             [[ "$extract" =~ ^[a-z/-]+$ ]] || { echo "bad extract name: '$extract'" >&2; exit 1; }
-            md5=$(curl -fsSL --retry 4 --retry-all-errors --retry-delay 10 \
+            if md5=$(curl -fsSL --retry 8 --retry-all-errors --retry-max-time 300 --connect-timeout 20 \
               -A "maqs-pipeline-ci (+https://github.com/lucavallin/maqs)" \
-              "https://download.geofabrik.de/$extract-latest.osm.pbf.md5" | cut -d' ' -f1)
-            [[ "$md5" =~ ^[0-9a-f]{32}$ ]] || { echo "bad md5 for $extract: '$md5'" >&2; exit 1; }
-            sums+="$extract=$md5;"
+              "https://download.geofabrik.de/$extract-latest.osm.pbf.md5" | cut -d' ' -f1); then
+              [[ "$md5" =~ ^[0-9a-f]{32}$ ]] || { echo "bad md5 for $extract: '$md5'" >&2; exit 1; }
+              sums+="$extract=$md5;"
+            else
+              unreachable+="$extract "
+            fi
           done
-          echo "key=geofabrik-$(printf '%s' "$sums" | sha256sum | cut -c1-32)" >> "$GITHUB_OUTPUT"
+          if [[ -z "$unreachable" ]]; then
+            echo "key=geofabrik-$(printf '%s' "$sums" | sha256sum | cut -c1-32)" >> "$GITHUB_OUTPUT"
+            echo "fallback=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          key=$(gh cache list --key geofabrik- --sort created_at --order desc --limit 100 --json key --jq '.[].key' \
+            | grep -E '^geofabrik-[0-9a-f]{32}$' | head -n 1 || true)
+          if [[ -z "$key" ]]; then
+            echo "Geofabrik is unreachable for: ${unreachable}and there are no cached extracts to fall back on" >&2
+            exit 1
+          fi
+          echo "::warning::Geofabrik is unreachable for: ${unreachable}- building from the cached extracts $key"
+          echo "key=$key" >> "$GITHUB_OUTPUT"
+          echo "fallback=true" >> "$GITHUB_OUTPUT"
       - name: Cache the Geofabrik extracts
         uses: actions/cache@v6
         with:
@@ -256,11 +286,19 @@ jobs:
       - name: Check the assets and write the notes
         shell: bash
         working-directory: pipeline
+        env:
+          FALLBACK: ${{ needs.prepare.outputs.geofabrik-fallback }}
         run: |
           set -euo pipefail
           args=(--dist "$GITHUB_WORKSPACE/dist" --manifest "$GITHUB_WORKSPACE/dist/manifest.json" --notes "$GITHUB_WORKSPACE/notes.md")
           if [[ -s "$GITHUB_WORKSPACE/previous/manifest.json" ]]; then args+=(--previous "$GITHUB_WORKSPACE/previous/manifest.json"); fi
           uv run maqs release-check "${args[@]}" | tee "$GITHUB_WORKSPACE/assets.txt"
+          if [[ "$FALLBACK" == true ]]; then
+            cat >> "$GITHUB_WORKSPACE/notes.md" <<'NOTE'
+
+          Geofabrik was unreachable from the build, so the OSM layers come from the newest cached extracts. Each file's `osm_timestamp` in the manifest gives their date.
+          NOTE
+          fi
       - name: Create the release if the tag is new
         shell: bash
         env:

@@ -112,13 +112,41 @@ def test_prepare_caches_every_extract_the_config_names():
 
 
 def test_prepare_retries_geofabrik_instead_of_failing_the_month():
-    """Six extracts mean six chances of a reset connection; a transient failure is retried, and a
-    fetch that keeps failing still fails the run."""
+    """Six extracts mean six chances of a reset connection; a transient failure is retried with
+    curl's doubling backoff for up to five minutes, and a fetch that keeps failing still fails."""
     sums = prepare_step("Geofabrik extract checksums")["run"]
-    assert "--retry 4 --retry-all-errors --retry-delay 10" in sums
+    assert "--retry 8 --retry-all-errors --retry-max-time 300 --connect-timeout 20" in sums
+    assert "--retry-delay" not in sums
     fetch = prepare_step("Download each extract once")["run"]
     assert "for attempt in 1 2 3; do" in fetch
     assert '[[ "$attempt" == 3 ]] && exit 1' in fetch
+
+
+def test_prepare_falls_back_to_the_newest_full_extract_cache_when_geofabrik_is_unreachable():
+    """GitHub's runners are sometimes refused by Geofabrik while it answers elsewhere (2026-11-26).
+    Then the run takes the newest cache of every extract, by the release workflow's own key shape
+    (not pipeline.yml's `geofabrik-nord-est-` cache), says so, and fails only without one."""
+    prepare = load("build-maps.yml")["jobs"]["prepare"]
+    assert prepare["permissions"] == {"contents": "read", "actions": "read"}
+    step = prepare_step("Geofabrik extract checksums")
+    assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
+    assert step["env"]["GH_REPO"] == "${{ github.repository }}"
+    run = step["run"]
+    assert "gh cache list --key geofabrik- --sort created_at --order desc" in run
+    assert "grep -E '^geofabrik-[0-9a-f]{32}$'" in run
+    assert 'echo "fallback=true" >> "$GITHUB_OUTPUT"' in run
+    assert 'echo "fallback=false" >> "$GITHUB_OUTPUT"' in run
+    assert "::warning::" in run
+    assert "no cached extracts to fall back on" in run
+    assert prepare["outputs"]["geofabrik-fallback"] == "${{ steps.geofabrik.outputs.fallback }}"
+
+
+def test_the_release_notes_say_when_the_extracts_came_from_the_cache():
+    step = release_step("Check the assets and write the notes")
+    assert step["env"]["FALLBACK"] == "${{ needs.prepare.outputs.geofabrik-fallback }}"
+    assert '[[ "$FALLBACK" == true ]]' in step["run"]
+    assert 'cat >> "$GITHUB_WORKSPACE/notes.md"' in step["run"]
+    assert "newest cached extracts" in step["run"]
 
 
 def release_step(name: str) -> dict:
