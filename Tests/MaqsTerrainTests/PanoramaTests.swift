@@ -107,4 +107,33 @@ import Testing
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
     }
+
+    /// Bearings are read in chunks bounded by samples as well as tiles, so a wide fan holds a few thousand points at a
+    /// time and the actor serves other calls between chunks; the answer is the same however it is cut.
+    @Test func chunkingKeepsTheAnswer() async throws {
+        let terrain = terrain()
+        let observer = Observer(coordinate: Self.origin)
+        let options = ProfileOptions(step: 250)
+        let whole = try await terrain.panorama(
+            from: observer, bearings: bearings(20, 10, 1), bands: Self.bands, options: options, chunkSamples: .max)
+        let cut = try await terrain.panorama(
+            from: observer, bearings: bearings(20, 10, 1), bands: Self.bands, options: options, chunkSamples: 100)
+        #expect(whole == cut)
+        #expect(whole.columns.count == 21)
+    }
+
+    @Test func aPanoramaCancelledWhileItsTilesLoadThrowsCancellation() async throws {
+        let gate = LoadGate()
+        let terrain = Terrain(providers: [GatedTerrain(gate: gate, elevation: Self.elevation)], memoryCacheBytes: 64 << 20)
+        let task = Task {
+            try await terrain.panorama(
+                from: Observer(coordinate: Self.origin, height: .absolute(600)), bearings: try bearings(0, 0, 1),
+                bands: Self.bands, options: ProfileOptions(step: 500))
+        }
+        await gate.waitUntilBlocked()
+        task.cancel()
+        await gate.open()
+        await #expect(throws: CancellationError.self) { try await task.value }
+    }
 }
+

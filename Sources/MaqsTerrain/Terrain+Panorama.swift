@@ -16,6 +16,9 @@ private struct PreparedColumn {
 extension Terrain {
     /// A panorama is bounded so one call cannot ask for an unbounded number of samples.
     private static let maxPanoramaSamples = 2_000_000
+    /// At most this many located samples are held at once: about 16 bearings of a 200 km fan, a few MB, and the actor
+    /// serves other calls between chunks.
+    static let panoramaChunkSamples = 50_000
 
     /// The highest ground in each distance band, for every bearing of a fan: the ridges an observer sees one behind
     /// another, as elevation angles from the eye.
@@ -34,6 +37,13 @@ extension Terrain {
     ///   otherwise as ``elevation(at:)``.
     public func panorama(
         from observer: Observer, bearings: PanoramaBearings, bands: [Double], options: ProfileOptions = ProfileOptions()
+    ) async throws -> Panorama {
+        try await panorama(from: observer, bearings: bearings, bands: bands, options: options, chunkSamples: Self.panoramaChunkSamples)
+    }
+
+    /// The panorama, read in chunks of at most `chunkSamples` located samples (and the tiles that fit the cache).
+    func panorama(
+        from observer: Observer, bearings: PanoramaBearings, bands: [Double], options: ProfileOptions, chunkSamples: Int
     ) async throws -> Panorama {
         try Task.checkCancellation()
         let origin = observer.coordinate
@@ -77,7 +87,8 @@ extension Terrain {
         for (index, bearing) in headings.enumerated() {
             try Task.checkCancellation()
             var prepared = try prepareColumn(index: index, bearing: bearing, origin: origin, ladder: ladder, options: options)
-            if !chunk.isEmpty, chunkTiles.union(prepared.tiles).count > tileLimit {
+            let held = chunk.reduce(0) { $0 + $1.path.count }
+            if !chunk.isEmpty, chunkTiles.union(prepared.tiles).count > tileLimit || held + prepared.path.count > chunkSamples {
                 try await settlePanorama(chunk, tiles: chunkTiles, into: &columns, budget: &budget, ladder: ladder, bands: bands, eye: eye, earth: options.earth)
                 chunk = []
                 chunkTiles = []
@@ -122,6 +133,8 @@ extension Terrain {
             columns[column.index] = PanoramaColumn(
                 bearing: column.bearing, ridges: Self.ridges(column.path, ladder: ladder, bands: bands, eye: eye, earth: earth, loaded: loaded))
         }
+        // A caller that gave up while the tiles loaded gets no answer.
+        try Task.checkCancellation()
     }
 
     /// Each band's highest apparent ground along one bearing, as an angle from the eye.
