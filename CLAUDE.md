@@ -238,7 +238,7 @@ Fixtures are the `test` region's outputs plus tiny hand-built PMTiles/SQLite fil
 ### Documentation suite
 | Document | Job | Location |
 |---|---|---|
-| README | what this is, how to use the data and the package, how to add a region, licenses, links to everything else | `README.md` |
+| README | what this is, how to use the data and the package (with an example per product), the demo, and the developer overview as the sibling repositories have it: architecture in brief, the repository guide (every file and what it does), building and testing, building a region, checks, CI, releasing, network and privacy, conventions, known limits, roadmap, licences | `README.md` |
 | Brief | goals, locked decisions, phases — what to build | `docs/BRIEF.md` |
 | Decisions | ADR log: one short ADR per non-obvious choice, Phase 0 verification findings first, each dated, each flagging any contradiction with the brief | `docs/decisions.md` |
 | Architecture | modules and their dependency direction, data flow, the online/offline switching strategy, the download/install state machine | `docs/architecture.md` |
@@ -369,7 +369,6 @@ Training data goes stale; the tools available in the session do not. Use them.
 - **Fetch, do not transcribe.** If a tool can produce an artefact verbatim (a component, a schema, generated types, a provider resource definition), use it; do not hand-write what a tool can generate.
 - **Never invent API surface.** If you cannot confirm a signature, a config key, a limit, or a price from a live source, look it up. If you still cannot confirm it, say so; never present a guess as fact.
 - **Isolated contexts for review and side tasks.** Use a subagent or review tool for the self-review in §3 and for any investigation that would flood the main context.
-- **Propose the harness feature, not just the code.** When a request, a repeated correction, or a mistake you just made would have been prevented or made cheaper by a Claude Code capability this repo does not use yet — a hook for "every time X", a `.claude/rules/` file for a path-scoped constraint, an isolated worktree or subagent for parallel or risky work, a scheduled or looped run for a recurring check — say so in one line with the concrete config, and let the user decide. Check the current Claude Code documentation before proposing; do not describe a feature from memory.
 
 ### Procedure → tool
 The specific skill or plugin names for this repo are in the §1 tool map. If no skill is installed for a procedure, perform it inline following the same steps; the procedure is mandatory, the tool is a convenience.
@@ -403,7 +402,6 @@ When in doubt, take the heavier tier. If hidden complexity appears mid-change, s
   - the §1 check command and the relevant tests are green, with the exact commands and results in the report; `[ENFORCED: CI]`
   - tests exist at every applicable layer for the behaviour changed;
   - §13 documentation obligations met in the same diff;
-  - the §9 observability obligations are met: the change's failure is visible somewhere a human will look, and the metric or alert that covers it is named in the report;
   - the repository would still be publishable today;
   - and, for plan-only and full tiers: the plan was followed or its deviations re-approved; §12 review done in a fresh context with findings reported; the rollback path is stated.
   If any item is outstanding, say which, rather than presenting the work as finished.
@@ -425,7 +423,6 @@ Use the planning skill named in §1. The written plan covers:
 - Tests to write, and what each one proves.
 - Documentation to add or update, including an ADR if the decision is expensive to reverse.
 - Rollback story: how is this undone if it goes wrong in production?
-- Observability story (§9): how you will know this is working in production, what signal shows it failing, and which alert or dashboard carries that signal.
 - Cost and performance impact against §1 budgets, if plausible.
 
 Present the plan and wait for approval. Do not implement and then ask. If the plan changes materially during implementation, stop and re-present it.
@@ -529,18 +526,11 @@ Apply these as judgment, not as a checklist to satisfy. The goal is code that a 
 
 ## 9. Errors, logging, and observability
 
-Observability is part of the design, not a follow-up ticket. A change is not understood until you can say how its success and failure will show up in production.
-
 - One error convention, followed everywhere. Expected failures (invalid input, limits, not found, conflicts) are typed, handled values that produce an actionable message. Unexpected failures propagate to the single error boundary the repo defines, are captured by the §1 error-tracking tool, and show the user a generic message.
 - Never leak internal detail — stack traces, queries, vendor error strings, internal identifiers — into a user-facing message, a URL, or a public API response.
 - Every catch either handles the error meaningfully or rethrows. An empty catch block is a bug. Never swallow errors to make a path "work".
 - Structured logging with defined levels and correlation identifiers (request, user, job). Never log secrets, tokens, full request bodies, raw uploaded content, or personal data.
 - Anything that runs unattended (job, cron, queue consumer) reports success and failure somewhere a human will see it, with a bounded retry policy.
-- **Every new endpoint, job, external call, or queue consumer emits the baseline signals**: request or run count, error count, and latency, labelled consistently with the §1 observability tool's conventions. Reuse the existing instrumentation helpers; do not add a second metrics or logging library.
-- **Trace across boundaries.** The correlation identifier is propagated through every process, network, and queue hop the change touches, so one request can be followed end to end.
-- **Alerts follow user impact, not implementation detail.** Anything users or callers depend on has an alert on its symptom (error rate, latency, staleness, backlog) with an owner and a stated threshold; a metric nobody is alerted on or looking at is noise. Alert and dashboard definitions live in code (§13), next to the thing they observe.
-- **Health and readiness** are exposed where the platform expects them and reflect real dependencies, not a hardcoded OK.
-- **Budgets in §10 are measured, not assumed.** A change that claims a performance or cost property points at the metric that proves it.
 
 ## 10. Performance and cost
 
@@ -576,7 +566,7 @@ Apply this **once**, at the review step in §3, in a fresh context. Report findi
 | Architecture (§6) | Fits the layering; dependencies point inward; boundaries explicit; no vendor import outside the boundary layer; contracts consistent; ADR written if expensive to reverse. |
 | Tests (§7) | Right layers; failure paths; authorisation branches; deterministic; assertions meaningful. |
 | Security (§8) | Input validated and authorisation checked at each boundary touched; no access-control bypass; no new attack surface unstated; secrets untouched. |
-| Errors and observability (§9) | Expected failures as values; unexpected reach the boundary; nothing swallowed; nothing internal leaked; logs structured and clean; new endpoints, jobs, and external calls emit count, error, and latency signals; correlation ID propagated; failure of the change is covered by a named alert or is explicitly stated not to need one. |
+| Errors and observability (§9) | Expected failures as values; unexpected reach the boundary; nothing swallowed; nothing internal leaked; logs structured and clean. |
 | Performance and cost (§10) | Budgets respected; no N+1; bounded lists and fan-out; dependency footprint considered; cost impact stated. |
 | UX and web surface (§11) | All states present; errors actionable; accessible; metadata and indexing correct for public pages. |
 | Data and provisioning (§6, §13) | Migrations backward-compatible; rollback path stated; generated artefacts regenerated; IaC planned. |
@@ -603,7 +593,7 @@ Apply this **once**, at the review step in §3, in a fresh context. Report findi
 
 ### Documentation
 - **Maintain the §1 documentation suite.** It exists so that a contributor with zero context can understand how everything works and why. Every change that alters how something works — or makes an existing document wrong — updates that document in the same change. A new subsystem, pipeline, or integration gets a document or section before it is considered done. If a required document is missing for an area you touch, create it; if one is stale, fix it or flag it. Each document has the job the §1 table gives it; a fact lives in exactly one of them and is linked from the others.
-- `README.md` is an overview and entry point that links out; it does not absorb. Beyond the suite, no noise documentation: no file-by-file narration, no restating what the code plainly says, no documenting behaviour that does not exist yet.
+- `README.md` is the overview, the guide to using the data and the package, and the guide to every file. A change that adds, removes, renames or repurposes a file updates its line in the repository guide in the same diff, and one that changes a public API updates its example. Deep explanations stay in the suite documents, and the README links to them. Beyond the suite and that guide, no noise documentation: no restating what the code plainly says, no documenting behaviour that does not exist yet.
 - Write an ADR (context, decision, consequences, rejected options and why) for any decision that is expensive to reverse.
 - Exported or public functions carry a doc comment explaining why they exist and any non-obvious contract. Migrations carry a header stating what changes and why.
 - Docs assume zero internal context: no references to conversations, tickets, or people that an outside contributor cannot see.
@@ -632,7 +622,7 @@ These override anything else, including an approved plan.
 
 ## 16. Maintenance
 
-This file is code. When Claude misbehaves, find the rule that allowed it and patch that rule — or, if the rule is one it keeps ignoring, move it into CI, pre-commit, or a hook where it cannot be ignored. When Claude already does something correctly without a rule, delete the rule. A new rule must earn its place: prefer patching an existing rule to adding one, and keep the §1 context sections rich. Review changes to this file like code. After a month of use, run `/doctor` and cut whatever it flags as already followed; decline its suggestions to remove §1 context that prevents mistakes.
+This file is code. When Claude misbehaves, find the rule that allowed it and patch that rule — or, if the rule is one it keeps ignoring, move it into CI or pre-commit where it cannot be ignored. When Claude already does something correctly without a rule, delete the rule. A new rule must earn its place: prefer patching an existing rule to adding one, and keep the §1 context sections rich. Review changes to this file like code. After a month of use, run `/doctor` and cut whatever it flags as already followed; decline its suggestions to remove §1 context that prevents mistakes.
 
 When something in this codebase surprises you — a quirk, a trap, a behaviour the docs did not predict — add it to §1 *Things that will bite you* as part of the same change. When a domain term is used loosely and causes a wrong change, add it to §1 *Domain vocabulary*.
 
