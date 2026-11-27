@@ -156,7 +156,7 @@ Grep xcodebuild output for `": error:"`; a bare `error` matches unrelated tool p
 ### Tool map
 | Topic | Consult |
 |---|---|
-| Code search in this repo | Serena MCP (`find_symbol`, `find_referencing_symbols`, `search_for_pattern`, `find_file`) once there is code; `grep`/`rg` for non-code text (YAML, JSON, docs, build logs) |
+| Code search in this repo | Claude Code's own navigation: the `LSP` tool (sourcekit-lsp via the `swift-lsp` plugin: `workspaceSymbol`, `goToDefinition`, `findReferences`) for symbols once there is code; the `Grep`/`Glob` tools for text and non-code files (YAML, JSON, docs, build logs) |
 | MapLibre Native iOS (SPM, `pmtiles://`, style spec, network configuration, User-Agent) | Context7 MCP first; the MapLibre docs and release notes for the pinned version (6.31.0). The verified facts are in ADR 0001 |
 | PMTiles spec, `versatiles`, `osmium`, `tippecanoe`, pyosmium | Context7 where indexed, otherwise the project's own README/docs via web fetch; pin the version you read against in `pipeline/bootstrap.sh` |
 | Provider terms, usage policies, attribution, URLs, sizes | **The live page, every time** (docs.versatiles.org, download.versatiles.org, mapterhorn.com, Geofabrik). Record what you verified and the date in `docs/decisions.md`. Never a remembered URL or limit. |
