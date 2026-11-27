@@ -60,6 +60,26 @@ import Testing
         #expect(try await places.search("tricorno").map(\.featureID) == [2])
     }
 
+    @Test("ss finds ß and ß finds ss, as German writes either and the index keeps ß")
+    func sharpS() async throws {
+        let directory = try TemporaryDirectory()
+        let places = try reader([
+            PlaceRow(id: 1, name: "Großglockner", coordinate: Self.point),
+            PlaceRow(id: 2, name: "Weissmies", coordinate: Self.point),
+        ], in: directory)
+        #expect(try await places.search("grossglockner").map(\.featureID) == [1])
+        #expect(try await places.search("GROSSGL").map(\.featureID) == [1])
+        #expect(try await places.search("großglockner").map(\.featureID) == [1])
+        #expect(try await places.search("weiß").map(\.featureID) == [2])
+    }
+
+    @Test("a word with ss or ß is an OR of both spellings; other words are left as they are")
+    func sharpSExpression() {
+        #expect(FullText.matchExpression(["monte", "gross"]) == #""monte" ("gross"* OR "groß"*)"#)
+        #expect(FullText.matchExpression(["weiß", "kugel"]) == #"("weiß" OR "weiss") "kugel"*"#)
+        #expect(FullText.matchExpression(["col"]) == #""col"*"#)
+    }
+
     // MARK: Order and limits
 
     @Test("results come highest rank_score first, ties by feature id")

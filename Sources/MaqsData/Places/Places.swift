@@ -114,9 +114,9 @@ public actor Places {
 
     /// The places whose name, in any of its languages, matches `text`, highest `rank_score` first.
     ///
-    /// Each word of `text` must begin a word of the name, so `col can` finds Col Canil and `drei zin` finds a place
-    /// whose German name is Drei Zinnen. Case and accents are ignored (the index's `unicode61 remove_diacritics 2`
-    /// tokenizer), and punctuation is never search syntax. Ties go to the lower `featureID`; a place in more than one
+    /// Each word of `text` must be a word of the name, the last only its beginning, so `col can` finds Col Canil and
+    /// `drei zin` finds a place whose German name is Drei Zinnen. Case and accents are ignored (the index's `unicode61
+    /// remove_diacritics 2` tokenizer), `ss` and `ß` find each other, and punctuation is never search syntax. Ties go to the lower `featureID`; a place in more than one
     /// file comes back once, from the first file in the order given.
     ///
     /// - Parameters:
