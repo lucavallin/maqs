@@ -815,6 +815,8 @@ The full circle needed sorting on number keys and skipping the repeat check acro
 - Not verified: file protection on a real device; the timings on a device and in a release build, which wait for the demo app (sub-project 4).
 - Found while designing, not fixed here: the trails and places overlay fixtures carry absolute local paths in their PMTiles metadata (tippecanoe's `name`, `description` and `generator_options`). Release overlays probably carry the CI runner's paths (not checked).
 
+**Amendment (2026-11-27): places by name.** `Places.search(_:kinds:limit:)` finds places through `places_fts`, which every places file already carries. Each word of the text must begin a word of the name, in any of its columns (`name` and the four languages), so `drei zin` finds a place whose German name is Drei Zinnen. Case and accents are ignored by the index's own tokenizer (`unicode61 remove_diacritics 2`). The words are quoted the way trail search quotes them, the last one a prefix, and FTS5 rejecting an expression is no match, while a damaged index still throws; the two searches share that rule (`FullText`). Results come highest `rank_score` first, ties by the lower id, each place once across files, from the first file; `kinds` filters, and `limit` is 1...500 (50 by default). There are no tiers and no distance order, unlike trail search: a place has no number to match exactly, and the caller knows where its user is and can order by distance itself. No schema or data change. Measured with the `sqlite3` CLI on Triveneto's places file from `data-2026-11` (43,610 places) on a Mac: about 9 ms for a single letter that matches 10,702 places, under 1 ms for a whole name.
+
 ---
 
 ## 0017 — `MaqsUI`: the map, the tile gateway and the demo app

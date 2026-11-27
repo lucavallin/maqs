@@ -112,6 +112,52 @@ public actor Places {
         return found.prefix(limit).map(\.place)
     }
 
+    /// The places whose name, in any of its languages, matches `text`, highest `rank_score` first.
+    ///
+    /// Each word of `text` must begin a word of the name, so `col can` finds Col Canil and `drei zin` finds a place
+    /// whose German name is Drei Zinnen. Case and accents are ignored (the index's `unicode61 remove_diacritics 2`
+    /// tokenizer), and punctuation is never search syntax. Ties go to the lower `featureID`; a place in more than one
+    /// file comes back once, from the first file in the order given.
+    ///
+    /// - Parameters:
+    ///   - text: What the user typed; blank text finds nothing.
+    ///   - kinds: Only these kinds; nil for all, an empty set finds nothing.
+    ///   - limit: 1...500.
+    /// - Throws: ``QueryError/invalidInput(_:)`` for a limit out of range, before any file is read; otherwise a file
+    ///   error.
+    public func search(_ text: String, kinds: Set<PlaceKind>? = nil, limit: Int = 50) throws(QueryError) -> [Place] {
+        guard (1...500).contains(limit) else { throw .invalidInput("limit must be within 1...500") }
+        let words = FullText.words(text)
+        if words.isEmpty || kinds?.isEmpty == true { return [] }
+        let expression = FullText.matchExpression(words)
+        var found: [(place: Place, fileIndex: Int)] = []
+        var seen: Set<PlaceID> = []
+        for (index, file) in files.enumerated() {
+            let statement = try file.connection.prepare(Self.searchSQL(kinds: kinds))
+            defer { statement.reset() }
+            do throws(QueryError) {
+                try statement.bind(expression as String?, at: 1)
+                try statement.bind(Int64(limit), at: 2)
+                for (offset, kind) in (kinds ?? []).enumerated() {
+                    try statement.bind(kind.column as String?, at: 3 + Int32(offset))
+                }
+                while try statement.step() {
+                    let place = Self.place(statement, region: file.region)
+                    if seen.insert(place.id).inserted { found.append((place, index)) }
+                }
+            } catch {
+                if FullText.rejected(statement) { continue }
+                throw error
+            }
+        }
+        found.sort { a, b in
+            if a.place.rankScore != b.place.rankScore { return a.place.rankScore > b.place.rankScore }
+            if a.fileIndex != b.fileIndex { return a.fileIndex < b.fileIndex }
+            return a.place.featureID < b.place.featureID
+        }
+        return found.prefix(limit).map(\.place)
+    }
+
     /// The place with the stable key `id`, from the first file that holds it; nil when none does.
     ///
     /// - Throws: A file error.
@@ -204,6 +250,15 @@ public actor Places {
         }
         if ordered { sql += " ORDER BY p.rank_score DESC, p.id LIMIT ?5" }
         return sql
+    }
+
+    /// The full-text query: parameter 1 is the `MATCH` expression, 2 the limit, and the kinds are 3 onward.
+    private static func searchSQL(kinds: Set<PlaceKind>?) -> String {
+        var sql = "\(select) JOIN places_fts ON places_fts.rowid = p.id WHERE places_fts MATCH ?1"
+        if let kinds {
+            sql += " AND p.kind IN (\((3..<3 + kinds.count).map { "?\($0)" }.joined(separator: ", ")))"
+        }
+        return sql + " ORDER BY p.rank_score DESC, p.id LIMIT ?2"
     }
 
     /// Binds the box to parameters 1...4 and the kinds from 6; a set iterates in one order, so the placeholders and

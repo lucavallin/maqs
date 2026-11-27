@@ -110,6 +110,9 @@ for trail in try await trails.search("926", near: here, limit: 5) {
     print(trail.ref ?? "", trail.name ?? "", trail.geometryStatus)
 }
 
+// Places by name, in any of their languages; accents and case are ignored, the last word is a prefix.
+let found = try await places.search("monte gra", kinds: [.peak], limit: 20)
+
 // Places along a sight line: a cone from where the user stands, handed to MaqsTerrain.
 let cone = try BearingCone(origin: here, bearing: 40, halfAngle: 5, maxDistance: 100_000)
 let targets = try await places.places(in: cone, kinds: [.peak], limit: 20)

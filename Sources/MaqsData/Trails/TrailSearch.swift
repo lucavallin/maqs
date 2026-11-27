@@ -1,6 +1,5 @@
 import CoreLocation
 import Foundation
-import SQLite3
 
 /// The three search tiers of ``Trails/search(_:near:difficulty:limit:)`` (`docs/superpowers/specs`, Trails).
 enum TrailSearch {
@@ -27,7 +26,7 @@ enum TrailSearch {
     static func search(
         _ text: String, near: CLLocationCoordinate2D?, difficulty: ClosedRange<Int>?, limit: Int, in files: [LayerFile]
     ) throws(QueryError) -> [TrailSummary] {
-        let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        let words = FullText.words(text)
         guard !words.isEmpty, !files.isEmpty else { return [] }
         let query = words.joined(separator: " ")
         var chosen: [Candidate] = []
@@ -59,7 +58,7 @@ enum TrailSearch {
                 guard query.allSatisfy({ $0.isASCII && $0.isNumber }) else { continue }
                 for candidate in try plainRows().joined() where containsNumber(candidate, query) { take(candidate) }
             default:
-                let expression = matchExpression(words)
+                let expression = FullText.matchExpression(words)
                 for (index, file) in files.enumerated() {
                     for candidate in try fullText(expression, in: file, index: index, difficulty: difficulty) { take(candidate) }
                 }
@@ -90,15 +89,6 @@ enum TrailSearch {
         }
     }
 
-    /// Each word an FTS5 string (inner `"` doubled), the last a prefix, ANDed by juxtaposition: no user text reaches
-    /// FTS5 as syntax.
-    private static func matchExpression(_ words: [String]) -> String {
-        words.enumerated().map { index, word in
-            let quoted = "\"" + word.replacingOccurrences(of: "\"", with: "\"\"") + "\""
-            return index == words.count - 1 ? quoted + "*" : quoted
-        }.joined(separator: " ")
-    }
-
     /// A syntax error from FTS5 (`SQLITE_ERROR`) is no match; a damaged or unreadable file still throws.
     static func fullText(
         _ expression: String, in file: LayerFile, index: Int, difficulty: ClosedRange<Int>?
@@ -109,7 +99,7 @@ enum TrailSearch {
             try statement.bind(expression as String?, at: 1)
             return try rows(of: statement, index: index, difficulty: difficulty)
         } catch {
-            if statement.failureCode & 0xFF == SQLITE_ERROR { return [] }
+            if FullText.rejected(statement) { return [] }
             throw error
         }
     }
